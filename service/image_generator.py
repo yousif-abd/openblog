@@ -69,7 +69,8 @@ class ImageGenerator:
     GRAPHICS_FOLDER = "Graphics (Final)"
 
     # Domain-wide delegation subject (user to impersonate for Drive quota)
-    DELEGATION_SUBJECT = "clients@scaile.tech"
+    # Set via GOOGLE_DELEGATION_SUBJECT environment variable
+    DELEGATION_SUBJECT = os.getenv("GOOGLE_DELEGATION_SUBJECT", "")
 
     def __init__(self):
         self.openrouter_key = os.getenv("OPENROUTER_API_KEY")
@@ -102,12 +103,15 @@ class ImageGenerator:
                 scopes=["https://www.googleapis.com/auth/drive"]
             )
             
-            # Apply domain-wide delegation by impersonating the subject user
+            # Apply domain-wide delegation if configured
             # This allows the SA to use the user's Drive quota
-            delegated_credentials = credentials.with_subject(self.DELEGATION_SUBJECT)
+            if self.DELEGATION_SUBJECT:
+                credentials = credentials.with_subject(self.DELEGATION_SUBJECT)
+                logger.info(f"Using domain-wide delegation as: {self.DELEGATION_SUBJECT}")
+            else:
+                logger.info("Using service account credentials (no delegation)")
             
-            logger.info(f"Using domain-wide delegation as: {self.DELEGATION_SUBJECT}")
-            return build("drive", "v3", credentials=delegated_credentials)
+            return build("drive", "v3", credentials=credentials)
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse service account JSON: {e}")
             return None
@@ -366,8 +370,8 @@ class ImageGenerator:
         headers = {
             "Authorization": f"Bearer {self.openrouter_key}",
             "Content-Type": "application/json",
-            "HTTP-Referer": "https://scaile.tech",
-            "X-Title": "SCAILE Blog Writer",
+            "HTTP-Referer": "https://github.com/SCAILE-it/openblog",
+            "X-Title": "OpenBlog",
         }
         
         payload = {

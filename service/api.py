@@ -200,7 +200,7 @@ class BlogGenerationResponse(BaseModel):
     paa: List[FAQEntry] = Field(default_factory=list, description="People Also Ask pairs")
     
     # === TRUST SIGNALS ===
-    author: str = Field("SCAILE AI Team", description="Author name")
+    author: str = Field("Content Team", description="Author name")
     author_description: Optional[str] = Field(None, description="Author bio")
     author_image: Optional[str] = Field(None, description="Author image URL")
     author_url: Optional[str] = Field(None, description="Author profile URL for E-E-A-T")
@@ -295,7 +295,7 @@ def _get_enhanced_author(company_data: dict = None) -> str:
         return company_data["author_name"]
     if company_data and company_data.get("company_name"):
         return f"{company_data['company_name']} Content Team"
-    return "SCAILE AI Team"
+    return "Content Team"
 
 
 def _get_enhanced_author_bio(company_data: dict = None) -> str:
@@ -303,11 +303,11 @@ def _get_enhanced_author_bio(company_data: dict = None) -> str:
     if company_data and company_data.get("author_bio"):
         return company_data["author_bio"]
     
-    company_name = "SCAILE"
-    industry = "technology and AI"
+    company_name = "Your Company"
+    industry = "technology"
     
     if company_data:
-        company_name = company_data.get("company_name", "SCAILE")
+        company_name = company_data.get("company_name", "Your Company")
         industry = company_data.get("industry", "technology and AI")
     
     # Generate varied experience years for authenticity
@@ -961,7 +961,10 @@ async def _create_google_doc_for_article(title: str, html_content: str, folder_i
         sa_info,
         scopes=['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/documents']
     )
-    credentials = credentials.with_subject("clients@scaile.tech")
+    # Optional: Domain-wide delegation subject (set GOOGLE_DELEGATION_SUBJECT env var)
+    delegation_subject = os.getenv("GOOGLE_DELEGATION_SUBJECT")
+    if delegation_subject:
+        credentials = credentials.with_subject(delegation_subject)
     
     # Create Drive service
     drive_service = build('drive', 'v3', credentials=credentials)

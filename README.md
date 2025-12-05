@@ -1,67 +1,77 @@
-# blog-writer
+# OpenBlog
 
-**AI-powered blog article generation system** - Stages-based architecture implementing the v4.1 n8n workflow in Python.
-
-## 🎯 Overview
-
-This is a complete rewrite of the blog writing system using a **12-stage pipeline architecture** that mirrors the v4.1 n8n workflow. Each stage is modular, testable, and follows clear separation of concerns.
+**Open-source AI-powered blog generation system** — 12-stage pipeline for producing high-quality, AEO-optimized articles.
 
 ## ✨ Features
 
-- ✅ **12-Stage Pipeline**: Complete implementation of all stages (0-11)
-- ✅ **v4.1 Workflow Parity**: Matches the n8n workflow exactly
-- ✅ **Modular Design**: Each stage is independent and testable
-- ✅ **Comprehensive Tests**: All stages have full test coverage
-- ✅ **AEO Optimization**: Built-in quality checks and scoring
-- ✅ **Auto-Detection**: Automatically detects company info from URL
-- ✅ **Multi-language Support**: Supports multiple languages
+- 🔄 **12-Stage Pipeline** — Modular, testable stages from data fetch to HTML output
+- 🎯 **AEO Optimization** — Built-in Answer Engine Optimization scoring (70-85+ scores)
+- 🔍 **Smart Citations** — Automatic source validation and formatting
+- 📝 **Rich Content** — FAQ/PAA extraction, internal links, ToC generation
+- 🖼️ **Image Generation** — AI-powered featured images via OpenRouter
+- 🌐 **Multi-language** — Supports multiple languages with auto-detection
+- ⚡ **Fast** — 60-90 second generation time
 
-## 📋 Stages Overview
+## 📋 Pipeline Stages
 
-### Sequential Stages (0-3)
-- **Stage 0**: Data Fetch & Auto-Detection
-- **Stage 1**: Prompt Construction
-- **Stage 2**: Gemini Content Generation (with tools)
-- **Stage 3**: Structured Data Extraction
-
-### Parallel Stages (4-9)
-- **Stage 4**: Citations Validation & Formatting
-- **Stage 5**: Internal Links Generation
-- **Stage 6**: Table of Contents Generation
-- **Stage 7**: Metadata Calculation
-- **Stage 8**: FAQ/PAA Validation & Enhancement
-- **Stage 9**: Image Generation
-
-### Sequential Stages (10-11)
-- **Stage 10**: Cleanup & Validation
-- **Stage 11**: HTML Generation & Storage
+```
+Stage 0: Data Fetch & Company Detection
+Stage 1: Prompt Construction
+Stage 2: AI Content Generation (Gemini + tools)
+Stage 3: Structured Data Extraction
+Stage 4: Citation Validation ─┐
+Stage 5: Internal Links      │ (parallel)
+Stage 6: Table of Contents   │
+Stage 7: Metadata            │
+Stage 8: FAQ/PAA Enhancement │
+Stage 9: Image Generation   ─┘
+Stage 10: Cleanup & Validation
+Stage 11: HTML Generation & Storage
+```
 
 ## 🚀 Quick Start
 
 ### Installation
 
 ```bash
-# Clone repository
-git clone <repository-url>
-cd blog-writer
-
-# Install dependencies
+git clone https://github.com/SCAILE-it/openblog.git
+cd openblog
 pip install -r requirements.txt
-
-# Set up environment variables
-cp .env.example .env
-# Edit .env with your API keys
 ```
 
-### Basic Usage
+### Environment Variables
+
+```bash
+# Required
+OPENROUTER_API_KEY=your_openrouter_key
+
+# Optional - for Google Drive integration
+GOOGLE_SERVICE_ACCOUNT_JSON='{"type":"service_account",...}'
+GOOGLE_DELEGATION_SUBJECT=user@domain.com
+```
+
+### API Usage
+
+```bash
+# Start the server
+uvicorn service.api:app --reload
+
+# Generate a blog
+curl -X POST http://localhost:8000/blog/write \
+  -H "Content-Type: application/json" \
+  -d '{
+    "primary_keyword": "AI in customer service",
+    "company_url": "https://example.com"
+  }'
+```
+
+### Python Usage
 
 ```python
-from v2.core import WorkflowEngine, ExecutionContext
+from pipeline.core.workflow_engine import WorkflowEngine
+from pipeline.core.execution_context import ExecutionContext
 
-# Create workflow engine
 engine = WorkflowEngine()
-
-# Create execution context
 context = ExecutionContext(
     job_id="test-123",
     job_config={
@@ -70,88 +80,75 @@ context = ExecutionContext(
     },
 )
 
-# Run workflow
 result = await engine.execute(context)
-
-# Access final article
-article = result.final_article
-print(article["Headline"])
+print(result.final_article["Headline"])
 ```
 
-## 📁 Project Structure
+## 🏗️ Project Structure
 
 ```
-blog-writer/
-├── pipeline/                          # Main code
-│   ├── blog_generation/         # Blog generation (12 stages)
-│   ├── core/                    # Core infrastructure
-│   ├── models/                  # Data models
-│   ├── processors/              # Data processors
-│   ├── prompts/                 # Prompt templates
-│   └── config.py               # Configuration
-├── tests/                       # Test suite
-│   └── stages/                  # Stage tests
-├── docs/                        # Documentation
-│   ├── ARCHITECTURE.md         # Architecture details
-│   ├── ROADMAP.md              # Implementation roadmap
-│   └── STAGES_REVIEW.md        # Stages review
-└── requirements.txt            # Dependencies
+openblog/
+├── pipeline/
+│   ├── blog_generation/    # 12 stages (stage_00 to stage_11)
+│   ├── core/               # Workflow engine, execution context
+│   ├── models/             # Data models, AI clients
+│   ├── processors/         # HTML, citations, sitemap
+│   ├── prompts/            # Prompt templates
+│   └── utils/              # AEO scorer, helpers
+├── service/
+│   ├── api.py              # FastAPI endpoints
+│   └── image_generator.py  # Image generation
+├── tests/                  # Test suite
+├── docs/                   # Documentation
+├── modal_deploy.py         # Modal deployment
+└── requirements.txt
 ```
 
-## 🔧 Configuration
+## 📊 Output Quality
 
-### Required Environment Variables
+- **AEO Score**: 70-85+ / 100
+- **Generation Time**: 60-90 seconds
+- **Citation Validation**: Automatic URL checking
+- **HTML Output**: Clean, semantic markup
 
-- `GOOGLE_API_KEY`: Google AI API key (required)
+## 🔧 Deployment
 
-### Optional Environment Variables
+### Modal (Recommended)
 
-- `SUPABASE_URL`: Supabase URL (for storage)
-- `SUPABASE_KEY`: Supabase key (for storage)
-- `REPLICATE_API_TOKEN`: Replicate API token (for image generation)
+```bash
+pip install modal
+modal deploy modal_deploy.py
+```
+
+### Docker
+
+```bash
+docker build -t openblog .
+docker run -p 8000:8000 openblog
+```
 
 ## 📖 Documentation
 
-- **[Architecture](docs/ARCHITECTURE.md)**: Complete architecture documentation
-- **[Roadmap](docs/ROADMAP.md)**: Implementation roadmap
-- **[Quick Reference](docs/QUICK_REFERENCE.md)**: Quick reference card
-- **[Input Requirements](docs/INPUT_REQUIREMENTS.md)**: Input data requirements
-- **[Stages Review](docs/STAGES_REVIEW.md)**: Complete stages review
+- [Architecture Overview](ARCHITECTURE_OVERVIEW.md)
+- [Detailed Architecture](docs/ARCHITECTURE.md)
+- [Input Requirements](docs/INPUT_REQUIREMENTS.md)
+- [Async Architecture](docs/ASYNC_ARCHITECTURE.md)
 
 ## 🧪 Testing
 
 ```bash
-# Run all tests
 pytest tests/ -v
-
-# Run specific stage tests
-pytest tests/stages/test_stage_00.py -v
-
-# Run with coverage
-pytest tests/ --cov=v2 --cov-report=html
+pytest tests/stages/test_stage_00.py -v  # Test specific stage
 ```
-
-## 📊 Status
-
-**Completion**: ✅ **100%** (12/12 stages implemented)
-
-All stages are implemented, tested, and ready for production use.
-
-## 🔄 Migration from blog-writer
-
-This is a complete rewrite focusing on:
-- Clean, modular architecture
-- Stages-based pipeline
-- Better testability
-- Clear separation of concerns
-
-See [MIGRATION_PLAN.md](MIGRATION_PLAN.md) for details.
 
 ## 📝 License
 
-[Add your license here]
+MIT License - see [LICENSE](LICENSE) for details.
 
 ## 🤝 Contributing
 
-[Add contribution guidelines here]
+Contributions welcome! Please read the contributing guidelines before submitting PRs.
 
+---
+
+Built with ❤️ by [SCAILE](https://scaile.tech)
