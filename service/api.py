@@ -22,7 +22,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from pipeline.core import WorkflowEngine
 from pipeline.core.job_manager import JobManager, JobConfig, JobStatus, get_job_manager
-# Content deduplication removed - use your own solution if needed
+# Content similarity checker for SEO duplicate detection
+from pipeline.utils.similarity_checker import (
+    ContentSimilarityChecker, 
+    SimilarityReport,
+    check_for_duplicates,
+    store_article_fingerprint,
+)
 # Stage imports delayed to avoid circular imports
 # Will be imported dynamically in create_stages()
 
@@ -220,6 +226,11 @@ class BlogGenerationResponse(BaseModel):
     html_content: Optional[str] = Field(None, description="Full HTML for preview")
     validated_article: Optional[Dict[str, Any]] = Field(None, description="Raw validated article data")
     
+    # === DUPLICATE DETECTION ===
+    similarity_score: Optional[float] = Field(None, description="Similarity to existing content (0-100)")
+    similar_to: Optional[str] = Field(None, description="Slug of most similar existing article")
+    similarity_issues: List[str] = Field(default_factory=list, description="Specific similarity issues found")
+    is_potential_duplicate: bool = Field(False, description="True if similarity > 50%")
     
     # === ERROR HANDLING ===
     error: Optional[str] = Field(None, description="Error message if failed")
@@ -444,6 +455,31 @@ def build_response_from_context(
     headline = (getattr(sd, "Headline", "") if sd else "") or va.get("Headline", "")
     slug = request.slug or generate_slug(headline or request.primary_keyword)
     
+    # Check for duplicate/similar content
+    similarity_report = None
+    try:
+        # Build article dict for similarity check
+        article_for_check = {
+            "slug": slug,
+            "primary_keyword": request.primary_keyword,
+            "Headline": headline,
+            "Meta_Title": (getattr(sd, "Meta_Title", "") if sd else "") or va.get("Meta_Title", ""),
+            "Meta_Description": (getattr(sd, "Meta_Description", "") if sd else "") or va.get("Meta_Description", ""),
+            "Intro": va.get("Intro", "") or (getattr(sd, "Intro", "") if sd else ""),
+            "table_of_contents": toc_entries,
+            "faq": faq_entries,
+            "paa": paa_entries,
+            **{f"section_{i:02d}_heading": s.heading for i, s in enumerate(sections, 1) if s},
+            **{f"section_{i:02d}_content": s.content for i, s in enumerate(sections, 1) if s},
+        }
+        similarity_report = check_for_duplicates(article_for_check)
+        
+        # Store fingerprint for future checks (only if not a duplicate)
+        if not similarity_report.is_duplicate:
+            store_article_fingerprint(article_for_check, slug)
+    except Exception as e:
+        logger.warning(f"Similarity check failed: {e}")
+    
     return BlogGenerationResponse(
         # Execution
         success=True,
@@ -510,6 +546,12 @@ def build_response_from_context(
         # Raw content
         html_content=html_content,
         validated_article=va,
+        
+        # Duplicate detection
+        similarity_score=similarity_report.overall_score if similarity_report else None,
+        similar_to=similarity_report.similar_to if similarity_report else None,
+        similarity_issues=similarity_report.issues if similarity_report else [],
+        is_potential_duplicate=similarity_report.overall_score >= 50 if similarity_report else False,
     )
 
 
