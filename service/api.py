@@ -22,9 +22,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from pipeline.core import WorkflowEngine
 from pipeline.core.job_manager import JobManager, JobConfig, JobStatus, get_job_manager
-# NOTE: content_hasher is DEPRECATED - semantic deduplication now in Edge Functions
-# Kept for backwards compatibility in API response
-from pipeline.utils.content_hasher import compute_content_hash
+# Content deduplication removed - use your own solution if needed
 # Stage imports delayed to avoid circular imports
 # Will be imported dynamically in create_stages()
 
@@ -222,10 +220,6 @@ class BlogGenerationResponse(BaseModel):
     html_content: Optional[str] = Field(None, description="Full HTML for preview")
     validated_article: Optional[Dict[str, Any]] = Field(None, description="Raw validated article data")
     
-    # === CONTENT FINGERPRINT (DEPRECATED) ===
-    # NOTE: SimHash is deprecated. Semantic deduplication now handled by Gemini embeddings in Edge Functions.
-    # This field is kept for backwards compatibility only.
-    content_hash: Optional[str] = Field(None, description="[DEPRECATED] SimHash content fingerprint (16-char hex). Use Gemini embeddings instead.")
     
     # === ERROR HANDLING ===
     error: Optional[str] = Field(None, description="Error message if failed")
@@ -450,15 +444,6 @@ def build_response_from_context(
     headline = (getattr(sd, "Headline", "") if sd else "") or va.get("Headline", "")
     slug = request.slug or generate_slug(headline or request.primary_keyword)
     
-    # Compute content fingerprint for duplicate detection
-    content_hash = None
-    try:
-        content_hash = compute_content_hash(va) if va else None
-    except Exception as e:
-        import logging
-        # import random removed
-        logging.getLogger(__name__).warning(f"Failed to compute content hash: {e}")
-    
     return BlogGenerationResponse(
         # Execution
         success=True,
@@ -525,9 +510,6 @@ def build_response_from_context(
         # Raw content
         html_content=html_content,
         validated_article=va,
-        
-        # Content fingerprint
-        content_hash=content_hash,
     )
 
 
