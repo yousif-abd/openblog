@@ -53,12 +53,12 @@ class Theme:
     font_body: str = "500"
     
     # Spacing
-    padding_large: str = "80px"
-    padding_medium: str = "60px"
-    padding_small: str = "40px"
-    gap_large: str = "50px"
-    gap_medium: str = "30px"
-    gap_small: str = "20px"
+    padding_large: str = "60px"  # Reduced from 80px
+    padding_medium: str = "40px"  # Reduced from 60px
+    padding_small: str = "24px"  # Reduced from 40px
+    gap_large: str = "40px"  # Reduced from 50px
+    gap_medium: str = "24px"  # Reduced from 30px
+    gap_small: str = "16px"  # Reduced from 20px
     
     # Border radius
     radius_large: str = "28px"
@@ -71,7 +71,7 @@ class Theme:
     shadow_medium: str = "0 4px 12px rgba(99, 102, 241, 0.3)"
     
     # Grid pattern
-    grid_enabled: bool = True
+    grid_enabled: bool = False  # Disabled by default
     grid_color: str = "rgba(0,0,0,0.025)"
     grid_size: str = "20px"
 
@@ -478,8 +478,10 @@ class GraphicsBuilder:
       height: {dimensions[1]}px;
       display: flex;
       flex-direction: column;
-      padding: {t.padding_large} 120px;
+      padding: {t.padding_medium} {t.padding_large};
       position: relative;
+      justify-content: center;  /* Center content vertically */
+      gap: {t.gap_medium};
     }}
     {grid_css}
     .badge {{
