@@ -59,11 +59,17 @@ def validate_country(country: str) -> str:
     return country_cleaned
 
 # Universal quality standards - no market-specific hardcoding
+# Optimized for 9.0/10+ quality (beats Writesonic)
 UNIVERSAL_STANDARDS = {
     "word_count_target": "2000-2500",
     "min_word_count": "2000",
     "list_count": "12+ lists minimum",
-    "citation_count": "10-15 authoritative sources",
+    "citation_count": "15-20 authoritative sources",  # Increased for research depth
+    "data_points_min": "15-20 statistics/data points",  # NEW: Research depth requirement
+    "case_studies_min": "2-3 concrete case studies",  # NEW: Example quality requirement
+    "examples_min": "5-7 specific examples",  # NEW: Example quality requirement
+    "unique_insights_min": "2-3 unique insights",  # NEW: Originality requirement
+    "internal_links_min": "5-8 internal links",  # NEW: SEO requirement
     "quality_note": "Professional standards with expert-level content and market awareness"
 }
 
@@ -124,46 +130,70 @@ You are writing a long-form blog post in {company_name}'s voice, fully optimized
 
 1. Word count: {standards["word_count_target"]} words (MINIMUM {standards["min_word_count"]}) – keep storyline tight, info-dense.
 
-2. Headline: EXACTLY 50-60 characters (count each character). If headline exceeds 60 chars, shorten it. Every character counts. Subtitle: 80-100 characters. Teaser: 2-3 sentences.
+2. Headline: EXACTLY 50-60 characters (count each character). If headline exceeds 60 chars, shorten it. Every character counts. Subtitle: 80-100 characters. Teaser: 2-3 sentences with a HOOK (compelling question, surprising stat, or relatable pain point).
 
 3. Direct_Answer: 45-55 words exactly (count words), featured snippet optimized, with one citation [1] naturally embedded. Must be 45-55 words exactly for AEO scoring.
 
-4. Intro: 200-300 words total. Opening paragraph (80-120 words) + key takeaways (3-4 bullet points).
+4. Intro: 200-300 words total. Opening paragraph (80-120 words) with STORY/HOOK (real scenario, surprising insight, or question) + key takeaways (3-4 bullet points).
 
 5. New H2 every 250-300 words; headings packed with natural keywords. Each H2 MUST be followed by at least 2-3 paragraphs of real content. NEVER create headings followed only by citations.
 
 6. Every paragraph ≤ 30 words & ≥ 90% active voice, and **must contain** a number, KPI or real example.
 
-7. **Primary Keyword** "{primary_keyword}" must appear **naturally** in first 100 words and **EXACTLY 8-12 times** throughout entire article. **CRITICAL**: Count the exact phrase "{primary_keyword}" only. Before finalizing JSON, count exact phrase occurrences. If count ≠ 8-12, adjust content. Do NOT include keyword in FAQ/PAA sections when counting main content mentions. **MANDATORY**: After writing, count keyword mentions. If count > 12, remove excess mentions. If count < 8, add more. Exceeding 12 = keyword stuffing. Under 8 = insufficient optimization.
+7. **Primary Keyword** "{primary_keyword}" must appear **naturally** in first 100 words and **EXACTLY 5-8 times** throughout entire article (for 1-1.5% density). **CRITICAL**: Count the exact phrase "{primary_keyword}" only. Before finalizing JSON, count exact phrase occurrences. If count ≠ 5-8, adjust content. Do NOT include keyword in FAQ/PAA sections when counting main content mentions. **MANDATORY**: After writing, count keyword mentions. If count > 8, remove excess mentions. If count < 5, add more. Use semantic variations (LSI keywords) for remaining mentions.
 
 8. **NEVER** embed PAA, FAQ or Key Takeaways inside sections, section titles, intro or teaser; they live in separate JSON keys. FAQ/PAA quality affects AEO score - make them specific and valuable.
 
-9. **Internal links**: at least one per H2 section, woven seamlessly into the surrounding sentence. Example: `<a href="/target-slug">Descriptive Anchor</a>` (≤ 6 words, varied). ENSURE correct HTML format.
+9. **Internal links**: MINIMUM {standards["internal_links_min"]} throughout article, woven seamlessly into sentences. Example: `<a href="/target-slug">Descriptive Anchor</a>` (≤ 6 words, varied). ENSURE correct HTML format.
    • **BATCH LINKING**: If Internal Links section contains batch sibling articles (same batch_id), prioritize linking to them within article content. Link to batch siblings naturally in 2-3 sections where contextually relevant. This creates article clusters and improves SEO.
+   • **VERIFICATION**: Before finalizing, count internal links - must be at least {standards["internal_links_min"]}.
 
-10. Citations in-text as [1], [2]… matching the **Sources** list. MAX 20 sources. **CRITICAL**: Citations MUST be embedded within sentences, NEVER as standalone paragraphs. Example: "Industry data shows 65% growth [1][2]." NOT "[1][2]" as a separate paragraph.
+10. Citations in-text as [1], [2]… matching the **Sources** list. MINIMUM {standards["citation_count"]} sources. **CRITICAL**: Citations MUST be embedded within sentences, NEVER as standalone paragraphs. Example: "Industry data shows 65% growth [1][2]." NOT "[1][2]" as a separate paragraph.
 
 11. Highlight 1-2 insights per section with `<strong>…</strong>` (never `**…**`).
 
 12. In **2-4 sections**, insert either an HTML bulleted (`<ul>`) or numbered (`<ol>`) list **introduced by one short lead-in sentence**; 4-8 items per list.
 
-13. Avoid repetition—vary examples, phrasing and data across sections.
+13. **RESEARCH DEPTH** (CRITICAL for 9/10+ quality):
+    • Include MINIMUM {standards["data_points_min"]} specific statistics/data points throughout article (percentages, growth rates, market sizes, survey results). Each stat must include source [N].
+    • Include MINIMUM {standards["case_studies_min"]} concrete case studies with company names, specific results, and timeframes. Example: "Airbnb increased conversions by 25% in Q3 2024 using this approach [3]."
+    • Include MINIMUM {standards["examples_min"]} specific examples with named companies/products/tools. NO generic examples like "Company X" or "one business". Examples must be verifiable and current.
+    • Ban vague claims - replace "many companies" with "67% of Fortune 500 companies [1]", replace "significant growth" with "40% year-over-year growth [2]".
 
-14. **Narrative flow**: end every section with one bridging sentence that naturally sets up the next section.
+14. **ORIGINALITY & UNIQUE INSIGHTS** (CRITICAL for standout content):
+    • Include MINIMUM {standards["unique_insights_min"]} unique perspectives that readers won't find elsewhere. Use phrases like "surprisingly", "contrary to popular belief", "overlooked aspect", "hidden truth".
+    • Add at least ONE contrarian view or myth-busting section challenging conventional wisdom.
+    • Avoid these BANNED generic AI phrases: "in today's digital age", "it's no secret that", "in conclusion", "last but not least", "needless to say", "at the end of the day".
+    • Inject thought leadership - what would an expert with 10+ years experience say that beginners wouldn't know?
 
-15. Write as an industry expert with 10+ years experience. Include specific regulations, dates, and technical details. Provide actionable advice that only experts would know. Expert-level content (E-E-A-T) required for high AEO scores.
+15. **ENGAGEMENT & STORYTELLING**:
+    • Use "you/your" at least 15 times throughout article for direct reader engagement.
+    • Include 2-3 rhetorical questions in different sections to engage readers.
+    • Vary sentence structure - mix short punchy sentences with longer explanatory ones.
+    • End every section with one bridging sentence that naturally sets up the next section (narrative flow).
 
-16. **Grammar & Capitalization**: Before finalizing, scan entire article for these exact errors. Proofread for grammar, spelling, punctuation. Capitalize proper nouns (Gartner, Nielsen, API, etc.) and sentence starts. Every sentence must start with a capital letter. Check: "improving" → "Improving", "here's" → "Here's". Avoid awkward phrases: "Here's clients" → "Here's how clients", "You can automation" → "Automation". **CRITICAL**: Search for "aI" or "a I" and replace ALL instances with "AI" (capitalized). Common errors to avoid: "speed upd"→"speed up", "applys"→"applies", "simplifys"→"simplifies", "enableing"→"enabling", "aPI"→"API", "aI"→"AI", "a I"→"AI". Check proper nouns - AI, API, Gartner, Nielsen must be capitalized correctly. **MANDATORY**: After writing, search entire article for lowercase proper nouns (gartner, nielsen) and capitalize them. Write professionally.
+16. Write as an industry expert with 10+ years experience. Include specific regulations, dates, and technical details. Provide actionable advice that only experts would know. Expert-level content (E-E-A-T) required for high AEO scores.
+
+17. **COMPETITIVE DIFFERENTIATION** (if competitors provided):
+    • If competitors list is not "none", add subtle differentiation by mentioning what sets {company_name} approach apart.
+    • Example: "While traditional providers focus on X, {company_name} prioritizes Y for better results."
+    • Do NOT trash talk competitors - maintain professional tone while highlighting unique value.
+
+18. **Grammar & Capitalization**: Before finalizing, scan entire article for these exact errors. Proofread for grammar, spelling, punctuation. Capitalize proper nouns (Gartner, Nielsen, API, etc.) and sentence starts. Every sentence must start with a capital letter. Check: "improving" → "Improving", "here's" → "Here's". Avoid awkward phrases: "Here's clients" → "Here's how clients", "You can automation" → "Automation". **CRITICAL**: Search for "aI" or "a I" and replace ALL instances with "AI" (capitalized). Common errors to avoid: "speed upd"→"speed up", "applys"→"applies", "simplifys"→"simplifies", "enableing"→"enabling", "aPI"→"API", "aI"→"AI", "a I"→"AI". Check proper nouns - AI, API, Gartner, Nielsen must be capitalized correctly. **MANDATORY**: After writing, search entire article for lowercase proper nouns (gartner, nielsen) and capitalize them. Write professionally.
 
 *** SOURCES ***
 
-• Minimum {standards["citation_count"]} authoritative sources.
-• Only use official government, industry association, and expert organization sources.
+• MINIMUM {standards["citation_count"]} authoritative sources (aim for 20+ for deep research).
+• Source quality hierarchy (prioritize in order):
+  1. Academic research papers, peer-reviewed studies
+  2. Government/regulatory bodies, industry associations
+  3. Major research firms (Gartner, Forrester, McKinsey)
+  4. Established media outlets (WSJ, Forbes, TechCrunch)
 • Format: `[1]: https://… – 8-15 word description` (canonical URLs only).
 • **CRITICAL**: Use SPECIFIC PAGE URLs, NOT domain homepages. Example: `https://example.com/research/2025-study` NOT `https://example.com`
 • **CRITICAL**: Link sources IN-TEXT using anchor tags. Format: `<a href="https://source-url.com/page" target="_blank">relevant text</a> [1]` - embed links naturally within sentences.
-• AVOID: blogs, generic websites, promotional content, domain homepages.
-• VERIFY: All sources must be current (within 2 years) and directly relevant.
+• AVOID: blogs, generic websites, promotional content, domain homepages, opinion pieces.
+• VERIFY: All sources must be current (within 2 years) and directly relevant. Check source dates.
 
 *** HARD RULES ***
 
@@ -175,7 +205,18 @@ You are writing a long-form blog post in {company_name}'s voice, fully optimized
 • All content in {language_name}.
 • Never mention: {competitors_str}.
 • Maximum 3 citations per section (if more facts, cite at end of paragraph).
-• FINAL CHECK: Before output, (1) Count keyword mentions - must be 8-12 exactly, (2) Search for "aI" or "a I" and replace with "AI", (3) Search for lowercase proper nouns (gartner, nielsen) and capitalize, (4) Verify headline is 50-60 chars. Common mistakes: applys→applies, simplifys→simplifies, enableing→enabling, aI→AI.
+• FINAL CHECK BEFORE OUTPUT:
+  1. Count keyword "{primary_keyword}" mentions - must be 5-8 exactly (not 8-12 anymore)
+  2. Count internal links - must be at least {standards["internal_links_min"]}
+  3. Count statistics/data points - must be at least {standards["data_points_min"]}
+  4. Count case studies - must be at least {standards["case_studies_min"]}
+  5. Count specific examples - must be at least {standards["examples_min"]}
+  6. Count unique insights - must be at least {standards["unique_insights_min"]}
+  7. Search for "aI" or "a I" and replace with "AI"
+  8. Search for lowercase proper nouns (gartner, nielsen) and capitalize
+  9. Verify headline is 50-60 chars
+  10. Check for banned generic phrases
+  Common mistakes: applys→applies, simplifys→simplifies, enableing→enabling, aI→AI.
 
 *** OUTPUT FORMAT ***
 
