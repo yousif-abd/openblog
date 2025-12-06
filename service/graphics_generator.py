@@ -594,7 +594,7 @@ class GraphicsGenerator:
             
             try:
                 # Load HTML file
-                page.goto(f"file://{temp_path}")
+                await page.goto(f"file://{temp_path}")
                 await page.wait_for_load_state("networkidle")
                 
                 # Take screenshot
