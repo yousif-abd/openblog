@@ -10,6 +10,13 @@ Components:
 - CTACard: Call-to-action card
 - InfographicCard: Process/steps display
 - LogoCard: Branding footer
+- ProcessFlow: Connected steps with arrows
+- BarChart: Data visualization
+- Timeline: Event timeline
+- Comparison: Side-by-side comparison
+- FeatureGrid: Icon + text grid
+- StatsDashboard: Multi-metric display
+- ProgressBar: Progress indicator
 
 Themes:
 - Colors, fonts, spacing configurable per business/client
@@ -17,6 +24,8 @@ Themes:
 
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass, field
+
+from .graphics_advanced import AdvancedComponentRenderer, HeroIcons
 
 
 @dataclass
@@ -360,6 +369,64 @@ class GraphicsBuilder:
                         self.theme,
                     )
                 )
+            elif comp_type == "process_flow":
+                components_html.append(
+                    AdvancedComponentRenderer.render_process_flow(
+                        comp_content.get("steps", []),
+                        self.theme,
+                        comp_content.get("orientation", "horizontal"),
+                        comp_content.get("show_arrows", True),
+                    )
+                )
+            elif comp_type == "bar_chart":
+                components_html.append(
+                    AdvancedComponentRenderer.render_bar_chart(
+                        comp_content.get("data", []),
+                        self.theme,
+                        comp_content.get("max_value"),
+                    )
+                )
+            elif comp_type == "timeline":
+                components_html.append(
+                    AdvancedComponentRenderer.render_timeline(
+                        comp_content.get("events", []),
+                        self.theme,
+                        comp_content.get("orientation", "vertical"),
+                    )
+                )
+            elif comp_type == "comparison":
+                components_html.append(
+                    AdvancedComponentRenderer.render_comparison(
+                        comp_content.get("left", {}),
+                        comp_content.get("right", {}),
+                        self.theme,
+                    )
+                )
+            elif comp_type == "feature_grid":
+                components_html.append(
+                    AdvancedComponentRenderer.render_feature_grid(
+                        comp_content.get("features", []),
+                        self.theme,
+                        comp_content.get("columns", 3),
+                    )
+                )
+            elif comp_type == "stats_dashboard":
+                components_html.append(
+                    AdvancedComponentRenderer.render_stats_dashboard(
+                        comp_content.get("stats", []),
+                        self.theme,
+                    )
+                )
+            elif comp_type == "progress_bar":
+                components_html.append(
+                    AdvancedComponentRenderer.render_progress_bar(
+                        comp_content.get("label", ""),
+                        comp_content.get("value", 0),
+                        comp_content.get("max_value", 100),
+                        self.theme,
+                        comp_content.get("show_percentage", True),
+                    )
+                )
         
         # Generate full HTML
         return self._generate_html(components_html, dimensions)
@@ -646,6 +713,390 @@ class GraphicsBuilder:
       height: 30px;
       background: {t.gradient_primary};
       border-radius: 8px;
+    }}
+    
+    /* Advanced Components */
+    .hero-icon {{ flex-shrink: 0; }}
+    
+    /* Process Flow */
+    .process-flow {{
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: {t.gap_medium};
+      flex: 1;
+    }}
+    .process-flow.vertical {{
+      flex-direction: column;
+      gap: 0;
+    }}
+    .flow-step {{
+      background: {t.surface};
+      border-radius: {t.radius_medium};
+      padding: {t.padding_medium};
+      border: 2px solid {t.border};
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      min-width: 220px;
+      text-align: center;
+      box-shadow: {t.shadow_small};
+    }}
+    .flow-step.vertical {{
+      flex-direction: row;
+      min-width: 600px;
+      text-align: left;
+    }}
+    .step-number {{
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      background: {t.gradient_primary};
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 32px;
+      font-weight: 800;
+      color: white;
+      box-shadow: {t.shadow_medium};
+      flex-shrink: 0;
+    }}
+    .step-text {{
+      font-size: 22px;
+      font-weight: 600;
+      color: {t.text_primary};
+      line-height: 1.4;
+    }}
+    .flow-arrow {{
+      color: {t.accent};
+      flex-shrink: 0;
+    }}
+    .flow-connector {{
+      width: 3px;
+      height: 40px;
+      background: {t.gradient_primary};
+      margin: 0 auto;
+    }}
+    
+    /* Bar Chart */
+    .bar-chart {{
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-around;
+      gap: {t.gap_large};
+      background: {t.surface};
+      border-radius: {t.radius_large};
+      padding: {t.padding_large};
+      height: 400px;
+      border: 2px solid {t.border};
+      box-shadow: {t.shadow_small};
+    }}
+    .bar-item {{
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      flex: 1;
+    }}
+    .bar-container {{
+      width: 100%;
+      height: 300px;
+      background: {t.border_light};
+      border-radius: {t.radius_medium};
+      position: relative;
+      display: flex;
+      align-items: flex-end;
+      overflow: hidden;
+    }}
+    .bar-fill {{
+      width: 100%;
+      background: {t.gradient_primary};
+      border-radius: {t.radius_medium} {t.radius_medium} 0 0;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding-top: 16px;
+      transition: height 0.3s ease;
+      box-shadow: {t.shadow_medium};
+    }}
+    .bar-value {{
+      font-size: 24px;
+      font-weight: 800;
+      color: white;
+    }}
+    .bar-label {{
+      font-size: 20px;
+      font-weight: 600;
+      color: {t.text_primary};
+      text-align: center;
+    }}
+    
+    /* Timeline */
+    .timeline {{
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      position: relative;
+      padding-left: 60px;
+    }}
+    .timeline::before {{
+      content: '';
+      position: absolute;
+      left: 20px;
+      top: 40px;
+      bottom: 40px;
+      width: 4px;
+      background: {t.gradient_primary};
+    }}
+    .timeline-event {{
+      display: flex;
+      gap: 40px;
+      padding: 30px 0;
+      position: relative;
+    }}
+    .timeline-marker {{
+      position: absolute;
+      left: -54px;
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      background: {t.surface};
+      border: 4px solid {t.accent};
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: {t.shadow_medium};
+      z-index: 1;
+    }}
+    .timeline-content {{
+      background: {t.surface};
+      border-radius: {t.radius_medium};
+      padding: {t.padding_medium};
+      border: 2px solid {t.border};
+      flex: 1;
+      box-shadow: {t.shadow_small};
+    }}
+    .timeline-date {{
+      font-size: 18px;
+      font-weight: 600;
+      color: {t.accent};
+      margin-bottom: 12px;
+    }}
+    .timeline-title {{
+      font-size: 26px;
+      font-weight: 700;
+      color: {t.text_primary};
+      margin-bottom: 8px;
+    }}
+    .timeline-desc {{
+      font-size: 20px;
+      color: {t.text_secondary};
+      line-height: 1.5;
+    }}
+    
+    /* Comparison */
+    .comparison {{
+      display: flex;
+      align-items: stretch;
+      gap: {t.gap_large};
+    }}
+    .comparison-side {{
+      flex: 1;
+      background: {t.surface};
+      border-radius: {t.radius_large};
+      padding: {t.padding_large};
+      border: 2px solid {t.border};
+      display: flex;
+      flex-direction: column;
+      gap: {t.gap_medium};
+      box-shadow: {t.shadow_small};
+    }}
+    .comparison-side.right {{
+      border-color: {t.accent};
+      border-width: 3px;
+    }}
+    .comparison-label {{
+      font-size: 22px;
+      font-weight: 600;
+      color: {t.text_secondary};
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }}
+    .comparison-content {{
+      font-size: 32px;
+      font-weight: 700;
+      color: {t.text_primary};
+      line-height: 1.3;
+    }}
+    .comparison-stats {{
+      font-size: 48px;
+      font-weight: 800;
+      color: {t.text_muted};
+    }}
+    .comparison-stats.highlight {{
+      background: {t.gradient_text};
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }}
+    .comparison-divider {{
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }}
+    .vs-badge {{
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      background: {t.gradient_primary};
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+      font-weight: 800;
+      color: white;
+      box-shadow: {t.shadow_medium};
+    }}
+    
+    /* Feature Grid */
+    .feature-grid {{
+      display: grid;
+      gap: {t.gap_large};
+    }}
+    .feature-grid.cols-2 {{ grid-template-columns: repeat(2, 1fr); }}
+    .feature-grid.cols-3 {{ grid-template-columns: repeat(3, 1fr); }}
+    .feature-grid.cols-4 {{ grid-template-columns: repeat(4, 1fr); }}
+    .feature-item {{
+      background: {t.surface};
+      border-radius: {t.radius_medium};
+      padding: {t.padding_medium};
+      border: 2px solid {t.border};
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      text-align: center;
+      box-shadow: {t.shadow_small};
+    }}
+    .feature-icon {{
+      width: 80px;
+      height: 80px;
+      border-radius: {t.radius_medium};
+      background: {t.border_light};
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: {t.accent};
+    }}
+    .feature-title {{
+      font-size: 24px;
+      font-weight: 700;
+      color: {t.text_primary};
+    }}
+    .feature-desc {{
+      font-size: 18px;
+      color: {t.text_secondary};
+      line-height: 1.5;
+    }}
+    
+    /* Stats Dashboard */
+    .stats-dashboard {{
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: {t.gap_large};
+    }}
+    .stat-card {{
+      background: {t.surface};
+      border-radius: {t.radius_large};
+      padding: {t.padding_medium};
+      border: 2px solid {t.border};
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      box-shadow: {t.shadow_small};
+    }}
+    .stat-header {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }}
+    .stat-icon {{
+      width: 56px;
+      height: 56px;
+      border-radius: {t.radius_medium};
+      background: {t.border_light};
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: {t.accent};
+    }}
+    .stat-change {{
+      font-size: 18px;
+      font-weight: 600;
+      padding: 8px 16px;
+      border-radius: {t.radius_pill};
+    }}
+    .stat-change.trend-up {{
+      background: #dcfce7;
+      color: #16a34a;
+    }}
+    .stat-change.trend-down {{
+      background: #fee2e2;
+      color: #dc2626;
+    }}
+    .stat-change.trend-neutral {{
+      background: {t.border_light};
+      color: {t.text_secondary};
+    }}
+    .stat-value {{
+      font-size: 56px;
+      font-weight: 800;
+      background: {t.gradient_text};
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }}
+    .stat-label {{
+      font-size: 20px;
+      font-weight: 600;
+      color: {t.text_secondary};
+    }}
+    
+    /* Progress Bar */
+    .progress-bar-container {{
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: {t.padding_small} 0;
+    }}
+    .progress-label {{
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 20px;
+      font-weight: 600;
+      color: {t.text_primary};
+    }}
+    .progress-percentage {{
+      font-size: 18px;
+      font-weight: 700;
+      color: {t.accent};
+    }}
+    .progress-track {{
+      width: 100%;
+      height: 16px;
+      background: {t.border_light};
+      border-radius: {t.radius_pill};
+      overflow: hidden;
+    }}
+    .progress-fill {{
+      height: 100%;
+      background: {t.gradient_primary};
+      border-radius: {t.radius_pill};
+      transition: width 0.3s ease;
+      box-shadow: {t.shadow_medium};
     }}
   """
 
