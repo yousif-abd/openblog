@@ -167,8 +167,11 @@ class CitationLinker:
                     url = citation_info['url']
                     title = citation_info['title']
                     
-                    # Create link with citation number
-                    link = f'<a href="{url}" target="_blank" rel="noopener noreferrer" title="{title}">[{num}]</a>'
+                    # Create link with citation number (v3.2: enhanced for AEO)
+                    # Wrap in <cite> for semantic HTML
+                    # Add aria-label for accessibility
+                    aria_label = f"Citation {num}: {title}"
+                    link = f'<cite><a href="{url}" target="_blank" rel="noopener noreferrer" title="{title}" aria-label="{aria_label}" itemprop="citation">[{num}]</a></cite>'
                     linked_citations.append(link)
                 else:
                     # Keep original if citation not found

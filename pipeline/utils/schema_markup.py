@@ -95,6 +95,12 @@ def generate_article_schema(
             image_obj["caption"] = output.image_alt_text
         schema["image"] = image_obj
     
+    # v3.2: Add citation property for AEO (AI crawlers parse this)
+    if hasattr(output, 'Sources') and output.Sources:
+        citations = _parse_citations_from_sources(output.Sources)
+        if citations:
+            schema["citation"] = citations
+    
     # Add author schema for E-E-A-T if author info provided
     if company_data:
         author_name = company_data.get('author_name')
@@ -386,4 +392,38 @@ def _get_all_section_content(output: ArticleOutput) -> str:
         output.section_07_content, output.section_08_content, output.section_09_content,
     ]
     return " ".join(s for s in sections if s)
+
+
+def _parse_citations_from_sources(sources: str) -> List[Dict]:
+    """
+    Parse Sources field to extract citations for JSON-LD schema (v3.2).
+    
+    Format expected:
+    [1]: https://example.com/page – Description text
+    [2]: https://example.com/page2 – Another description
+    
+    Args:
+        sources: Raw sources string from article
+        
+    Returns:
+        List of citation dicts for schema.org citation property
+    """
+    if not sources:
+        return []
+    
+    citations = []
+    
+    # Pattern: [N]: URL – Description
+    pattern = r'\[(\d+)\]:\s*(https?://[^\s]+)\s*[–-]\s*(.+?)(?=\n\[|\n*$)'
+    matches = re.findall(pattern, sources, re.MULTILINE | re.DOTALL)
+    
+    for num, url, title in matches:
+        citation = {
+            "@type": "CreativeWork",
+            "url": url.strip(),
+            "name": title.strip()
+        }
+        citations.append(citation)
+    
+    return citations
 
