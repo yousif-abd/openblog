@@ -24,7 +24,8 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaInMemoryUpload
 
-from .graphics_components import GraphicsBuilder, Theme, ComponentRenderer
+# Import from openfigma library
+from openfigma import GraphicsBuilder, Theme
 
 logger = logging.getLogger(__name__)
 
