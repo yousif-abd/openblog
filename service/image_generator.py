@@ -442,7 +442,6 @@ class ImageGenerator:
     
     async def _async_sleep(self, seconds: float):
         """Async sleep helper."""
-        import asyncio
         await asyncio.sleep(seconds)
     
     def _extract_image_from_genai_response(self, response) -> Optional[bytes]:
