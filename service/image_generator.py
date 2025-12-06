@@ -454,8 +454,21 @@ class ImageGenerator:
     def _extract_image_from_genai_response(self, response) -> Optional[bytes]:
         """Extract image bytes from Google GenAI SDK response."""
         try:
-            if not response or not hasattr(response, 'candidates'):
-                logger.warning("No candidates in GenAI response")
+            logger.debug(f"Extracting image from response type: {type(response)}")
+            
+            if not response:
+                logger.warning("Empty response")
+                return None
+            
+            # Log response structure for debugging
+            if hasattr(response, '__dict__'):
+                logger.debug(f"Response attributes: {list(response.__dict__.keys())}")
+            
+            if not hasattr(response, 'candidates'):
+                logger.warning("No candidates attribute in response")
+                # Try alternative response structure
+                if hasattr(response, 'text'):
+                    logger.warning("Response has 'text' attribute - might be text-only response")
                 return None
             
             candidates = response.candidates
@@ -473,29 +486,70 @@ class ImageGenerator:
                 logger.warning("No parts in content")
                 return None
             
+            logger.debug(f"Found {len(content.parts)} parts in content")
+            
             # Look for image data in parts
-            for part in content.parts:
-                if hasattr(part, 'inline_data') and part.inline_data:
-                    if hasattr(part.inline_data, 'data'):
-                        image_data = part.inline_data.data
-                        if image_data:
-                            logger.info(f"Found inline image data ({len(image_data)} bytes)")
-                            return base64.b64decode(image_data)
+            for i, part in enumerate(content.parts):
+                logger.debug(f"Part {i}: type={type(part)}, attributes={dir(part) if hasattr(part, '__dict__') else 'N/A'}")
                 
-                # Also check for mime_type to confirm it's an image
+                # Check for inline_data
+                if hasattr(part, 'inline_data') and part.inline_data:
+                    inline_data = part.inline_data
+                    logger.debug(f"Found inline_data: {type(inline_data)}, attributes={dir(inline_data) if hasattr(inline_data, '__dict__') else 'N/A'}")
+                    
+                    # Check if data is bytes or base64 string
+                    if hasattr(inline_data, 'data'):
+                        image_data = inline_data.data
+                        logger.debug(f"Image data type: {type(image_data)}, length: {len(image_data) if image_data else 0}")
+                        
+                        if image_data:
+                            # Check if it's already bytes or needs decoding
+                            if isinstance(image_data, bytes):
+                                # Already bytes - check if it's valid PNG
+                                if len(image_data) > 100 and image_data[:8] == b'\x89PNG\r\n\x1a\n':
+                                    logger.info(f"Found valid PNG image data ({len(image_data)} bytes)")
+                                    return image_data
+                                else:
+                                    logger.warning(f"Image data is bytes but doesn't look like valid PNG (first bytes: {image_data[:20]})")
+                            elif isinstance(image_data, str):
+                                # Try base64 decode
+                                try:
+                                    decoded = base64.b64decode(image_data)
+                                    if len(decoded) > 100 and decoded[:8] == b'\x89PNG\r\n\x1a\n':
+                                        logger.info(f"Found base64-encoded PNG image ({len(decoded)} bytes)")
+                                        return decoded
+                                    else:
+                                        logger.warning(f"Decoded data doesn't look like valid PNG")
+                                except Exception as e:
+                                    logger.warning(f"Failed to decode base64: {e}")
+                    
+                    # Check mime_type
+                    if hasattr(inline_data, 'mime_type'):
+                        logger.debug(f"MIME type: {inline_data.mime_type}")
+                
+                # Also check for mime_type directly on part
                 if hasattr(part, 'mime_type') and part.mime_type and part.mime_type.startswith('image/'):
+                    logger.debug(f"Part has image mime_type: {part.mime_type}")
                     if hasattr(part, 'inline_data') and part.inline_data:
                         if hasattr(part.inline_data, 'data'):
                             image_data = part.inline_data.data
                             if image_data:
-                                logger.info(f"Found image data with mime_type {part.mime_type}")
-                                return base64.b64decode(image_data)
+                                if isinstance(image_data, bytes):
+                                    return image_data
+                                elif isinstance(image_data, str):
+                                    try:
+                                        return base64.b64decode(image_data)
+                                    except:
+                                        pass
             
-            logger.warning("No image data found in response parts")
+            logger.warning("No valid image data found in response parts")
+            logger.debug(f"Response structure: candidates={len(candidates)}, parts={len(content.parts) if content.parts else 0}")
             return None
             
         except Exception as e:
             logger.error(f"Error extracting image from GenAI response: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
             return None
     
 
