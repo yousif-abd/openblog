@@ -739,6 +739,32 @@ class HTMLRenderer:
         content = re.sub(r'</p>\s*<p>(This is |What is |That\'s why |If you want |When you )', r' \1', content)  # Join phrase fragments
         logger.info("🔧 Fixed sentence fragments at paragraph starts")
         
+        # STEP 0.7: FIX GEMINI HALLUCINATION PATTERNS (context loss bugs)
+        # Gemini loses context mid-generation and outputs broken phrases:
+        # "You can aI code generation" → remove entire broken phrase
+        # "When you aI code generation" → remove entire broken phrase
+        # "What is aI code generation" → remove entire broken phrase
+        # "so you can of increased" → remove broken phrase
+        # "Here's this reality faces" → "This reality faces"
+        
+        # Pattern 1: "You can/When you/What is" + lowercase "aI code" (context loss)
+        content = re.sub(r'<p>\s*(You can|When you|What is)\s+aI\s+code[^<]*</p>', '', content, flags=re.IGNORECASE)
+        content = re.sub(r'\b(You can|When you|What is)\s+aI\s+code[^.!?]*[.!?]?', '', content, flags=re.IGNORECASE)
+        
+        # Pattern 2: "so you can of" (broken grammar)
+        content = re.sub(r'\bso you can of\b', '', content, flags=re.IGNORECASE)
+        
+        # Pattern 3: "Here's this reality faces" → "This reality faces"
+        content = re.sub(r"Here's this (reality|scenario|situation)", r'This \1', content, flags=re.IGNORECASE)
+        
+        # Pattern 4: Double question words "What is How" / "What is Why"
+        content = re.sub(r'<h2>What is (How|Why|What|When|Where)\b', r'<h2>\1', content, flags=re.IGNORECASE)
+        
+        # Pattern 5: Standalone "matters:" or "so you can:" labels
+        content = re.sub(r'<p>\s*(matters|so you can|if you want):\s*</p>', '', content, flags=re.IGNORECASE)
+        
+        logger.info("🚨 Fixed Gemini hallucination patterns (context loss)")
+        
         # STEP 1: Humanize language (remove AI markers)
         content = HTMLRenderer._humanize_content(content)
         
