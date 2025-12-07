@@ -724,6 +724,12 @@ class HTMLRenderer:
         content = re.sub(r'\[\d+\]', '', content)  # Standalone [N]
         logger.info("🚫 Stripped all [N] academic citations (enforcing inline-only style)")
         
+        # STEP 0.5: REMOVE EMPTY LABEL PARAGRAPHS (Gemini bug)
+        # Matches: <p><strong>GitHub Copilot:</strong></p> (label with NO content after)
+        # Matches: <p><strong>Amazon Q Developer:</strong></p>
+        content = re.sub(r'<p>\s*<strong>[^<]+:</strong>\s*</p>', '', content)
+        logger.info("🧹 Removed empty label paragraphs")
+        
         # STEP 1: Humanize language (remove AI markers)
         content = HTMLRenderer._humanize_content(content)
         
