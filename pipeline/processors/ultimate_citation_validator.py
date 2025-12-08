@@ -68,12 +68,10 @@ class CitationValidationIssue:
 
 class UltimateCitationValidator:
     """
-    Ultimate citation validator combining best features from all repositories.
+    Simple citation validator using OpenDraft's approach (might be better than ours).
     
-    Provides comprehensive validation including:
-    - DOI verification via CrossRef API
-    - URL status validation with caching
-    - Alternative URL search for invalid URLs
+    Provides:
+    - URL status validation 
     - Metadata quality analysis
     - Author sanity checks
     """
@@ -187,21 +185,7 @@ class UltimateCitationValidator:
         
         issues = []
         
-        # Step 1: DOI validation (if present)
-        if doi:
-            doi_valid = await self.validate_doi_async(doi)
-            if doi_valid:
-                logger.info(f"✅ DOI validated: {doi}")
-                # For DOI citations, we can be more lenient with URL issues
-                return ValidationResult(
-                    is_valid=True,
-                    url=url or f"https://doi.org/{doi}",
-                    title=title,
-                    issues=issues,
-                    validation_type='doi_verified'
-                )
-            else:
-                issues.append(f"DOI validation failed: {doi}")
+        # Skip DOI validation - just focus on URL and metadata
         
         # Step 2: Metadata quality checks
         metadata_issues = self.check_metadata_quality(citation)
@@ -212,36 +196,27 @@ class UltimateCitationValidator:
             author_issues = self.check_author_sanity(authors)
             issues.extend(author_issues)
         
-        # Step 4: URL validation
+        # Step 3: Simple URL validation (from OpenDraft)
         if url:
-            url_valid, final_url, url_issues = await self.validate_url_comprehensive(url)
-            issues.extend(url_issues)
+            status_code, error_msg = self.validate_url_status_simple(url)
             
-            if url_valid and not self._is_forbidden_or_competitor(final_url, competitors):
-                return ValidationResult(
-                    is_valid=True,
-                    url=final_url,
-                    title=title,
-                    issues=issues,
-                    validation_type='original_url'
-                )
+            if status_code and 200 <= status_code < 400:
+                # URL is valid
+                if not self._is_forbidden_or_competitor(url, competitors):
+                    return ValidationResult(
+                        is_valid=True,
+                        url=url,
+                        title=title,
+                        issues=issues,
+                        validation_type='original_url'
+                    )
+            else:
+                if error_msg:
+                    issues.append(f"URL validation failed: {error_msg}")
+                if status_code:
+                    issues.append(f"HTTP {status_code}")
         
-        # Step 5: Search for alternative URL if original failed
-        if self.gemini_client and title:
-            alternative = await self._find_alternative_url_enhanced(
-                title, company_url, competitors, language
-            )
-            
-            if alternative:
-                return ValidationResult(
-                    is_valid=True,
-                    url=alternative[0],
-                    title=alternative[1],
-                    issues=issues + ["Used alternative URL"],
-                    validation_type='alternative_found'
-                )
-        
-        # Step 6: Final fallback - mark as invalid but preserve data
+        # Step 4: Final fallback - mark as invalid but preserve data
         return ValidationResult(
             is_valid=False,
             url=url or company_url,
@@ -250,45 +225,40 @@ class UltimateCitationValidator:
             validation_type='fallback'
         )
 
-    async def validate_doi_async(self, doi: str) -> bool:
+    def validate_url_status_simple(self, url: str) -> Tuple[Optional[int], str]:
         """
-        Validate DOI via CrossRef API (async version).
+        Simple URL validation (from OpenDraft - might be better than ours).
         
         Args:
-            doi: DOI to validate
+            url: URL to validate
             
         Returns:
-            True if DOI exists, False otherwise
+            Tuple of (status_code, error_message)
         """
-        if not doi:
-            return False
-        
-        # Clean DOI
-        doi_clean = doi.replace('https://doi.org/', '').replace('http://doi.org/', '')
-        
-        # Check cache
-        cache_key = doi_clean
-        if cache_key in _DOI_VALIDATION_CACHE:
-            is_valid, timestamp = _DOI_VALIDATION_CACHE[cache_key]
-            if time.time() - timestamp < _CACHE_TTL:
-                return is_valid
+        if not url:
+            return None, "No URL provided"
         
         try:
-            async with self.http_client as client:
-                response = await client.get(
-                    f"{self.crossref_api_base}{doi_clean}",
-                    headers={'User-Agent': 'OpenBlog/1.0 Citation Validator'}
-                )
-                is_valid = response.status_code == 200
-                
-                # Cache result
-                _DOI_VALIDATION_CACHE[cache_key] = (is_valid, time.time())
-                
-                return is_valid
-                
-        except Exception as e:
-            logger.warning(f"DOI validation failed for {doi}: {e}")
-            return False
+            import requests
+            response = requests.head(
+                url,
+                timeout=self.timeout,
+                allow_redirects=True,
+                headers={'User-Agent': 'OpenBlog Citation Validator'}
+            )
+            
+            # Some servers block HEAD, try GET
+            if response.status_code == 405:
+                response = requests.get(url, timeout=self.timeout, allow_redirects=True)
+            
+            return response.status_code, ""
+            
+        except requests.exceptions.Timeout:
+            return None, "Timeout"
+        except requests.exceptions.ConnectionError:
+            return None, "Connection failed"
+        except requests.exceptions.RequestException as e:
+            return None, f"Request error: {str(e)[:50]}"
 
     async def validate_url_comprehensive(self, url: str) -> Tuple[bool, str, List[str]]:
         """
@@ -406,71 +376,6 @@ class UltimateCitationValidator:
         
         return issues
 
-    async def _find_alternative_url_enhanced(
-        self,
-        title: str,
-        company_url: str,
-        competitors: List[str],
-        language: str
-    ) -> Optional[Tuple[str, str]]:
-        """
-        Enhanced alternative URL search using Gemini + GoogleSearch.
-        
-        Returns:
-            Tuple of (url, title) if found, None otherwise
-        """
-        if not self.gemini_client or not title:
-            return None
-        
-        try:
-            # Construct search query
-            search_query = f"authoritative source: {title}"
-            
-            logger.info(f"🔍 Searching for alternative URL: {search_query}")
-            
-            # Use Gemini with GoogleSearch tool
-            prompt = f"""
-            Find an authoritative, accessible URL for this topic: "{title}"
-            
-            Requirements:
-            - Must be from a reputable source (academic, government, established organization)
-            - Must be publicly accessible (not behind paywall)
-            - Must be relevant to the topic
-            - Avoid these competitors: {', '.join(competitors)}
-            - Avoid these forbidden domains: {', '.join(FORBIDDEN_HOSTS)}
-            
-            Return format:
-            URL: [the URL]
-            Title: [the page title]
-            """
-            
-            response = await self.gemini_client.generate_content_async(
-                prompt,
-                tools=['googleSearch']
-            )
-            
-            if response and 'URL:' in response:
-                # Parse response
-                lines = response.split('\n')
-                url_line = next((line for line in lines if line.startswith('URL:')), None)
-                title_line = next((line for line in lines if line.startswith('Title:')), None)
-                
-                if url_line:
-                    url = url_line.replace('URL:', '').strip()
-                    new_title = title_line.replace('Title:', '').strip() if title_line else title
-                    
-                    # Validate the alternative URL
-                    if not self._is_forbidden_or_competitor(url, competitors):
-                        url_valid, final_url, _ = await self.validate_url_comprehensive(url)
-                        if url_valid:
-                            logger.info(f"✅ Alternative URL found: {final_url}")
-                            return final_url, new_title
-            
-            return None
-            
-        except Exception as e:
-            logger.warning(f"Alternative URL search failed: {e}")
-            return None
 
     def _is_forbidden_or_competitor(self, url: str, competitors: List[str]) -> bool:
         """

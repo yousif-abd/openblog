@@ -857,16 +857,11 @@ Include in JSON output as:
   9. ✅ 2+ named case studies with company + metric + timeframe + 30+ words each
   10. ✅ Every paragraph is 40-50 words (3-5 sentences) - paragraphs exceeding 50 words will be REJECTED
   11. ✅ NO standalone labels like "<p><strong>Company:</strong> [N]</p>"
-  12. ✅ **CITATION QUALITY (CRITICAL - ZERO TOLERANCE)**: All citations MUST be from authoritative, verifiable sources:
-     - NO fake/placeholder URLs (example.com, placeholder.com, etc.)
+  12. ✅ **CITATION QUALITY (CRITICAL)**: All citations MUST be from real, working sources:
+     - NO fake/placeholder URLs (example.com, etc.)
      - NO 404 error pages or broken links
-     - Prefer academic sources (.edu), government (.gov), established organizations
-     - Include DOI when possible for academic papers
-     - URLs must be publicly accessible (not behind paywalls when possible)
-  13. ✅ **CITATION COUNT (CRITICAL)**: Minimum 15-20 authoritative sources required
-     - Each major claim must be supported by a specific citation
-     - Multiple data points/statistics must each have dedicated sources
-     - Case studies must cite original company sources or press releases
+     - Use real, accessible websites
+  13. ✅ **CITATION COUNT**: 15-20 sources required
   14. ✅ **FAQ REQUIREMENT (CRITICAL)**: At least 5 FAQ items generated (faq_01_question through faq_05_question must be non-empty)
   15. ✅ **PAA REQUIREMENT (CRITICAL)**: At least 3 PAA items generated (paa_01_question through paa_03_question must be non-empty)
   16. ✅ Scan for "aI" → replace with "AI"
