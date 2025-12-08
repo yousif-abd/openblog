@@ -1,19 +1,11 @@
 """
-Ultimate Citation Validator
+Simple Citation Validator
 
-Combines the best features from multiple OpenBlog repositories:
-- OpenDraft: DOI validation via CrossRef API + metadata quality checks
-- Blog-Writer: Async URL validation with caching + alternative URL search
-- Isaac Security: Clean structured approach with V4.0 architecture
-
-Features:
-- Comprehensive DOI validation via CrossRef API
-- Async URL status validation with intelligent caching
-- Alternative URL search using Gemini + GoogleSearch for 404s
-- Metadata quality analysis (author sanity, title validation, etc.)
-- Performance optimized with parallel processing
-- Maintains citation count requirement
-- Zero tolerance for fake/placeholder URLs
+Uses OpenDraft's simple approach for basic citation validation:
+- URL status validation
+- Metadata quality analysis
+- Author sanity checks
+- Simple, focused validation without bloat
 """
 
 import asyncio
@@ -27,13 +19,11 @@ from urllib.parse import urlparse
 import httpx
 import requests
 
-from ..models.gemini_client import GeminiClient
 
 logger = logging.getLogger(__name__)
 
-# Performance caches
+# Performance cache for URL validation
 _URL_STATUS_CACHE: Dict[str, Tuple[bool, str, float]] = {}
-_DOI_VALIDATION_CACHE: Dict[str, Tuple[bool, float]] = {}
 _CACHE_TTL = 300  # 5 minutes
 
 # Forbidden hosts and domains
@@ -53,7 +43,7 @@ class ValidationResult:
     url: str
     title: str
     issues: List[str]
-    validation_type: str  # 'original', 'alternative', 'doi_only'
+    validation_type: str  # 'original_url', 'fallback', 'failed'
 
 
 @dataclass
@@ -66,7 +56,7 @@ class CitationValidationIssue:
     citation_text: str
 
 
-class UltimateCitationValidator:
+class SimpleCitationValidator:
     """
     Simple citation validator using OpenDraft's approach (might be better than ours).
     
@@ -78,22 +68,15 @@ class UltimateCitationValidator:
 
     def __init__(
         self,
-        gemini_client: Optional[GeminiClient] = None,
         timeout: float = 10.0,
-        max_search_attempts: int = 5
     ):
         """
-        Initialize ultimate citation validator.
+        Initialize simple citation validator.
         
         Args:
-            gemini_client: Optional Gemini client for alternative URL search
             timeout: HTTP request timeout in seconds
-            max_search_attempts: Maximum attempts to find alternative URLs
         """
-        self.gemini_client = gemini_client
         self.timeout = timeout
-        self.max_search_attempts = max_search_attempts
-        self.crossref_api_base = "https://api.crossref.org/works/"
         
         # Async HTTP client for URL validation
         self.http_client = httpx.AsyncClient(
@@ -102,21 +85,19 @@ class UltimateCitationValidator:
             max_redirects=3
         )
 
-    async def validate_citations_comprehensive(
+    async def validate_citations_simple(
         self,
         citations: List[Dict[str, Any]],
         company_url: str = "",
         competitors: List[str] = None,
-        language: str = "en"
     ) -> List[ValidationResult]:
         """
-        Comprehensive validation of multiple citations in parallel.
+        Simple validation of multiple citations in parallel.
         
         Args:
             citations: List of citation dictionaries
             company_url: Company URL for fallback
-            competitors: List of competitor domains to avoid
-            language: Language for alternative searches
+                competitors: List of competitor domains to avoid
             
         Returns:
             List of ValidationResult objects
@@ -126,7 +107,7 @@ class UltimateCitationValidator:
 
         competitors = competitors or []
         
-        logger.info(f"🔍 Starting comprehensive validation of {len(citations)} citations")
+        logger.info(f"🔍 Starting simple validation of {len(citations)} citations")
         
         # Validate all citations in parallel for performance
         validation_tasks = [
@@ -165,18 +146,16 @@ class UltimateCitationValidator:
         self,
         citation: Dict[str, Any],
         company_url: str,
-        competitors: List[str],
-        language: str
+        competitors: List[str]
     ) -> ValidationResult:
         """
-        Validate a single citation comprehensively.
+        Validate a single citation simply.
         
         Process:
-        1. Extract and validate DOI if present
-        2. Validate URL status
-        3. Check metadata quality
-        4. Search for alternatives if needed
-        5. Return best available result
+        1. Validate URL status
+        2. Check metadata quality
+        3. Check author sanity
+        4. Return validation result
         """
         url = citation.get('url', '').strip()
         title = citation.get('title', '').strip()
@@ -185,7 +164,7 @@ class UltimateCitationValidator:
         
         issues = []
         
-        # Skip DOI validation - just focus on URL and metadata
+        # Simple validation - URL and metadata only
         
         # Step 2: Metadata quality checks
         metadata_issues = self.check_metadata_quality(citation)
@@ -221,7 +200,7 @@ class UltimateCitationValidator:
             is_valid=False,
             url=url or company_url,
             title=title or "Source unavailable",
-            issues=issues + ["No valid URL or alternative found"],
+            issues=issues + ["No valid URL found"],
             validation_type='fallback'
         )
 
@@ -260,9 +239,9 @@ class UltimateCitationValidator:
         except requests.exceptions.RequestException as e:
             return None, f"Request error: {str(e)[:50]}"
 
-    async def validate_url_comprehensive(self, url: str) -> Tuple[bool, str, List[str]]:
+    async def validate_url_simple_async(self, url: str) -> Tuple[bool, str, List[str]]:
         """
-        Comprehensive URL validation with caching.
+        Simple async URL validation with caching.
         
         Returns:
             Tuple of (is_valid, final_url, issues_list)

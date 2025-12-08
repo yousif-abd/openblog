@@ -16,13 +16,13 @@ async def test_ultimate_validator():
     """Test the ultimate citation validator with mock data."""
     
     try:
-        from pipeline.processors.ultimate_citation_validator import UltimateCitationValidator, ValidationResult
+        from pipeline.processors.ultimate_citation_validator import SimpleCitationValidator, ValidationResult
         
         print("🚀 Testing Ultimate Citation Validator")
         print("=" * 50)
         
         # Create validator without Gemini client for basic testing
-        validator = UltimateCitationValidator(gemini_client=None)
+        validator = SimpleCitationValidator()
         
         # Test citations with various quality issues
         test_citations = [
@@ -73,7 +73,7 @@ async def test_ultimate_validator():
         for i, citation in enumerate(test_citations):
             url = citation.get('url', '')
             if url:
-                is_valid, final_url, issues = await validator.validate_url_comprehensive(url)
+                is_valid, final_url, issues = await validator.validate_url_simple_async(url)
                 status = "✅ Valid" if is_valid else "❌ Invalid"
                 print(f"   Citation {i+1}: {status} - {final_url}")
                 if issues:

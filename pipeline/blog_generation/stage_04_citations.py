@@ -30,7 +30,7 @@ from ..core import ExecutionContext, Stage
 from ..models.citation import Citation, CitationList
 from ..models.gemini_client import GeminiClient
 from ..processors.url_validator import CitationURLValidator
-from ..processors.ultimate_citation_validator import UltimateCitationValidator, ValidationResult
+from ..processors.ultimate_citation_validator import SimpleCitationValidator, ValidationResult
 from ..config import Config
 
 logger = logging.getLogger(__name__)
@@ -402,8 +402,7 @@ class CitationsStage(Stage):
         if not self.ultimate_validator:
             if not self.gemini_client:
                 self.gemini_client = GeminiClient()
-            self.ultimate_validator = UltimateCitationValidator(
-                gemini_client=self.gemini_client,
+            self.ultimate_validator = SimpleCitationValidator(
                 timeout=8.0
             )
         
@@ -426,11 +425,10 @@ class CitationsStage(Stage):
         
         # Validate all citations
         try:
-            validation_results = await self.ultimate_validator.validate_citations_comprehensive(
+            validation_results = await self.ultimate_validator.validate_citations_simple(
                 citations_for_validation,
                 company_url=company_url,
-                competitors=competitors,
-                language=language
+                competitors=competitors
             )
             
             # Create new citation list with validated URLs
