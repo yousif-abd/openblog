@@ -30,6 +30,7 @@ from ..core import ExecutionContext, Stage
 from ..models.citation import Citation, CitationList
 from ..models.gemini_client import GeminiClient
 from ..processors.url_validator import CitationURLValidator
+from ..processors.ultimate_citation_validator import UltimateCitationValidator, ValidationResult
 from ..config import Config
 
 logger = logging.getLogger(__name__)
@@ -66,6 +67,7 @@ class CitationsStage(Stage):
         self.config = config or Config()
         self.gemini_client = None  # Lazy initialization
         self.validator = None  # Lazy initialization
+        self.ultimate_validator = None  # Ultimate citation validator
 
     async def execute(self, context: ExecutionContext) -> ExecutionContext:
         """
@@ -124,9 +126,10 @@ class CitationsStage(Stage):
             original_urls[citation.number] = citation.url
         logger.debug(f"Preserved {len(original_urls)} original URLs before validation")
 
-        # Validate URLs (v4.1 Step 11: AI Agent3 equivalent)
+        # ULTIMATE VALIDATION: Use enhanced citation validator
         if self.config.enable_citation_validation and context.company_data.get("company_url"):
-            validated_list = await self._validate_citation_urls(
+            logger.info("🔍 Starting ultimate citation validation...")
+            validated_list = await self._validate_citations_ultimate(
                 citation_list, context
             )
             
@@ -370,6 +373,122 @@ class CitationsStage(Stage):
         logger.debug(f"Successfully extracted {len(citation_list.citations)} citations")
         return citation_list
 
+    async def _validate_citations_ultimate(
+        self,
+        citation_list: CitationList,
+        context: ExecutionContext
+    ) -> CitationList:
+        """
+        Ultimate citation validation using the enhanced validator.
+        
+        Combines:
+        - DOI validation via CrossRef API
+        - URL status validation with caching
+        - Alternative URL search for invalid URLs
+        - Metadata quality analysis
+        - Author sanity checks
+        
+        Args:
+            citation_list: Citations to validate
+            context: Execution context with company data
+            
+        Returns:
+            CitationList with validated and enhanced citations
+        """
+        if not citation_list.citations:
+            return citation_list
+        
+        # Initialize ultimate validator
+        if not self.ultimate_validator:
+            if not self.gemini_client:
+                self.gemini_client = GeminiClient()
+            self.ultimate_validator = UltimateCitationValidator(
+                gemini_client=self.gemini_client,
+                timeout=8.0
+            )
+        
+        # Convert citations to dict format for validation
+        citations_for_validation = []
+        for citation in citation_list.citations:
+            citation_dict = {
+                'url': citation.url,
+                'title': citation.title,
+                'authors': [],  # Isaac Security doesn't parse authors yet
+                'doi': '',  # Could be extracted from URL if needed
+                'year': 0   # Could be extracted from content if needed
+            }
+            citations_for_validation.append(citation_dict)
+        
+        # Extract company and competitor information
+        company_url = context.company_data.get("company_url", "")
+        competitors = context.sitemap_data.get("competitors", [])
+        language = context.language or "en"
+        
+        # Validate all citations
+        try:
+            validation_results = await self.ultimate_validator.validate_citations_comprehensive(
+                citations_for_validation,
+                company_url=company_url,
+                competitors=competitors,
+                language=language
+            )
+            
+            # Create new citation list with validated URLs
+            validated_list = CitationList()
+            
+            for i, (original_citation, validation_result) in enumerate(zip(citation_list.citations, validation_results)):
+                if validation_result.is_valid:
+                    # Use validated URL and title
+                    enhanced_citation = Citation(
+                        number=original_citation.number,
+                        url=validation_result.url,
+                        title=validation_result.title or original_citation.title
+                    )
+                    validated_list.citations.append(enhanced_citation)
+                    
+                    # Log validation result
+                    validation_type = validation_result.validation_type
+                    if validation_type == 'original_url':
+                        logger.info(f"✅ Citation [{enhanced_citation.number}]: Original URL validated")
+                    elif validation_type == 'alternative_found':
+                        logger.info(f"🔄 Citation [{enhanced_citation.number}]: Alternative URL found")
+                        logger.info(f"   Original: {original_citation.url}")
+                        logger.info(f"   Enhanced: {enhanced_citation.url}")
+                    elif validation_type == 'doi_verified':
+                        logger.info(f"📚 Citation [{enhanced_citation.number}]: DOI verified")
+                    
+                    if validation_result.issues:
+                        for issue in validation_result.issues:
+                            logger.warning(f"   ⚠️  {issue}")
+                            
+                else:
+                    # Citation failed validation
+                    logger.error(f"❌ Citation [{original_citation.number}]: Validation failed")
+                    for issue in validation_result.issues:
+                        logger.error(f"   {issue}")
+                    
+                    # Keep original citation but mark it as potentially problematic
+                    # The user can decide whether to use it
+                    problematic_citation = Citation(
+                        number=original_citation.number,
+                        url=validation_result.url or original_citation.url,
+                        title=f"[UNVERIFIED] {validation_result.title or original_citation.title}"
+                    )
+                    validated_list.citations.append(problematic_citation)
+            
+            # Renumber citations
+            for i, citation in enumerate(validated_list.citations, 1):
+                citation.number = i
+            
+            logger.info(f"🔍 Ultimate validation complete: {len(validated_list.citations)} citations processed")
+            
+            return validated_list
+            
+        except Exception as e:
+            logger.error(f"Ultimate citation validation failed: {e}")
+            # Return original citations on failure
+            return citation_list
+    
     def __repr__(self) -> str:
         """String representation."""
         return f"CitationsStage(stage_num={self.stage_num})"
