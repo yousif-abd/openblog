@@ -15,6 +15,7 @@ import time
 import base64
 import asyncio
 import logging
+import html  # For HTML escaping to prevent XSS
 from typing import Optional, Dict, Any, Literal
 from dataclasses import dataclass
 from pathlib import Path
@@ -424,7 +425,7 @@ class GraphicsGenerator:
   <h1 class="headline">
     {self._format_headline(headline, bold_parts, muted_parts)}
   </h1>
-  {f'<p class="subheadline">{subheadline}</p>' if subheadline else ''}
+  {f'<p class="subheadline">{html.escape(subheadline)}</p>' if subheadline else ''}
 {logos_html}
 </body>
 </html>"""
@@ -433,18 +434,18 @@ class GraphicsGenerator:
         """Format headline with bold/muted styling."""
         if not bold_parts and not muted_parts:
             # No styling specified - return as bold
-            return f'<span class="bold">{headline}</span>'
+            return f'<span class="bold">{html.escape(headline)}</span>'
         
         words = headline.split(" ")
         formatted = []
         for word in words:
             word_clean = re.sub(r'[^\w]', '', word.lower())
             if bold_parts and any(word_clean in re.sub(r'[^\w]', '', p.lower()) for p in bold_parts):
-                formatted.append(f'<span class="bold">{word}</span>')
+                formatted.append(f'<span class="bold">{html.escape(word)}</span>')
             elif muted_parts and any(word_clean in re.sub(r'[^\w]', '', p.lower()) for p in muted_parts):
-                formatted.append(f'<span class="muted">{word}</span>')
+                formatted.append(f'<span class="muted">{html.escape(word)}</span>')
             else:
-                formatted.append(f'<span class="bold">{word}</span>')
+                formatted.append(f'<span class="bold">{html.escape(word)}</span>')
         return " ".join(formatted)
     
     def _generate_quote_html(self, request: GraphicsGenerationRequest) -> str:
@@ -462,7 +463,7 @@ class GraphicsGenerator:
         # Format quote with emphasis
         formatted_quote = quote
         for emphasis in quote_emphasis:
-            formatted_quote = formatted_quote.replace(emphasis, f"<strong>{emphasis}</strong>")
+            formatted_quote = formatted_quote.replace(emphasis, f"<strong>{html.escape(emphasis)}</strong>")
         
         logos_html = ""
         if show_logos and company_name:
@@ -483,11 +484,11 @@ class GraphicsGenerator:
         
         avatar_html = ""
         if author_avatar:
-            avatar_html = f'<div class="author-avatar"><img src="{author_avatar}" alt="{author}"></div>'
+            avatar_html = f'<div class="author-avatar"><img src="{html.escape(author_avatar)}" alt="{html.escape(author)}"></div>'
         else:
             # Generate placeholder avatar
             initials = "".join([n[0].upper() for n in author.split()[:2]]) if author else "?"
-            avatar_html = f'<div class="author-avatar"><div class="avatar-placeholder">{initials}</div></div>'
+            avatar_html = f'<div class="author-avatar"><div class="avatar-placeholder">{html.escape(initials)}</div></div>'
         
         return f"""<!DOCTYPE html>
 <html lang="en">
@@ -643,8 +644,8 @@ class GraphicsGenerator:
     <div class="quote-author">
       {avatar_html}
       <div class="author-info">
-        <div class="author-name">{author}</div>
-        {f'<div class="author-role">{role}</div>' if role else ''}
+        <div class="author-name">{html.escape(author)}</div>
+        {f'<div class="author-role">{html.escape(role)}</div>' if role else ''}
       </div>
     </div>
   </div>
@@ -670,7 +671,7 @@ class GraphicsGenerator:
         formatted_quote = quote
         if quote_emphasis:
             for emphasis in quote_emphasis:
-                formatted_quote = formatted_quote.replace(emphasis, f"<strong>{emphasis}</strong>")
+                formatted_quote = formatted_quote.replace(emphasis, f"<strong>{html.escape(emphasis)}</strong>")
         
         logos_html = ""
         if show_logos and company_name:
@@ -697,7 +698,7 @@ class GraphicsGenerator:
         
         quote_html = ""
         if quote:
-            quote_html = f'<p class="quote-text">"{formatted_quote}"</p>'
+            quote_html = f'<p class="quote-text">"{html.escape(formatted_quote)}"</p>'
         
         return f"""<!DOCTYPE html>
 <html lang="en">
@@ -841,7 +842,7 @@ class GraphicsGenerator:
   <div class="quote-card">
     <div class="metric-value">{value}</div>
     <div class="metric-label">{label}</div>
-    {f'<div class="metric-change">{change}</div>' if change else ''}
+    {f'<div class="metric-change">{html.escape(change)}</div>' if change else ''}
     {quote_html}
   </div>
 {logos_html}
