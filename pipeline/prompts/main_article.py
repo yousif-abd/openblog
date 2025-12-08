@@ -161,15 +161,15 @@ You are writing a long-form blog post in {company_name}'s voice, fully optimized
 **RULE 0A3: COMPLETE SENTENCES ONLY**
 - ❌ FORBIDDEN: End paragraphs with "Ultimately," or "However," or "Additionally," without continuation
 - ❌ FORBIDDEN: Sentences ending mid-thought or with conjunction alone
-- ❌ FORBIDDEN: Orphaned periods at start of new paragraph: "</p><p>. Similarly,"
+- ❌ FORBIDDEN: Orphaned periods at start of new paragraph
 - ✅ REQUIRED: Every sentence must be complete with subject, verb, and conclusion
 - ✅ REQUIRED: If using transitional words, they must START a complete sentence, not end one
 - **VALIDATION: Check last sentence of every paragraph - must end with period after complete thought**
 - **EXAMPLE VIOLATIONS:**
   ```
-  ❌ "<p>The tools offer benefits. Ultimately,</p>"
-  ❌ "<p>Security matters. However,</p><p>Many teams ignore it.</p>"
-  ✅ "<p>The tools offer benefits. Ultimately, cost savings drive adoption.</p>"
+  ❌ "The tools offer benefits. Ultimately,"
+  ❌ "Security matters. However," (then starting new paragraph with "Many teams ignore it.")
+  ✅ "The tools offer benefits. Ultimately, cost savings drive adoption."
   ```
 
 **RULE 0A4: KEYWORD FORMATTING (NO LINE BREAKS)**
@@ -193,8 +193,8 @@ You are writing a long-form blog post in {company_name}'s voice, fully optimized
 - **VALIDATION: Count "{primary_keyword}" occurrences before submitting.**
 
 **RULE 0C: FIRST PARAGRAPH LENGTH**
-- First <p> paragraph MUST be 60-100 words (4-6 sentences minimum)
-- **VALIDATION: Count words in first <p> before submitting. Must be ≥60.**
+- First paragraph MUST be 60-100 words (4-6 sentences minimum)
+- **VALIDATION: Count words in first paragraph before submitting. Must be ≥60.**
 
 **RULE 0D: NO ROBOTIC PHRASES**
 - ❌ FORBIDDEN: "Here's how", "Here's what", "Key points:", "Important considerations:", "Key benefits include:"
@@ -210,7 +210,7 @@ You are writing a long-form blog post in {company_name}'s voice, fully optimized
 
 4. Intro: **80-120 words (target: 100 words). Single cohesive paragraph with STORY/HOOK (real scenario, surprising insight, or question). Do NOT include bullet lists in Intro.**
 
-   **CRITICAL: The first <p> paragraph of your article MUST be 60-100 words (4-6 sentences). This is the opening hook and must be substantial.**
+   **CRITICAL: The first paragraph of your article MUST be 60-100 words (4-6 sentences). This is the opening hook and must be substantial.**
    
    Count words before finalizing. If first paragraph is under 60 words, expand with context, examples, or data.
 
@@ -319,30 +319,34 @@ You are writing a long-form blog post in {company_name}'s voice, fully optimized
    ✅ GOOD Examples (embedded naturally in sentences):
    - "Organizations are [implementing governance frameworks](/magazine/ai-governance) to manage risk."
    - "Learn more about [security scanning automation](/magazine/security-best-practices) in our guide."
-   - "The shift toward <a href="/magazine/agentic-ai">autonomous AI agents</a> is accelerating."
+   - "The shift toward [autonomous AI agents](/magazine/agentic-ai) is accelerating."
 
 10. **Case Studies** (MANDATORY - EXAMPLES REQUIRED):
     
     **RULE: Company + Metric + Timeframe + Result (30+ words minimum)**
     
     ⛔ FORBIDDEN (All these patterns = INSTANT REJECTION):
-    ```html
-    <p>Shopify [2][3]</p>
-    <p><strong>Shopify:</strong> [2][3]</p>
-    <p>Shopify uses GitHub Copilot [2]</p>
-    <p>Shopify saw improvements [2][3]</p>
-    <p>Many Fortune 500 companies report gains [1]</p>
+    ```
+    Shopify [2][3]
+    
+    **Shopify:** [2][3]
+    
+    Shopify uses GitHub Copilot [2]
+    
+    Shopify saw improvements [2][3]
+    
+    Many Fortune 500 companies report gains [1]
     ```
     
     ✅ REQUIRED - Embedded in narrative paragraphs:
-    ```html
-    <p>Real-world implementations validate these theoretical benefits. Shopify accelerated 
+    ```
+    Real-world implementations validate these theoretical benefits. Shopify accelerated 
     pull request completion by 40% within 90 days of deploying GitHub Copilot across their 
-    500-person engineering team in Q2 2024 <a href="#source-2" class="citation">according to Shopify's case study</a>. The company attributes this to reduced 
+    500-person engineering team in Q2 2024, according to Shopify's case study. The company attributes this to reduced 
     boilerplate generation, which previously consumed 30% of sprint capacity. Similarly, 
     Tesco achieved a 32% productivity increase after implementing Tabnine's air-gapped 
     solution in early 2025, citing the ability to provide context-aware suggestions without 
-    exposing sensitive pricing algorithms to public models <a href="#source-4" class="citation">per Tesco's implementation report</a>.</p>
+    exposing sensitive pricing algorithms to public models, per Tesco's implementation report.
     ```
     
     FORMULA FOR EVERY CASE STUDY:**
@@ -360,22 +364,24 @@ You are writing a long-form blog post in {company_name}'s voice, fully optimized
     **CITATION STYLE (CRITICAL - NATURAL LANGUAGE ONLY):**
     
     🚫 **ABSOLUTELY FORBIDDEN - NEVER USE THESE:**
-    ```html
-    <p>GitHub Copilot increases productivity by 55% [1][2].</p>
-    <p>Amazon Q saved 4,500 developer years [3][4].</p>
-    <p>Research shows 45% vulnerability rate [5].</p>
-    <p>Studies show <a href="#source-1">significant gains</a>.</p>  ← NO LINKS IN CONTENT
+    ```
+    GitHub Copilot increases productivity by 55% [1][2].
+    
+    Amazon Q saved 4,500 developer years [3][4].
+    
+    Research shows 45% vulnerability rate [5].
     ```
     ❌ ANY numbered brackets like [1], [2], [3], [1][2], [2][3] are BANNED
     ❌ If you write [N] anywhere, the output will be REJECTED
     ❌ Scientific/academic citation style is NOT ALLOWED
-    ❌ NO <a href="#source-N"> links in content - sources listed separately at end
     
     ✅ **REQUIRED - Natural language attribution ONLY:**
-    ```html
-    <p>GitHub Copilot increases productivity by 55%, according to GitHub's 2024 enterprise study.</p>
-    <p>Amazon Q saved 4,500 developer years in Amazon's Java modernization project.</p>
-    <p>Research shows 45% vulnerability rate, per Veracode's 2025 security report.</p>
+    ```
+    GitHub Copilot increases productivity by 55%, according to GitHub's 2024 enterprise study.
+    
+    Amazon Q saved 4,500 developer years in Amazon's Java modernization project.
+    
+    Research shows 45% vulnerability rate, per Veracode's 2025 security report.
     ```
     
     **MANDATORY ATTRIBUTION RULES:**
@@ -391,10 +397,10 @@ You are writing a long-form blog post in {company_name}'s voice, fully optimized
     - "...45% vulnerability rate, found by NIST's security assessment."
     - "...doubling output, as reported in Stack Overflow's 2024 developer survey."
 
-11. **HTML Lists** (IMPORTANT for scannability + CONSISTENCY):
+11. **Markdown Lists** (IMPORTANT for scannability + CONSISTENCY):
     Include 5-8 lists throughout article. Minimum 1 list every 2 sections.
     
-    **RULE: ALWAYS use proper HTML list tags (<ul> or <ol>). NEVER use paragraph text styled as lists.**
+    **RULE: ALWAYS use proper Markdown list syntax with `-` or `*`. NEVER use paragraph text styled as lists.**
     
     Lists work well for:
     - Feature comparisons
@@ -403,39 +409,39 @@ You are writing a long-form blog post in {company_name}'s voice, fully optimized
     - Tool selection criteria
     - Implementation checklists
     
-    ⛔ REJECTED - Using paragraph text instead of HTML lists:
+    ⛔ REJECTED - Using paragraph text instead of proper lists:
     ```
-    <p>The key benefits are:</p>
-    <p>Speed improvements</p>
-    <p>Better accuracy</p>
-    <p>Lower costs</p>
+    The key benefits are:
+    
+    Speed improvements
+    
+    Better accuracy
+    
+    Lower costs
     ```
-    ❌ This is inconsistent formatting. Use <ul> tags.
     
     ⛔ REJECTED - List items duplicating paragraph text verbatim:
     ```
-    <p>The benefits are clear. Speed matters. Accuracy improves.</p>
-    <ul>
-      <li>The benefits are clear</li>  ← REJECTED: Copy-paste from paragraph
-      <li>Speed matters</li>
-      <li>Accuracy improves</li>
-    </ul>
+    The benefits are clear. Speed matters. Accuracy improves.
+    
+    - The benefits are clear  ← REJECTED: Copy-paste from paragraph
+    - Speed matters
+    - Accuracy improves
     ```
     
     ✅ REQUIRED - List items as structured summaries with specifics:
     ```
-    <p>Organizations adopting AI code assistants report three primary benefits: development 
+    Organizations adopting AI code assistants report three primary benefits: development 
     cycles accelerate by 30%, code review burden decreases by 25%, and automated testing 
-    catches 15% more bugs before production, according to industry research.</p>
-    <ul>
-      <li><strong>Speed:</strong> 30% faster development cycles with automated boilerplate</li>
-      <li><strong>Efficiency:</strong> 25% reduction in manual code review time</li>
-      <li><strong>Quality:</strong> 15% improvement in pre-production bug detection rates</li>
-    </ul>
+    catches 15% more bugs before production, according to industry research.
+    
+    - **Speed:** 30% faster development cycles with automated boilerplate
+    - **Efficiency:** 25% reduction in manual code review time
+    - **Quality:** 15% improvement in pre-production bug detection rates
     ```
     
     Format: 4-8 items per list, each item 8-15 words, introduced by lead-in sentence.
-    **VALIDATION: If any list-like content appears outside <ul>/<ol> tags, output is REJECTED.**
+    **VALIDATION: If any list-like content appears as standalone paragraphs, output is REJECTED.**
 
 12. **Conversational Tone**: Write as if explaining to a colleague. Use "you/your" naturally, 
     contractions (it's, you'll, here's), and direct language. Avoid banned AI phrases: "seamlessly", 
@@ -448,12 +454,12 @@ You are writing a long-form blog post in {company_name}'s voice, fully optimized
     "Here's the reality: you'll need to pick tools that actually fit your team's workflow. It's not about 
     chasing the latest tech—it's about finding what works when you're shipping code at 3am."
 
-13. **Insights**: Highlight 1-2 key insights per section with `<strong>...</strong>` (never `**...**`).
+13. **Insights**: Highlight 1-2 key insights per section with `**...**` (Markdown bold).
     
     ✅ GOOD Example:
-    "<p>The surprising finding is that <strong>AI-generated code requires 40% more debugging time 
-    than human-written code</strong>, offsetting much of the initial speed gains <a href="#source-1" class="citation">per Stanford research</a>. This paradox 
-    forces teams to reconsider how they measure productivity.</p>"
+    "The surprising finding is that **AI-generated code requires 40% more debugging time 
+    than human-written code**, offsetting much of the initial speed gains, per Stanford research. This paradox 
+    forces teams to reconsider how they measure productivity."
 
 14. **Narrative Flow**: End each section with a bridging sentence that sets up the next section.
     
@@ -533,31 +539,30 @@ You are writing a long-form blog post in {company_name}'s voice, fully optimized
    ✅ ALWAYS integrate lists into the paragraph flow with a natural lead-in sentence.
    
    **FORBIDDEN PATTERN:**
-   ```html
-   <p>Security is critical for AI adoption.</p>
-   <p>Key points:</p>  ← REJECTED: Standalone introduction
-   <ul>
-     <li>45% of AI code has vulnerabilities</li>
-     <li>Review all generated code</li>
-   </ul>
+   ```
+   Security is critical for AI adoption.
+   
+   Key points:  ← REJECTED: Standalone introduction
+   
+   - 45% of AI code has vulnerabilities
+   - Review all generated code
    ```
    
    **CORRECT PATTERN:**
-   ```html
-   <p>Security is critical for AI adoption. Teams should focus on three areas:</p>  ← Natural lead-in
-   <ul>
-     <li>Automated scanning (45% of AI code has vulnerabilities)</li>
-     <li>Mandatory code review for all generated code</li>
-     <li>Regular security audits every quarter</li>
-   </ul>
+   ```
+   Security is critical for AI adoption. Teams should focus on three areas:  ← Natural lead-in
+   
+   - Automated scanning (45% of AI code has vulnerabilities)
+   - Mandatory code review for all generated code
+   - Regular security audits every quarter
    ```
    
    **FORMULA:**
    1. Write a complete paragraph (60-100 words) introducing the topic
    2. End the paragraph with a natural transition: "X areas:", "X strategies:", "X steps:"
-   3. Follow immediately with `<ul>` or `<ol>` (NO standalone `<p>Key points:</p>`)
+   3. Follow immediately with Markdown list (NO standalone "Key points:" paragraph)
    
-   VALIDATION: Any `<p>Key points:</p>` or `<p>Here are</p>` before a list = INSTANT REJECTION.
+   VALIDATION: Any standalone "Key points:" or "Here are" before a list = INSTANT REJECTION.
 
 19. **Grammar & Flow Standards**:
    
@@ -689,13 +694,11 @@ Include in JSON output as:
 
 *** HARD RULES ***
 
-• **HTML Tags**: Keep all tags intact (<p>, <ul>, <ol>, <h2>, <h3>, <strong>, <a>)
-
 • **NO Fragmentation** (OUTPUT WILL BE REJECTED IF VIOLATED):
   - NEVER create one-sentence-per-paragraph structure
-  - NEVER create standalone labels like "<p><strong>Tool:</strong> [N]</p>"
+  - NEVER create standalone labels like "**Tool:**" on their own line
   - NEVER create empty paragraphs with only company names and citations
-  - EVERY <p> tag must contain 60-100 words (3-5 complete sentences)
+  - EVERY paragraph must contain 60-100 words (3-5 complete sentences)
 
 • **Meta Requirements**:
   - Meta_Title: ≤55 characters, SEO-optimized
