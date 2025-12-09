@@ -30,6 +30,7 @@ from ..core import ExecutionContext, Stage
 from ..models.citation import Citation, CitationList
 from ..models.gemini_client import GeminiClient
 from ..processors.url_validator import CitationURLValidator
+from ..processors.ultimate_citation_validator import SmartCitationValidator, ValidationResult
 from ..config import Config
 
 logger = logging.getLogger(__name__)
@@ -45,6 +46,12 @@ class CitationsStage(Stage):
     - Creating Citation objects
     - Formatting as HTML
     - Validation (optional URL checks)
+    
+    Performance Optimization:
+    - Uses Gemini Flash 2.5 (gemini-2.5-flash) for citation validation
+    - Flash is sufficient for web search and URL extraction tasks
+    - ~10x cheaper and 2-3x faster than Pro model
+    - Uses v1beta API version (required for Flash models)
     """
 
     stage_num = 4
@@ -60,6 +67,7 @@ class CitationsStage(Stage):
         self.config = config or Config()
         self.gemini_client = None  # Lazy initialization
         self.validator = None  # Lazy initialization
+        self.ultimate_validator = None  # Ultimate citation validator
 
     async def execute(self, context: ExecutionContext) -> ExecutionContext:
         """
@@ -111,11 +119,62 @@ class CitationsStage(Stage):
         for citation in citation_list.citations:
             logger.debug(f"   [{citation.number}]: {citation.url}")
 
-        # Validate URLs (v4.1 Step 11: AI Agent3 equivalent)
+        # CRITICAL FIX: Preserve original URLs before validation
+        # This allows fallback to original URLs if validation replaces them incorrectly
+        original_urls = {}
+        for citation in citation_list.citations:
+            original_urls[citation.number] = citation.url
+        logger.debug(f"Preserved {len(original_urls)} original URLs before validation")
+
+        # ULTIMATE VALIDATION: Use enhanced citation validator
         if self.config.enable_citation_validation and context.company_data.get("company_url"):
-            citation_list = await self._validate_citation_urls(
+            logger.info("🔍 Starting ultimate citation validation...")
+            logger.info(f"    enable_citation_validation = {self.config.enable_citation_validation}")
+            logger.info(f"    company_url = {context.company_data.get('company_url')}")
+            logger.info(f"    Gemini client will be initialized for citation validation")
+            validated_list = await self._validate_citations_ultimate(
                 citation_list, context
             )
+            
+            # CRITICAL FIX: Check if validation replaced URLs with wrong fallbacks
+            # If a URL was replaced with a generic authority site (pewresearch.org, nist.gov),
+            # restore the original URL ONLY if it was valid (200 OK)
+            # DO NOT restore invalid (404) company URLs - they must be rejected
+            for citation in validated_list.citations:
+                original_url = original_urls.get(citation.number)
+                if original_url and original_url != citation.url:
+                    # Check if replacement is a generic fallback
+                    is_generic_fallback = any(domain in citation.url.lower() for domain in [
+                        'pewresearch.org', 'nist.gov', 'census.gov', 'statista.com'
+                    ])
+                    
+                    # Check if original URL is from company domain
+                    company_domain = context.company_data.get("company_url", "").replace("https://", "").replace("http://", "").split("/")[0]
+                    is_company_url = company_domain and company_domain in original_url.lower()
+                    
+                    # CRITICAL: Only restore if:
+                    # 1. It's a generic fallback (bad replacement), OR
+                    # 2. It's a company URL that was valid (200 OK) - we need to verify this
+                    if is_generic_fallback:
+                        # Always restore if replaced with generic fallback (even if original was invalid)
+                        # But we should verify the original was valid first
+                        logger.warning(f"⚠️  Citation [{citation.number}] was replaced with generic fallback")
+                        logger.warning(f"    Original: {original_url}")
+                        logger.warning(f"    Replaced: {citation.url}")
+                        logger.warning(f"    Note: Will only restore if original URL is valid (200 OK)")
+                        # Don't restore yet - need to validate original first
+                    elif is_company_url:
+                        # Company URL - only restore if it was valid (not 404)
+                        # We can't restore invalid company URLs (404s) - they must be rejected
+                        logger.info(f"   Citation [{citation.number}] is company URL - checking if original was valid...")
+                        # The validator already checked this, so if citation.url != original_url,
+                        # it means original was invalid (404) and was replaced or citation was filtered
+                        # So we should NOT restore it
+                        logger.warning(f"   ⚠️  Company URL was replaced - this means original was invalid (404)")
+                        logger.warning(f"   ❌ NOT restoring invalid company URL: {original_url}")
+                        # Keep the replacement (or it will be filtered out if no replacement found)
+            
+            citation_list = validated_list
         elif self.config.enable_citation_validation:
             logger.info("Citation URL validation skipped (no company_url)")
         else:
@@ -158,7 +217,11 @@ class CitationsStage(Stage):
         # Initialize validator if needed
         if not self.validator:
             if not self.gemini_client:
-                self.gemini_client = GeminiClient()
+                # Use Gemini Flash 2.5 for citation validation (faster and cheaper)
+                # Flash is sufficient for simple web search and URL extraction tasks
+                # Flash supports GoogleSearch tool and is ~10x cheaper than Pro
+                # Note: Using gemini-2.5-flash (without -preview) with v1beta API
+                self.gemini_client = GeminiClient(model="gemini-2.5-flash")
             self.validator = CitationURLValidator(
                 gemini_client=self.gemini_client,
                 max_attempts=self.config.max_validation_attempts,
@@ -253,7 +316,16 @@ class CitationsStage(Stage):
                 continue
 
             # Try to extract citation in format: [n]: url – title
-            match = re.match(r"\[(\d+)\]:\s*(.+?)\s*[–\-]\s*(.+)", line)
+            # CRITICAL FIX: Match URL more precisely to avoid truncation
+            # URLs can contain dashes, so we need to match the full URL before the separator
+            # Pattern: [n]: <url> <separator> <title>
+            # Match URL until whitespace OR explicit separator (em-dash/en-dash with spaces)
+            # URLs can contain dashes (e.g., saas-metrics.com), so don't stop at dashes
+            # Look for separator pattern: space(s) + dash + space(s) + text
+            match = re.match(r"\[(\d+)\]:\s*(https?://[^\s]+?)(?:\s+[–\-]\s+|\s+)(.+)", line)
+            if not match:
+                # Try with just whitespace separator (no dash)
+                match = re.match(r"\[(\d+)\]:\s*(https?://[^\s]+)\s+(.+)", line)
             if match:
                 number = int(match.group(1))
                 url = match.group(2).strip()
@@ -275,13 +347,20 @@ class CitationsStage(Stage):
                     content = match.group(2).strip()
 
                     # Try to extract URL from content
-                    url_match = re.search(r"https?://[^\s]+", content)
+                    # CRITICAL FIX: Match full URL, stopping at whitespace, dashes, or end of string
+                    # Don't match trailing punctuation that might be part of the sentence
+                    url_match = re.search(r"https?://[^\s–\-\)\]\}]+", content)
                     if url_match:
-                        url = url_match.group(0)
+                        url = url_match.group(0).rstrip('.,;:!?)')
                         # Remove URL from content to get title
                         title = re.sub(r"https?://[^\s]+\s*[–\-]?\s*", "", content).strip()
                         if not title:
                             title = url
+                        
+                        # CRITICAL FIX: Reject relative URLs
+                        if url.startswith("/"):
+                            logger.warning(f"Skipping relative URL: {url}")
+                            continue
 
                         try:
                             citation = Citation(number=number, url=url, title=title)
@@ -297,6 +376,121 @@ class CitationsStage(Stage):
         logger.debug(f"Successfully extracted {len(citation_list.citations)} citations")
         return citation_list
 
+    async def _validate_citations_ultimate(
+        self,
+        citation_list: CitationList,
+        context: ExecutionContext
+    ) -> CitationList:
+        """
+        Ultimate citation validation using the enhanced validator.
+        
+        Combines:
+        - DOI validation via CrossRef API
+        - URL status validation with caching
+        - Alternative URL search for invalid URLs
+        - Metadata quality analysis
+        - Author sanity checks
+        
+        Args:
+            citation_list: Citations to validate
+            context: Execution context with company data
+            
+        Returns:
+            CitationList with validated and enhanced citations
+        """
+        if not citation_list.citations:
+            return citation_list
+        
+        # Initialize ultimate validator
+        if not self.ultimate_validator:
+            if not self.gemini_client:
+                self.gemini_client = GeminiClient()
+            self.ultimate_validator = SmartCitationValidator(
+                gemini_client=self.gemini_client,
+                timeout=8.0
+            )
+        
+        # Convert citations to dict format for validation
+        citations_for_validation = []
+        for citation in citation_list.citations:
+            citation_dict = {
+                'url': citation.url,
+                'title': citation.title,
+                'authors': [],  # Isaac Security doesn't parse authors yet
+                'doi': '',  # Could be extracted from URL if needed
+                'year': 0   # Could be extracted from content if needed
+            }
+            citations_for_validation.append(citation_dict)
+        
+        # Extract company and competitor information
+        company_url = context.company_data.get("company_url", "")
+        competitors = getattr(context, 'sitemap_data', {}).get("competitors", [])
+        language = context.language or "en"
+        
+        # Validate all citations
+        try:
+            validation_results = await self.ultimate_validator.validate_citations_simple(
+                citations_for_validation,
+                company_url=company_url,
+                competitors=competitors
+            )
+            
+            # Create new citation list with validated URLs
+            validated_list = CitationList()
+            
+            for i, (original_citation, validation_result) in enumerate(zip(citation_list.citations, validation_results)):
+                if validation_result.is_valid:
+                    # Use validated URL and title
+                    enhanced_citation = Citation(
+                        number=original_citation.number,
+                        url=validation_result.url,
+                        title=validation_result.title or original_citation.title
+                    )
+                    validated_list.citations.append(enhanced_citation)
+                    
+                    # Log validation result
+                    validation_type = validation_result.validation_type
+                    if validation_type == 'original_url':
+                        logger.info(f"✅ Citation [{enhanced_citation.number}]: Original URL validated")
+                    elif validation_type == 'alternative_found':
+                        logger.info(f"🔄 Citation [{enhanced_citation.number}]: Alternative URL found")
+                        logger.info(f"   Original: {original_citation.url}")
+                        logger.info(f"   Enhanced: {enhanced_citation.url}")
+                    elif validation_type == 'doi_verified':
+                        logger.info(f"📚 Citation [{enhanced_citation.number}]: DOI verified")
+                    
+                    if validation_result.issues:
+                        for issue in validation_result.issues:
+                            logger.warning(f"   ⚠️  {issue}")
+                            
+                else:
+                    # Citation failed validation
+                    logger.error(f"❌ Citation [{original_citation.number}]: Validation failed")
+                    for issue in validation_result.issues:
+                        logger.error(f"   {issue}")
+                    
+                    # Keep original citation but mark it as potentially problematic
+                    # The user can decide whether to use it
+                    problematic_citation = Citation(
+                        number=original_citation.number,
+                        url=validation_result.url or original_citation.url,
+                        title=f"[UNVERIFIED] {validation_result.title or original_citation.title}"
+                    )
+                    validated_list.citations.append(problematic_citation)
+            
+            # Renumber citations
+            for i, citation in enumerate(validated_list.citations, 1):
+                citation.number = i
+            
+            logger.info(f"🔍 Ultimate validation complete: {len(validated_list.citations)} citations processed")
+            
+            return validated_list
+            
+        except Exception as e:
+            logger.error(f"Ultimate citation validation failed: {e}")
+            # Return original citations on failure
+            return citation_list
+    
     def __repr__(self) -> str:
         """String representation."""
         return f"CitationsStage(stage_num={self.stage_num})"

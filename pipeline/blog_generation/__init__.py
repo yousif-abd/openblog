@@ -19,6 +19,7 @@ __all__ = [
     "DataFetchStage",
     "PromptBuildStage",
     "GeminiCallStage",
+    "QualityRefinementStage",
     "ExtractionStage",
     "CitationsStage",
     "InternalLinksStage",

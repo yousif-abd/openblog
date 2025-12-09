@@ -98,142 +98,74 @@ class QualityRefinementStage(Stage):
     
     async def execute(self, context: ExecutionContext) -> ExecutionContext:
         """
-        Execute Stage 2b: Comprehensive content transformation (ALWAYS RUNS).
-        
-        This stage ALWAYS runs to transform content using Gemini 3.0 Pro Preview.
-        Single comprehensive pass that fixes all content quality issues at once.
+        Execute Stage 2b: Detect and fix quality issues.
         
         Args:
-            context: ExecutionContext with structured_data from Stage 3
+            context: ExecutionContext with structured_data from Stage 2
         
         Returns:
-            Updated context with transformed structured_data
+            Updated context with refined structured_data
         """
         logger.info(f"Stage 2b: {self.stage_name}")
         
         # Validate input
         if not context.structured_data:
-            logger.warning("No structured_data available, skipping transformation")
+            logger.warning("No structured_data available, skipping refinement")
             return context
         
-        # ALWAYS run comprehensive content transformation
-        logger.info("🔧 Running mandatory comprehensive content transformation...")
-        
-        # Detect quality issues (for metrics/logging only, not for conditional execution)
+        # Detect quality issues
         issues = self._detect_quality_issues(context)
         
-        # Calculate detailed pre-transformation metrics
-        article_content = context.structured_data
+        if not issues:
+            logger.info("✅ No quality issues detected, skipping refinement")
+            return context
         
-        # Count specific issue types
-        citation_count = 0
-        em_dash_count = 0
-        label_count = 0
-        weird_passage_count = 0
-        
-        for issue in issues:
-            if "citation" in issue.description.lower() or "[" in issue.description:
-                citation_count += 1
-            elif "em dash" in issue.description.lower() or "—" in issue.description:
-                em_dash_count += 1
-            elif "label" in issue.description.lower() or "standalone" in issue.description.lower():
-                label_count += 1
-            elif "malformed" in issue.description.lower() or "weird" in issue.description.lower():
-                weird_passage_count += 1
-        
-        # Log comprehensive pre-transformation metrics
+        # Log detected issues
         critical_issues = [i for i in issues if i.severity == "critical"]
         warning_issues = [i for i in issues if i.severity == "warning"]
         
-        logger.info(f"📊 Pre-transformation quality analysis:")
-        logger.info(f"   Total issues detected: {len(issues)}")
+        logger.info(f"🔍 Detected {len(issues)} quality issues:")
         logger.info(f"   Critical: {len(critical_issues)}")
         logger.info(f"   Warnings: {len(warning_issues)}")
-        logger.info(f"")
-        logger.info(f"   Issue breakdown:")
-        logger.info(f"   - Academic citations [N]: {citation_count}")
-        logger.info(f"   - Em dashes (—): {em_dash_count}")
-        logger.info(f"   - Standalone labels: {label_count}")
-        logger.info(f"   - Malformed/weird passages: {weird_passage_count}")
         
-        if issues:
-            logger.info(f"")
-            logger.info(f"   Sample issues (first 5):")
-            for issue in issues[:5]:
-                logger.info(f"   • {issue.severity.upper()}: {issue.description[:80]}")
+        for issue in issues:
+            logger.info(f"   {issue.severity.upper()}: {issue.description}")
         
-        # Build comprehensive rewrite instruction
-        rewrite = self._build_comprehensive_rewrite(context)
+        # Convert issues to rewrite instructions
+        rewrites = self._issues_to_rewrites(issues, context)
         
-        if not rewrite:
-            logger.warning("Failed to build comprehensive rewrite instruction, skipping transformation")
+        if not rewrites:
+            logger.warning("No rewrites generated from issues, skipping refinement")
             return context
         
-        logger.info(f"🔧 Applying comprehensive content transformation...")
-        logger.info("🔄 Using Gemini 3.0 Pro Preview for intelligent fixes (non-blocking)...")
+        logger.info(f"🔧 Applying {len(rewrites)} targeted rewrites...")
+        logger.info("🔄 Attempting Gemini-based fixes (best effort, non-blocking)...")
         
-        # Execute comprehensive rewrite
+        # Execute rewrites
         try:
             article_dict = context.structured_data.dict()
             
-            # Execute single comprehensive transformation
             updated_article = await targeted_rewrite(
                 article=article_dict,
-                rewrites=[rewrite]  # Single comprehensive rewrite
+                rewrites=rewrites
             )
             
-            # Update context with transformed data
+            # Update context with refined data
             context.structured_data = ArticleOutput(**updated_article)
             
-            logger.info("✅ Comprehensive content transformation complete")
+            logger.info("✅ Gemini quality refinement complete")
             
-            # Re-check quality (for metrics logging)
+            # Re-check quality (for logging)
             remaining_issues = self._detect_quality_issues(context)
-            
-            # Calculate post-transformation metrics
-            new_citation_count = 0
-            new_em_dash_count = 0
-            new_label_count = 0
-            new_weird_passage_count = 0
-            
-            for issue in remaining_issues:
-                if "citation" in issue.description.lower() or "[" in issue.description:
-                    new_citation_count += 1
-                elif "em dash" in issue.description.lower() or "—" in issue.description:
-                    new_em_dash_count += 1
-                elif "label" in issue.description.lower() or "standalone" in issue.description.lower():
-                    new_label_count += 1
-                elif "malformed" in issue.description.lower() or "weird" in issue.description.lower():
-                    new_weird_passage_count += 1
-            
             if remaining_issues:
-                success_rate = (1 - len(remaining_issues)/max(len(issues), 1)) * 100
-                logger.info(f"")
-                logger.info(f"📊 Post-transformation metrics:")
-                logger.info(f"   Remaining issues: {len(remaining_issues)}")
-                logger.info(f"   Transformation success rate: {success_rate:.1f}%")
-                logger.info(f"")
-                logger.info(f"   Issue reduction:")
-                logger.info(f"   - Academic citations [N]: {citation_count} → {new_citation_count}")
-                logger.info(f"   - Em dashes (—): {em_dash_count} → {new_em_dash_count}")
-                logger.info(f"   - Standalone labels: {label_count} → {new_label_count}")
-                logger.info(f"   - Malformed/weird passages: {weird_passage_count} → {new_weird_passage_count}")
-                logger.info(f"")
-                logger.info("🛡️  Stage 10 (regex safety net) will handle remaining issues")
+                logger.warning(f"⚠️  {len(remaining_issues)} issues remain after Gemini refinement")
+                logger.info("🛡️  Layer 3 (regex fallback) will catch these in html_renderer.py")
             else:
-                logger.info(f"")
-                logger.info("✅ All quality issues resolved by Gemini transformation")
-                logger.info("📊 Post-transformation: 100% success rate")
-                logger.info(f"")
-                logger.info(f"   All issues fixed:")
-                logger.info(f"   - Academic citations [N]: {citation_count} → 0")
-                logger.info(f"   - Em dashes (—): {em_dash_count} → 0")
-                logger.info(f"   - Standalone labels: {label_count} → 0")
-                logger.info(f"   - Malformed/weird passages: {weird_passage_count} → 0")
+                logger.info("✅ All quality issues resolved by Gemini")
         
         except Exception as e:
-            logger.warning(f"⚠️  Comprehensive transformation failed: {str(e)}")
-            logger.info("🛡️  Continuing with original content - Stage 10 (regex) will fix issues")
+            logger.warning(f"⚠️  Gemini refinement failed: {str(e)}")
+            logger.info("🛡️  Continuing with original content - Layer 3 (regex) will fix issues")
             logger.info("📊 This failure is logged but does NOT block the pipeline")
         
         return context
@@ -266,18 +198,10 @@ class QualityRefinementStage(Stage):
         ai_marker_issues = self._check_ai_markers(data)
         issues.extend(ai_marker_issues)
         
-        # ROOT_LEVEL_FIX_PLAN.md checks
-        # Issue 4: Academic citations [N]
-        citation_issues = self._check_academic_citations_stage2b(data)
-        issues.extend(citation_issues)
-        
-        # Issue 5: Em dashes
-        em_dash_issues = self._check_em_dashes_stage2b(data)
-        issues.extend(em_dash_issues)
-        
-        # Issue 6: Malformed headings
-        heading_issues = self._check_malformed_headings_stage2b(data)
-        issues.extend(heading_issues)
+        # Issue 4: Academic citations (needs conversion to natural language)
+        academic_citation_issue = self._check_academic_citations(data)
+        if academic_citation_issue:
+            issues.append(academic_citation_issue)
         
         return issues
     
@@ -420,6 +344,48 @@ class QualityRefinementStage(Stage):
         
         return issues
     
+    def _check_academic_citations(self, data: ArticleOutput) -> Optional[QualityIssue]:
+        """
+        Check for academic citations [1], [2], [1][2] that need conversion to natural language.
+        """
+        import re
+        
+        # Get all content fields
+        content_fields = ["Headline", "Direct_Answer", "Intro"]
+        for i in range(1, 10):
+            content_fields.extend([
+                f"section_{i:02d}_title",
+                f"section_{i:02d}_content"
+            ])
+        
+        # Check for academic citation patterns [N], [N][M], etc.
+        academic_patterns = [
+            r'\[\d+\]',  # [1], [2], etc.
+            r'\[\d+\]\[\d+\]',  # [1][2], [2][3], etc.
+            r'\[\d+\]\[\d+\]\[\d+\]',  # [1][2][3], etc.
+        ]
+        
+        found_citations = []
+        for field in content_fields:
+            content = str(getattr(data, field, ""))
+            if content:
+                for pattern in academic_patterns:
+                    matches = re.findall(pattern, content)
+                    if matches:
+                        found_citations.extend([(field, match) for match in matches])
+        
+        if found_citations:
+            return QualityIssue(
+                issue_type="academic_citations",
+                severity="critical",
+                description=f"Found {len(found_citations)} academic citations [N] that must be converted to natural language inline links",
+                current_value=len(found_citations),
+                target_value=0,
+                field="all_content"
+            )
+        
+        return None
+    
     def _issues_to_rewrites(
         self,
         issues: List[QualityIssue],
@@ -500,6 +466,19 @@ class QualityRefinementStage(Stage):
                         "markers_found": markers_found
                     }
                 ))
+            
+            elif issue.issue_type == "academic_citations":
+                rewrites.append(RewriteInstruction(
+                    target="all_content",
+                    instruction="Convert academic citations [1], [2], [1][2] to natural language inline links. Replace [N] with contextual phrases like 'according to [source]', 'per [study]', '[company]'s research shows'. Format as: <a href=\"#source-N\" class=\"citation\">according to GitHub</a>",
+                    mode=RewriteMode.QUALITY_FIX,
+                    preserve_structure=True,
+                    min_similarity=0.70,
+                    max_similarity=0.90,
+                    context={
+                        "academic_citations_found": issue.current_value
+                    }
+                ))
         
         return rewrites
     
@@ -545,180 +524,4 @@ class QualityRefinementStage(Stage):
         
         # Return unique variations (max 5)
         return list(dict.fromkeys(variations))[:5]
-    
-    def _check_academic_citations_stage2b(self, data: ArticleOutput) -> List[QualityIssue]:
-        """
-        Check for academic citations [N] (WARNING ONLY).
-        ROOT_LEVEL_FIX_PLAN.md Issue 1 - CHANGED TO WARNING.
-        
-        Layer 4 regex cleanup guarantees removal, so this is informational only.
-        """
-        issues = []
-        
-        # Check all content fields
-        all_text = data.Intro + " ".join([
-            getattr(data, f"section_{i:02d}_content", "")
-            for i in range(1, 10)
-            if getattr(data, f"section_{i:02d}_content", "")
-        ])
-        
-        if re.search(r'\[\d+\]', all_text):
-            count = len(re.findall(r'\[\d+\]', all_text))
-            issues.append(QualityIssue(
-                issue_type="academic_citations",
-                severity="warning",  # CHANGED FROM "critical" TO "warning"
-                description=f"Academic citations [N] detected ({count} instances) - Layer 4 will clean",
-                current_value=count,
-                target_value=0,
-                field="all_content"
-            ))
-        
-        return issues
-    
-    def _check_em_dashes_stage2b(self, data: ArticleOutput) -> List[QualityIssue]:
-        """
-        Check for forbidden em dashes.
-        ROOT_LEVEL_FIX_PLAN.md Issue 2.
-        """
-        issues = []
-        
-        # Check all content fields
-        all_text = data.Intro + " ".join([
-            getattr(data, f"section_{i:02d}_content", "")
-            for i in range(1, 10)
-            if getattr(data, f"section_{i:02d}_content", "")
-        ])
-        
-        em_dash_patterns = [r'—', r'&mdash;', r'&#8212;', r'&#x2014;']
-        total_count = 0
-        
-        for pattern in em_dash_patterns:
-            matches = re.findall(pattern, all_text)
-            total_count += len(matches)
-        
-        if total_count > 0:
-            issues.append(QualityIssue(
-                issue_type="em_dashes",
-                severity="critical",
-                description=f"Em dashes found ({total_count} instances)",
-                current_value=total_count,
-                target_value=0,
-                field="all_content"
-            ))
-        
-        return issues
-    
-    def _check_malformed_headings_stage2b(self, data: ArticleOutput) -> List[QualityIssue]:
-        """
-        Check for malformed headings (double question prefixes).
-        ROOT_LEVEL_FIX_PLAN.md Issue A.
-        """
-        issues = []
-        
-        # Check section titles
-        for i in range(1, 10):
-            title_field = f"section_{i:02d}_title"
-            title = getattr(data, title_field, "")
-            
-            if not title:
-                continue
-            
-            # Check for "What is How/Why/What" patterns
-            if re.search(r'^What is (How|Why|What|When|Where|Who)\b', title, re.IGNORECASE):
-                issues.append(QualityIssue(
-                    issue_type="malformed_heading",
-                    severity="critical",
-                    description=f"Malformed heading: '{title}' (duplicate question prefix)",
-                    current_value=title,
-                    target_value=re.sub(r'^What is ', '', title, flags=re.IGNORECASE),
-                    field=title_field
-                ))
-        
-        return issues
-    
-    def _build_comprehensive_rewrite(self, context: ExecutionContext) -> Optional[RewriteInstruction]:
-        """
-        Build a single comprehensive rewrite instruction for all content.
-        
-        This method creates ONE RewriteInstruction that fixes ALL issues at once:
-        - Academic citations [N] → inline natural language
-        - Standalone labels → natural list integration
-        - Em dashes → contextual commas/removal
-        - Robotic transitions → natural flow
-        - Malformed headings → clean headings
-        - Weird word passages → natural sentences
-        - Incomplete sentences → complete thoughts
-        - Double punctuation → single
-        - Keyword overuse → natural distribution
-        
-        Args:
-            context: ExecutionContext with all data
-        
-        Returns:
-            RewriteInstruction for comprehensive transformation, or None if failed
-        """
-        try:
-            # Extract citation metadata (will be populated by Stage 4 in parallel)
-            # Note: Stage 2b runs BEFORE Stage 4, so citations might not be available yet
-            # We'll pass empty list and handle in the prompt
-            citations_list = context.parallel_results.get("citations_list") if hasattr(context, 'parallel_results') else None
-            citations_data = []
-            
-            if citations_list and hasattr(citations_list, 'citations'):
-                for citation in citations_list.citations:
-                    citations_data.append({
-                        'number': citation.number,
-                        'url': citation.url,
-                        'title': citation.title,
-                    })
-                logger.info(f"   Found {len(citations_data)} citations for inline transformation")
-            else:
-                # Citations not available yet (Stage 4 runs in parallel after Stage 2b)
-                # Extract from Sources field instead
-                sources_text = context.structured_data.Sources or ""
-                if sources_text:
-                    # Quick parse of [N]: URL – Title format
-                    citation_pattern = r'\[(\d+)\]:\s*([^\s]+)\s*(?:–|-)?\s*([^\n]+)'
-                    matches = re.findall(citation_pattern, sources_text)
-                    for match in matches:
-                        citations_data.append({
-                            'number': int(match[0]),
-                            'url': match[1],
-                            'title': match[2].strip(),
-                        })
-                    logger.info(f"   Extracted {len(citations_data)} citations from Sources field")
-            
-            # Build context for the rewrite
-            rewrite_context = {
-                "citations": citations_data,
-                "primary_keyword": context.job_config.get("primary_keyword", ""),
-                "company_name": context.company_data.get("company_name", ""),
-                "language": context.language or "en",
-            }
-            
-            # Create comprehensive rewrite instruction
-            rewrite = RewriteInstruction(
-                target="all_content",  # Process entire article
-                instruction="Comprehensive content transformation - fix all quality issues",
-                mode=RewriteMode.COMPREHENSIVE_TRANSFORM,
-                preserve_structure=True,
-                min_similarity=0.70,  # Allow significant changes for comprehensive fix
-                max_similarity=0.95,
-                max_attempts=2,  # Only retry once if validation fails
-                temperature=0.3,  # Lower temperature for consistent, predictable transformations
-                context=rewrite_context
-            )
-            
-            logger.info(f"   Built comprehensive rewrite instruction:")
-            logger.info(f"   - Target: all content")
-            logger.info(f"   - Citations available: {len(citations_data)}")
-            logger.info(f"   - Primary keyword: {rewrite_context['primary_keyword'][:50]}...")
-            
-            return rewrite
-        
-        except Exception as e:
-            logger.error(f"Failed to build comprehensive rewrite: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return None
 
