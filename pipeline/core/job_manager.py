@@ -611,10 +611,9 @@ class JobManager:
             
             values.append(job_id)
             
-            conn.execute(f"""
-                UPDATE jobs SET {', '.join(updates)}
-                WHERE job_id = ?
-            """, values)
+            # Build safe SQL with parameterized queries
+            sql = "UPDATE jobs SET " + ", ".join(updates) + " WHERE job_id = ?"
+            conn.execute(sql, values)
             
             conn.commit()
     
@@ -644,10 +643,9 @@ class JobManager:
             
             if updates:
                 values.append(job_id)
-                conn.execute(f"""
-                    UPDATE jobs SET {', '.join(updates)}
-                    WHERE job_id = ?
-                """, values)
+                # Build safe SQL with parameterized queries
+                sql = "UPDATE jobs SET " + ", ".join(updates) + " WHERE job_id = ?"
+                conn.execute(sql, values)
                 conn.commit()
     
     async def _update_supabase_article(
