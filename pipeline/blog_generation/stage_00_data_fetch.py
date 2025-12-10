@@ -279,8 +279,12 @@ class DataFetchStage(Stage):
                 logger.debug(f"No sitemap URLs found for {company_url}")
                 return None
                 
-            # Extract blog URLs for internal linking (high confidence only)
+            # Extract URLs by type for internal linking (high confidence only)
             blog_urls = sitemap_pages.get_blog_urls(min_confidence=0.7)
+            resource_urls = sitemap_pages.get_urls_by_label("resource", min_confidence=0.6)
+            product_urls = sitemap_pages.get_urls_by_label("product", min_confidence=0.6)
+            docs_urls = sitemap_pages.get_urls_by_label("docs", min_confidence=0.6)
+            company_urls = sitemap_pages.get_urls_by_label("company", min_confidence=0.6)
             
             # Get page breakdown
             page_summary = sitemap_pages.label_summary()
@@ -290,6 +294,10 @@ class DataFetchStage(Stage):
                 "total_pages": sitemap_pages.count(),
                 "blog_count": len(blog_urls),
                 "blog_urls": blog_urls[:20],  # Limit to 20 for prompt efficiency
+                "resource_urls": resource_urls[:10],  # Limit resources
+                "product_urls": product_urls[:8],     # Limit products
+                "docs_urls": docs_urls[:6],           # Limit docs
+                "company_urls": company_urls[:4],     # Limit company pages
                 "page_summary": page_summary,
                 "fetch_timestamp": sitemap_pages.fetch_timestamp,
                 "site_structure": self._analyze_site_structure(sitemap_pages)
@@ -464,10 +472,10 @@ class DataFetchStage(Stage):
         if not provided_links:
             # Priority 1: Use crawled sitemap data (fresh, classified URLs)
             if hasattr(context, 'sitemap_data') and context.sitemap_data:
-                blog_urls = context.sitemap_data.get("blog_urls", [])
-                if blog_urls:
-                    provided_links = self._format_sitemap_links(blog_urls)
-                    logger.info(f"Built {len(blog_urls)} internal links from sitemap crawl")
+                relevant_urls = self._get_relevant_internal_links(context.sitemap_data)
+                if relevant_urls:
+                    provided_links = self._format_sitemap_links(relevant_urls)
+                    logger.info(f"Built {len(relevant_urls)} internal links from sitemap crawl (multiple page types)")
                 
             # Priority 2: Fall back to legacy sitemap_urls + batch_siblings
             if not provided_links:
@@ -494,18 +502,69 @@ class DataFetchStage(Stage):
 
         return blog_page
 
-    def _format_sitemap_links(self, blog_urls: List[str]) -> str:
+    def _get_relevant_internal_links(self, sitemap_data: Dict[str, Any]) -> List[str]:
         """
-        Format sitemap blog URLs into internal link suggestions for the LLM prompt.
+        Get relevant internal links from sitemap data across multiple page types.
+        
+        Prioritizes high-value pages for internal linking:
+        1. Blog articles (highest priority)
+        2. Resource pages (case studies, guides, tools)
+        3. Product pages (features, pricing) 
+        4. Documentation (help, tutorials)
+        5. Company pages (about, team) - limited quantity
         
         Args:
-            blog_urls: List of blog URLs from sitemap crawling
+            sitemap_data: Sitemap analysis data
+            
+        Returns:
+            List of relevant URLs for internal linking
+        """
+        if not sitemap_data:
+            return []
+        
+        relevant_urls = []
+        link_counts = {}
+        
+        # Priority 1: Blog URLs (highest priority)
+        blog_urls = sitemap_data.get("blog_urls", [])
+        relevant_urls.extend(blog_urls[:6])  # Max 6 blog links
+        link_counts["blogs"] = len(blog_urls[:6])
+        
+        # Priority 2: Resource pages (case studies, whitepapers, tools)
+        resource_urls = sitemap_data.get("resource_urls", [])
+        relevant_urls.extend(resource_urls[:4])  # Max 4 resource links
+        link_counts["resources"] = len(resource_urls[:4])
+        
+        # Priority 3: Product pages (features, pricing, solutions)
+        product_urls = sitemap_data.get("product_urls", [])
+        relevant_urls.extend(product_urls[:3])  # Max 3 product links
+        link_counts["products"] = len(product_urls[:3])
+        
+        # Priority 4: Documentation (guides, tutorials, help)
+        docs_urls = sitemap_data.get("docs_urls", [])
+        relevant_urls.extend(docs_urls[:2])  # Max 2 docs links
+        link_counts["docs"] = len(docs_urls[:2])
+        
+        # Priority 5: Company pages (about, team) - very limited
+        company_urls = sitemap_data.get("company_urls", [])
+        relevant_urls.extend(company_urls[:1])  # Max 1 company link
+        link_counts["company"] = len(company_urls[:1])
+        
+        logger.debug(f"Selected {len(relevant_urls)} relevant links: {link_counts}")
+        return relevant_urls
+
+    def _format_sitemap_links(self, urls: List[str]) -> str:
+        """
+        Format sitemap URLs into internal link suggestions for the LLM prompt.
+        
+        Args:
+            urls: List of URLs from sitemap crawling (any page type)
             
         Returns:
             Formatted string of internal links
         """
         link_lines = []
-        for i, url in enumerate(blog_urls[:12], 1):  # Limit to 12 for prompt efficiency
+        for i, url in enumerate(urls[:12], 1):  # Limit to 12 for prompt efficiency
             # Extract readable title from URL slug
             parts = url.strip("/").split("/")
             slug = parts[-1] if parts else ""
