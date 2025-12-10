@@ -146,12 +146,16 @@ class StorageStage(Stage):
         # Run HTML rendering and metadata extraction in parallel
         def render_html():
             try:
+                # Get validated citations HTML from Stage 4 (if available)
+                validated_citations_html = context.parallel_results.get("citations_html") if hasattr(context, 'parallel_results') else None
+                
                 html = HTMLRenderer.render(
                     article=context.validated_article,
                     company_data=context.company_data,
                     article_output=context.article_output,
                     article_url=article_url,
                     faq_items=faq_items_dict,
+                    validated_citations_html=validated_citations_html,
                 )
                 logger.info(f"   HTML rendered ({len(html)} bytes)")
                 return html
@@ -165,6 +169,7 @@ class StorageStage(Stage):
                         article_output=None,
                         article_url=None,
                         faq_items=[],
+                        validated_citations_html=None,
                     )
                     logger.warning("HTML rendered with fallback (no AEO features)")
                     return html

@@ -64,6 +64,7 @@ class HTMLRenderer:
         article_output: Optional[ArticleOutput] = None,
         article_url: Optional[str] = None,
         faq_items: Optional[List[Dict[str, str]]] = None,
+        validated_citations_html: Optional[str] = None,
     ) -> str:
         """
         Render article to production HTML.
@@ -122,15 +123,25 @@ class HTMLRenderer:
         bottom_image_url = HTMLRenderer._make_absolute_url(bottom_image_url_raw if isinstance(bottom_image_url_raw, str) else "", company_url)
         bottom_image_alt = article.get("bottom_image_alt", "")
         
-        sources = article.get("Sources", "")
-        # CRITICAL FIX: Use validated citation_map if available (from stage_10_ai_cleanup)
-        # This ensures only valid citations are included (invalid 404 URLs filtered out)
+        # CRITICAL FIX: Use validated citations HTML from Stage 4 instead of raw Sources
+        # This ensures only valid/replaced citations are shown (invalid URLs filtered out)
+        if validated_citations_html:
+            # Use validated citations HTML directly from Stage 4 citation validation
+            citations_section = validated_citations_html
+            logger.info(f"✅ Using validated citations HTML ({len(validated_citations_html)} chars)")
+        else:
+            # Fallback: Parse raw sources if no validated citations available
+            sources = article.get("Sources", "")
+            citations_section = HTMLRenderer._render_citations(sources)
+            logger.warning("⚠️ Using raw Sources as fallback (validation may have failed)")
+            
+        # Parse citation_map for inline links (needed regardless of citations section method)
         citation_map = article.get("_citation_map", {})
         if not citation_map:
-            # Fallback: Parse from Sources field if citation_map not set
-            citation_map = HTMLRenderer._parse_sources(sources)
+            sources = article.get("Sources", "")
+            citation_map = HTMLRenderer._parse_sources_for_map(sources)
         if citation_map:
-            logger.info(f"✅ Citation map used in render() with {len(citation_map)} entries")
+            logger.info(f"✅ Citation map used for inline links with {len(citation_map)} entries")
         else:
             logger.warning(f"⚠️  No citation map available (Sources length: {len(sources)})")
         toc = article.get("toc", {})
@@ -325,7 +336,7 @@ class HTMLRenderer:
         {HTMLRenderer._render_paa(paa_items)}
         {HTMLRenderer._render_faq(faq_items)}
         {internal_links}
-        {HTMLRenderer._render_citations(sources)}
+        {citations_section}
     </main>
 
     <footer class="container">
