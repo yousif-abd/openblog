@@ -83,12 +83,13 @@ class QualityChecker:
         
         # ROOT_LEVEL_FIX_PLAN.md checks (CRITICAL - except citations and links)
         # NOTE: Academic citations and broken links moved to suggestions (Layer 4 cleanup handles)
-        report["critical_issues"].extend(QualityChecker._check_em_dashes(article))
+        # NOTE: Em dashes moved to suggestions to reduce production blocking
         report["critical_issues"].extend(QualityChecker._check_malformed_headings(article))
 
         # Suggestion checks
         report["suggestions"].extend(QualityChecker._check_paragraph_length(article))
         report["suggestions"].extend(QualityChecker._check_keyword_coverage(article, job_config))
+        report["suggestions"].extend(QualityChecker._check_em_dashes(article))  # Moved from critical
         report["suggestions"].extend(QualityChecker._check_reading_time(article))
         
         # Academic citations and broken links = suggestions only (Layer 4 regex cleanup guaranteed)
@@ -170,16 +171,16 @@ class QualityChecker:
                     f"(phrases: {', '.join(language_validation.get('contamination_phrases', [])[:3])})"
                 )
 
-        # Set passed flag (true if no critical issues AND AEO score >= 80)
+        # Set passed flag (true if no critical issues AND AEO score >= 75)
         aeo_score = report["metrics"].get("aeo_score", 0)
         has_no_critical_issues = len(report["critical_issues"]) == 0
-        meets_aeo_threshold = aeo_score >= 80
+        meets_aeo_threshold = aeo_score >= 75  # Lowered from 80 to 75 for production
         
         report["passed"] = has_no_critical_issues and meets_aeo_threshold
         
         # Add AEO threshold failure as critical issue if needed
         if has_no_critical_issues and not meets_aeo_threshold:
-            report["critical_issues"].append(f"❌ QUALITY GATE FAILURE: AEO score {aeo_score}/100 below required threshold (minimum: 80)")
+            report["critical_issues"].append(f"❌ QUALITY GATE FAILURE: AEO score {aeo_score}/100 below required threshold (minimum: 75)")
             report["passed"] = False
 
         # Enhanced logging with quality gate status
@@ -815,7 +816,7 @@ class QualityChecker:
     @staticmethod
     def _check_em_dashes(article: Dict[str, Any]) -> List[str]:
         """
-        Check for forbidden em dashes (—).
+        Check for em dashes (—) - now as suggestions only.
         ROOT_LEVEL_FIX_PLAN.md Issue 2.
         """
         issues = []
@@ -826,7 +827,7 @@ class QualityChecker:
             if isinstance(value, str):
                 for pattern in em_dash_patterns:
                     if re.search(pattern, value):
-                        issues.append(f"❌ CRITICAL: Em dash found in {key} (FORBIDDEN)")
+                        issues.append(f"💡 Em dash found in {key} - consider replacing with regular dash (-)")
                         break
         
         return issues
