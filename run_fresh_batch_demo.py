@@ -76,21 +76,12 @@ async def run_fresh_article_generation():
     
     engine.register_stages(stages)
     
-    # Create execution context
-    context = ExecutionContext(
-        job_id=job_id,
-        job_config=job_config.__dict__,
-        company_data=company_data,
-        language=job_config.language,
-        country=job_config.country
-    )
-    
     # Execute the pipeline
     print(f"\n⚡ Executing enhanced pipeline...")
     start_time = time.time()
     
     try:
-        result_context = await engine.execute(context)
+        result_context = await engine.execute(job_id, job_config.__dict__)
         execution_time = time.time() - start_time
         
         print(f"\n✅ Pipeline execution complete!")
