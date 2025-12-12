@@ -16,6 +16,8 @@ from datetime import datetime
 
 from ..utils.schema_markup import generate_all_schemas, render_schemas_as_json_ld
 from ..models.output_schema import ArticleOutput
+from .markdown_processor import convert_markdown_to_html
+from .citation_linker import link_natural_citations
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +84,6 @@ class HTMLRenderer:
         # Extract key fields
         headline = HTMLRenderer._strip_html(article.get("Headline", "Untitled"))
         subtitle = HTMLRenderer._strip_html(article.get("Subtitle", ""))
-        intro = article.get("Intro", "")
         
         # Extract company info (needed for absolute URLs)
         company_name = company_data.get("company_name", "") if company_data else ""
@@ -104,6 +105,30 @@ class HTMLRenderer:
             citation_map = HTMLRenderer._parse_sources_for_map(sources)
             if citation_map:
                 article["_citation_map"] = citation_map
+        
+        # Parse source_name_map BEFORE processing intro
+        source_name_map = article.get("_source_name_map", {})
+        if not source_name_map:
+            sources = article.get("Sources", "")
+            source_name_map = HTMLRenderer._parse_sources_for_names(sources)
+            if source_name_map:
+                article["_source_name_map"] = source_name_map
+        
+        # Process intro through the full pipeline (markdown, cleanup, citation linking)
+        intro_raw = article.get("Intro", "")
+        if intro_raw:
+            # STEP 1: Convert markdown to HTML
+            intro_md = convert_markdown_to_html(intro_raw)
+            # STEP 2: Clean up problematic patterns
+            intro_clean = HTMLRenderer._cleanup_content(intro_md)
+            # STEP 3: Link natural language citations
+            if source_name_map:
+                intro_linked = link_natural_citations(intro_clean, source_name_map, max_links_per_source=2)
+            else:
+                intro_linked = intro_clean
+            intro = intro_linked
+        else:
+            intro = ""
         
         content = HTMLRenderer._build_content(article)
         meta_desc = HTMLRenderer._strip_html(article.get("Meta_Description", ""))  # ✅ CRITICAL FIX: Strip HTML
@@ -142,8 +167,10 @@ class HTMLRenderer:
             citation_map = HTMLRenderer._parse_sources_for_map(sources)
         if citation_map:
             logger.info(f"✅ Citation map used for inline links with {len(citation_map)} entries")
+            article["_citation_map"] = citation_map
         else:
             logger.warning(f"⚠️  No citation map available (Sources length: {len(sources)})")
+        
         # TOC is flattened by stage_10: toc["01"] becomes toc_01
         # Reconstruct the TOC dict from flattened keys
         toc = article.get("toc", {})
@@ -468,16 +495,29 @@ class HTMLRenderer:
                 parts.append(f'<h2 id="toc_{i:02d}">{HTMLRenderer._escape_html(title_clean)}</h2>')
 
             if content and content.strip():
-                # First clean up useless patterns
-                content_clean = HTMLRenderer._cleanup_content(content)
-                # Then convert citation markers to clickable links
-                # Get citation_map from article if available
+                # STEP 1: Convert markdown to proper HTML (handles lists, bold, etc.)
+                content_html = convert_markdown_to_html(content)
+                
+                # STEP 2: Clean up any remaining problematic patterns
+                content_clean = HTMLRenderer._cleanup_content(content_html)
+                
+                # STEP 3: Link natural language citations (e.g., "According to IBM")
+                source_name_map = article.get("_source_name_map", {})
+                if source_name_map:
+                    content_linked = link_natural_citations(
+                        content_clean, 
+                        source_name_map, 
+                        max_links_per_source=2
+                    )
+                else:
+                    content_linked = content_clean
+                
+                # STEP 4: Convert [N] citations to links (fallback for any remaining)
                 citation_map = article.get("_citation_map", {})
                 if citation_map:
                     logger.debug(f"Using citation_map with {len(citation_map)} entries for section {i}")
-                else:
-                    logger.warning(f"⚠️  No citation_map available for section {i}, links will be anchor-only")
-                content_with_links = HTMLRenderer._linkify_citations(content_clean, citation_map, url_link_count)
+                content_with_links = HTMLRenderer._linkify_citations(content_linked, citation_map, url_link_count)
+                
                 parts.append(content_with_links)
             
             # Inject first comparison table after section 2
@@ -717,6 +757,91 @@ class HTMLRenderer:
                 logger.debug(f"Sources preview: {sources[:200]}")
         
         return citation_map
+
+    @staticmethod
+    def _parse_sources_for_names(sources: str) -> Dict[str, str]:
+        """
+        Parse Sources field to extract source_name -> URL mapping.
+        
+        Used by CitationLinker to link natural language citations
+        like "according to IBM" or "Gartner reports".
+        
+        Format expected: [N]: URL – Source Name Description
+        
+        Returns:
+            Dict mapping source names (lowercase) to URLs
+        """
+        if not sources:
+            return {}
+        
+        source_name_map = {}
+        
+        # Pattern: [N]: URL – Description (extract source name from description)
+        pattern = r'\[(\d+)\]:\s*(https?://[^\s]+)\s*[–-]\s*(.+?)(?=\n\[|\n*$)'
+        matches = re.findall(pattern, sources, re.MULTILINE | re.DOTALL)
+        
+        for match in matches:
+            try:
+                url = match[1].strip()
+                description = match[2].strip()
+                
+                if not url.startswith(('http://', 'https://')):
+                    continue
+                
+                # Extract source name from description
+                # Usually the first word or two (e.g., "IBM Cost of..." → "IBM")
+                # Or recognized patterns (e.g., "Gartner GenAI..." → "Gartner")
+                
+                # Known source patterns (order matters - more specific first)
+                known_sources = [
+                    ('palo alto', ['palo alto networks', 'palo alto']),
+                    ('mckinsey', ['mckinsey & company', 'mckinsey and company', 'mckinsey']),
+                    ('ibm', ['ibm']),
+                    ('gartner', ['gartner']),
+                    ('forrester', ['forrester']),
+                    ('splunk', ['splunk']),
+                    ('crowdstrike', ['crowdstrike']),
+                    ('darktrace', ['darktrace']),
+                    ('sans', ['sans institute', 'sans']),
+                    ('isc2', ['isc2', 'isc²', '(isc)²']),
+                    ('owasp', ['owasp']),
+                    ('nist', ['nist']),
+                    ('cisa', ['cisa']),
+                    ('zscaler', ['zscaler']),
+                    ('fortinet', ['fortinet']),
+                    ('cisco', ['cisco']),
+                    ('microsoft', ['microsoft']),
+                    ('google', ['google']),
+                    ('amazon', ['amazon', 'aws']),
+                ]
+                
+                desc_lower = description.lower()
+                for source_key, patterns in known_sources:
+                    for pattern_str in patterns:
+                        if pattern_str in desc_lower:
+                            source_name_map[source_key] = url
+                            # Also add the actual matched pattern
+                            source_name_map[pattern_str] = url
+                            break
+                
+                # Also extract from URL domain as fallback
+                domain_match = re.search(r'https?://(?:www\.)?([^/]+)', url)
+                if domain_match:
+                    domain = domain_match.group(1)
+                    parts = domain.split('.')
+                    if len(parts) >= 2:
+                        domain_name = parts[-2].lower()
+                        if domain_name not in source_name_map:
+                            source_name_map[domain_name] = url
+                
+            except (ValueError, IndexError) as e:
+                logger.debug(f"Failed to parse source name: {match}, error: {e}")
+                continue
+        
+        if source_name_map:
+            logger.info(f"✅ Parsed {len(source_name_map)} source names for citation linking")
+        
+        return source_name_map
 
     @staticmethod
     def _linkify_citations(content: str, citation_map: Optional[Dict[int, str]] = None, url_link_count: Optional[Dict[str, int]] = None) -> str:
