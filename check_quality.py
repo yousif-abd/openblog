@@ -16,9 +16,16 @@ def check_quality(html_path: str) -> dict:
     # Get visible content (exclude scripts)
     visible = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL)
     
-    # Get body (before sources section)
-    body_end = html.find('<p>[1]:') if '<p>[1]:' in html else len(html)
-    body = visible[:body_end] if body_end < len(visible) else visible
+    # Get body (before sources section - look for various source patterns)
+    # IMPORTANT: Search in VISIBLE (after script removal), not in HTML
+    patterns = [
+        visible.find('<section class="citations"'),
+        visible.find('<p>[1]:'),  # Numbered sources
+        visible.find('[1]: <a href'),  # Inline numbered sources
+    ]
+    valid_ends = [i for i in patterns if i > 0]
+    body_end = min(valid_ends) if valid_ends else len(visible)
+    body = visible[:body_end]
     
     results = {}
     

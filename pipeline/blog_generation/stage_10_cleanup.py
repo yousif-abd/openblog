@@ -371,6 +371,9 @@ class CleanupStage(Stage):
         # Add ToC
         if "toc_dict" in parallel_results:
             merged["toc"] = parallel_results["toc_dict"]
+            logger.info(f"✅ ToC merged: {len(merged['toc'])} entries")
+        else:
+            logger.warning("⚠️  No toc_dict in parallel_results - TOC will be empty")
 
         # Add FAQ items
         if "faq_items" in parallel_results:
