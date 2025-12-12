@@ -41,8 +41,8 @@ def check_quality(html_path: str) -> dict:
         body, re.I
     ))
     
-    # Content checks
-    results['dot_dash'] = len(re.findall(r'\.\s*-\s+[A-Z]', html))
+    # Content checks (in visible content, not JSON-LD)
+    results['dot_dash'] = len(re.findall(r'\.\s*-\s+[A-Z]', body))
     
     # Find truncated sentences
     truncated = re.findall(r'<li>([^<]*\b(?:to|of|the|and|with|for|in|on|at|from|a|an))\s*</li>', html)
