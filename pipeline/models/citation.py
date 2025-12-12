@@ -165,16 +165,27 @@ class CitationList(BaseModel):
         Convert to HTML paragraph list (v4.1 format).
 
         Returns:
-            HTML with each citation as a paragraph.
+            HTML section with citations as list items.
         """
         if not self.citations:
             return ""
 
-        lines = []
+        items = []
         for citation in self.citations:
-            lines.append(f"<p>{citation.to_html()}</p>")
+            # Create clickable link - clean the title for display
+            clean_title = citation.title.strip() if citation.title else f"Source {citation.number}"
+            items.append(
+                f'<li id="source-{citation.number}">'
+                f'<a href="{citation.url}" target="_blank" rel="noopener noreferrer">{clean_title}</a>'
+                f'</li>'
+            )
 
-        return "\n".join(lines)
+        return f"""<section class="citations">
+        <h2>Sources</h2>
+        <ol>
+            {''.join(items)}
+        </ol>
+    </section>"""
 
     def count(self) -> int:
         """Get citation count."""

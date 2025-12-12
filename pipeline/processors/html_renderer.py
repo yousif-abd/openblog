@@ -61,6 +61,34 @@ class HTMLRenderer:
         return f"{base}/{path}"
 
     @staticmethod
+    def _format_display_date(date_str: str) -> str:
+        """
+        Format ISO date (YYYY-MM-DD) for human-readable display.
+        
+        Args:
+            date_str: ISO date string or other format
+            
+        Returns:
+            Formatted date like "Dec 12, 2025"
+        """
+        from datetime import datetime
+        
+        try:
+            # Try ISO format first (YYYY-MM-DD)
+            if '-' in date_str and len(date_str.split('-')[0]) == 4:
+                dt = datetime.strptime(date_str.split('T')[0], '%Y-%m-%d')
+            # Try European format (DD.MM.YYYY) for backward compatibility
+            elif '.' in date_str:
+                dt = datetime.strptime(date_str, '%d.%m.%Y')
+            else:
+                return date_str
+            
+            # Format as "Dec 12, 2025"
+            return dt.strftime('%b %d, %Y')
+        except (ValueError, IndexError):
+            return date_str
+
+    @staticmethod
     def render(
         article: Dict[str, Any],
         company_data: Optional[Dict[str, Any]] = None,
@@ -151,26 +179,50 @@ class HTMLRenderer:
         
         # CRITICAL FIX: Use validated citations HTML from Stage 4 instead of raw Sources
         # This ensures only valid/replaced citations are shown (invalid URLs filtered out)
+        # IMPORTANT: Do NOT fall back to raw unvalidated sources - that defeats the purpose of validation!
         if validated_citations_html:
             # Use validated citations HTML directly from Stage 4 citation validation
             citations_section = validated_citations_html
             logger.info(f"✅ Using validated citations HTML ({len(validated_citations_html)} chars)")
+        elif validated_citations_html == "":
+            # Validation ran but all citations were filtered out - show nothing
+            # DO NOT fall back to raw unvalidated sources!
+            citations_section = ""
+            logger.warning("⚠️ All citations filtered out by validation (no valid sources found)")
         else:
-            # Fallback: Parse raw sources if no validated citations available
+            # validated_citations_html is None - validation didn't run, use raw as fallback
             sources = article.get("Sources", "")
             citations_section = HTMLRenderer._render_citations(sources)
-            logger.warning("⚠️ Using raw Sources as fallback (validation may have failed)")
+            logger.warning("⚠️ Using raw Sources (validation was not enabled)")
             
-        # Parse citation_map for inline links (needed regardless of citations section method)
-        citation_map = article.get("_citation_map", {})
+        # Parse citation_map for inline links
+        # CRITICAL: Use validated_citation_map if available (only validated URLs)
+        # This prevents linking to hallucinated/broken URLs in the body content
+        citation_map = article.get("validated_citation_map") or article.get("_citation_map", {})
         if not citation_map:
+            # Fallback: parse from raw Sources only if no validated map available
             sources = article.get("Sources", "")
             citation_map = HTMLRenderer._parse_sources_for_map(sources)
+            if citation_map:
+                logger.warning(f"⚠️  Using raw citation map (validation may not have run)")
         if citation_map:
-            logger.info(f"✅ Citation map used for inline links with {len(citation_map)} entries")
+            logger.info(f"✅ Citation map for inline links: {len(citation_map)} entries")
             article["_citation_map"] = citation_map
         else:
-            logger.warning(f"⚠️  No citation map available (Sources length: {len(sources)})")
+            logger.warning(f"⚠️  No citation map available (Sources length: {len(article.get('Sources', ''))})")
+        
+        # Use validated_source_name_map for natural language linking if available
+        source_name_map = article.get("validated_source_name_map", {})
+        if source_name_map:
+            logger.info(f"✅ Source name map for natural language linking: {list(source_name_map.keys())}")
+            article["_source_name_map"] = source_name_map
+        else:
+            # Build from citation_map as fallback
+            if citation_map:
+                source_name_map = HTMLRenderer._parse_sources_for_names(article.get("Sources", ""))
+                if source_name_map:
+                    article["_source_name_map"] = source_name_map
+                    logger.info(f"✅ Built source name map from raw sources: {list(source_name_map.keys())}")
         
         # TOC is flattened by stage_10: toc["01"] becomes toc_01
         # Reconstruct the TOC dict from flattened keys
@@ -359,7 +411,7 @@ class HTMLRenderer:
         <h1>{HTMLRenderer._escape_html(headline)}</h1>
         {f'<h2 class="subtitle">{HTMLRenderer._escape_html(subtitle)}</h2>' if subtitle else ''}
         <div class="meta">
-            <span>Published: {publication_date.split('T')[0]}</span>
+            <span>Published: {HTMLRenderer._format_display_date(publication_date)}</span>
             <span> • </span>
             <span>Read time: {read_time} min</span>
             {f' • <span><a href="{HTMLRenderer._escape_attr(company_url)}">{HTMLRenderer._escape_html(company_name)}</a></span>' if company_url else ''}
@@ -545,7 +597,14 @@ class HTMLRenderer:
         if not toc:
             return ""
 
-        items = [f'<li><a href="#{k}">{HTMLRenderer._escape_html(v)}</a></li>' for k, v in toc.items() if v]
+        items = []
+        for k, v in toc.items():
+            if not v:
+                continue
+            # Handle both "XX" and "toc_XX" key formats
+            # Section headers use id="toc_XX", so anchor must be #toc_XX
+            anchor_key = k if k.startswith('toc_') else f'toc_{k}'
+            items.append(f'<li><a href="#{anchor_key}">{HTMLRenderer._escape_html(v)}</a></li>')
 
         if not items:
             return ""
@@ -1298,6 +1357,22 @@ class HTMLRenderer:
         content = re.sub(r'\*([^*]+)\*', r'<em>\1</em>', content)  # *italic* -> <em>
         logger.info("📝 Converted markdown **bold** and *italic* to HTML")
         
+        # STEP 0.2b: FIX DOUBLE-PREFIXED TITLES (from broken question conversion)
+        # "What is What is AI" → "What is AI"
+        # "How does How does AI work" → "How does AI work"
+        double_prefix_patterns = [
+            (r'What is What is\b', 'What is'),
+            (r'What are What are\b', 'What are'),
+            (r'How does How does\b', 'How does'),
+            (r'How can How can\b', 'How can'),
+            (r'Why is Why is\b', 'Why is'),
+            (r'When should When should\b', 'When should'),
+            (r'Where can Where can\b', 'Where can'),
+        ]
+        for pattern, replacement in double_prefix_patterns:
+            content = re.sub(pattern, replacement, content, flags=re.IGNORECASE)
+        logger.info("🔧 Fixed any double-prefixed question titles")
+        
         # STEP 0.3: FIX MALFORMED PUNCTUATION PATTERNS
         # Fix ". - " (period before bullet point) → just ". " (treat as new sentence)
         content = re.sub(r'\.\s*-\s+([A-Z])', r'. \1', content)  # ". - Word" → ". Word"
@@ -1305,6 +1380,18 @@ class HTMLRenderer:
         # Fix truncated list items ending with prepositions
         content = re.sub(r'<li>([^<]*\b(?:to|of|the|and|with|for|in|on|at|from|a|an))\s*</li>', '', content)
         logger.info("🔧 Fixed malformed punctuation patterns")
+        
+        # STEP 0.3a: FIX MALFORMED HTML NESTING
+        # Gemini sometimes puts <ul> or <ol> directly inside <p> tags
+        # Fix: <p>text<ul>... → <p>text</p><ul>...
+        content = re.sub(r'(<p>[^<]*)<(ul|ol)>', r'\1</p><\2>', content)
+        # Fix: ...</ul></p> → ...</ul><p> or just ...</ul>
+        content = re.sub(r'</(ul|ol)>\s*</p>', r'</\1>', content)
+        # Fix: <p><ul> → <ul> (empty paragraph before list)
+        content = re.sub(r'<p>\s*<(ul|ol)>', r'<\1>', content)
+        # Fix: </ul></p><p></p> → </ul>
+        content = re.sub(r'</(ul|ol)>\s*</p>\s*<p>\s*</p>', r'</\1>', content)
+        logger.info("🔧 Fixed malformed HTML nesting (<ul> inside <p>)")
         
         # STEP 0.4: REMOVE DUPLICATE CONTENT BLOCKS
         # Gemini sometimes outputs the same paragraph/list item twice
@@ -1332,6 +1419,76 @@ class HTMLRenderer:
                 seen_items.add(item_normalized)
         logger.info("🧹 Checked and removed duplicate content blocks")
         
+        # STEP 0.4b: REMOVE DUPLICATE SUMMARY LISTS AFTER PARAGRAPHS
+        # Gemini sometimes outputs a paragraph followed by a <ul> that summarizes the same content
+        # Pattern: <p>Content about X, Y, Z.</p><ul><li>X</li><li>Y</li><li>Z</li></ul>
+        # We want to keep the paragraph and remove the redundant list
+        
+        # Find patterns where a paragraph is immediately followed by a list
+        # that contains fragments of the paragraph content
+        def remove_redundant_lists(html: str) -> str:
+            """
+            Remove <ul> lists that duplicate content from the preceding paragraph.
+            
+            Strategy:
+            1. Find </p> followed by <ul>
+            2. Extract text from both paragraph and list items
+            3. If list items are substrings of paragraph content, remove the list
+            """
+            # Match: </p> followed by <ul> - capture preceding paragraph too
+            pattern = r'(<p>([^<]*(?:<[^>]+>[^<]*)*)</p>)\s*(<ul>(?:<li>[^<]{5,80}</li>\s*){2,}</ul>)'
+            
+            def check_redundancy(match):
+                full_para = match.group(1)  # Full <p>...</p>
+                para_text = re.sub(r'<[^>]+>', '', match.group(2)).lower()  # Plain text from paragraph
+                list_html = match.group(3)  # Full <ul>...</ul>
+                
+                # Extract list items
+                items = re.findall(r'<li>([^<]+)</li>', list_html)
+                
+                if not items or not para_text:
+                    return match.group(0)
+                
+                # Check how many list items are substrings of the paragraph
+                substring_count = 0
+                for item in items:
+                    item_text = item.strip().lower()
+                    # Check if item text appears in paragraph (word boundary check)
+                    if len(item_text) >= 5 and item_text in para_text:
+                        substring_count += 1
+                
+                # If 60%+ of items are substrings of paragraph, it's redundant
+                if substring_count >= len(items) * 0.6:
+                    logger.warning(f"🗑️ Removing redundant summary list: {substring_count}/{len(items)} items duplicate paragraph content")
+                    return full_para  # Keep paragraph, remove list
+                
+                # Also check if items look like sentence fragments (don't end with proper punctuation)
+                fragment_count = sum(1 for item in items if not item.strip().endswith(('.', '!', '?')))
+                
+                # If most items are fragments AND short, it's likely a redundant summary list
+                avg_item_length = sum(len(item) for item in items) / len(items) if items else 0
+                if fragment_count >= len(items) * 0.6 and avg_item_length < 40:
+                    logger.warning(f"🗑️ Removing redundant summary list with {len(items)} fragment items (avg {avg_item_length:.0f} chars)")
+                    return full_para  # Remove the list, keep just paragraph
+                
+                return match.group(0)  # Keep as-is
+            
+            return re.sub(pattern, check_redundancy, html, flags=re.DOTALL)
+        
+        content = remove_redundant_lists(content)
+        
+        # STEP 0.4c: REMOVE "Here are key points:" TYPE INTRO PHRASES
+        # These are often followed by redundant lists
+        intro_patterns = [
+            r'<p>\s*Here are (?:the )?(?:key )?(?:points|takeaways|considerations|benefits)[:\s]*</p>',
+            r'<p>\s*(?:Key )?(?:points|takeaways|considerations|benefits) (?:include|are)[:\s]*</p>',
+            r'<p>\s*Important considerations[:\s]*</p>',
+            r'<p>\s*Here\'s what (?:you need to know|this means)[:\s]*</p>',
+        ]
+        for pattern in intro_patterns:
+            content = re.sub(pattern, '', content, flags=re.IGNORECASE)
+        logger.info("🧹 Removed redundant summary list intros")
+
         # STEP 0.1: PRESERVE LIST CONTENT BUT REMOVE ONLY TRULY EMPTY ITEMS
         # After removing citations, only remove list items that are completely empty
         # DO NOT remove items with actual content
@@ -1346,12 +1503,32 @@ class HTMLRenderer:
         # Only remove items ending with incomplete article patterns (obvious fragments)
         content = re.sub(r'<li>[^<]*\ba\s+(data|key|security|network|system|threat|risk|user)\s*</li>', '', content)  # "cost of a data" etc.
         
-        # Only remove items that are clearly incomplete (1-2 words only)
-        content = re.sub(r'<li>\s*\w+\s*\w*\s*</li>', '', content)  # 1-2 word items
+        # Only remove items that are clearly incomplete (1-2 words only, no content)
+        content = re.sub(r'<li>\s*\w+\s*</li>', '', content)  # Single word items (but not 2-word)
         
-        # REMOVED DANGEROUS PATTERN: The preposition-ending regex was destroying valid content
-        # Old pattern: r'<li>[^<]*\b(of|by|the|and|with|for|to|in|on|at|from)\s*</li>'
-        # This was removing valid sentences like "This is what you need to rely on"
+        # TRUNCATED ITEM DETECTION: Remove list items that are clearly cut off
+        # Pattern 1: Items ending with articles (a, an, the) - clearly truncated
+        content = re.sub(r'<li>[^<]*\s+(a|an|the)\s*</li>', '', content, flags=re.IGNORECASE)
+        
+        # Pattern 2: Items ending with "anti" or incomplete prefixes
+        content = re.sub(r'<li>[^<]*\b(anti|pre|post|multi|inter|intra|semi|non)\s*</li>', '', content, flags=re.IGNORECASE)
+        
+        # Pattern 3: Items ending with just a number (e.g., "risk by 10")
+        content = re.sub(r'<li>[^<]*\s+\d{1,3}\s*</li>', '', content)
+        
+        # Pattern 4: Very short items (under 15 chars) without punctuation
+        def remove_truncated_short_items(match):
+            item_text = match.group(1).strip()
+            # Keep if it has ending punctuation or is a complete-looking phrase
+            if item_text.endswith(('.', '!', '?', ')')) or len(item_text) > 15:
+                return match.group(0)
+            # Remove if too short and no punctuation
+            if len(item_text) < 15 and not re.search(r'[.!?]', item_text):
+                logger.debug(f"Removing truncated item: {item_text}")
+                return ''
+            return match.group(0)
+        
+        content = re.sub(r'<li>([^<]{1,25})</li>', remove_truncated_short_items, content)
         
         logger.info("🧹 Removed incomplete list items and sentence fragments")
         
@@ -1424,6 +1601,24 @@ class HTMLRenderer:
         
         # Pattern 4: Double question words "What is How" / "What is Why"
         content = re.sub(r'<h2>What is (How|Why|What|When|Where)\b', r'<h2>\1', content, flags=re.IGNORECASE)
+        
+        # Pattern 4d: Fix "What is the difference between The X?" -> "The X"
+        # This is an awkward Gemini pattern that combines question with statement title
+        content = re.sub(
+            r'<h2>What is the difference between (The|A|An)\s+([^<]+?)\?</h2>',
+            lambda m: f'<h2>{m.group(1)} {m.group(2)}</h2>',
+            content,
+            flags=re.IGNORECASE
+        )
+        
+        # Pattern 4e: Fix "What is the difference between" when followed by two things
+        # E.g., "What is the difference between Speed and Stability?" → "Speed and Stability"
+        content = re.sub(
+            r'<h2>What is the difference between\s+([A-Z][^<]+?)\?</h2>',
+            r'<h2>\1</h2>',
+            content,
+            flags=re.IGNORECASE
+        )
         
         # Pattern 4a: Remove "What is" prefix from section titles that shouldn't be questions
         # Matches: "What is The New Gatekeepers" → "The New Gatekeepers"
@@ -1560,6 +1755,24 @@ class HTMLRenderer:
         content = re.sub(r'\.\s*\.\s*Also,', '. Also,', content, flags=re.IGNORECASE)  # Fix double period
         logger.info("🔧 Fixed orphaned period patterns")
         
+        # FIX BROKEN SENTENCES: Lowercase letter after period
+        # Pattern: "documentation. makes" → "documentation. Makes"
+        # This is a Gemini output bug where context is lost mid-sentence
+        def capitalize_after_period(match):
+            period_space = match.group(1)  # ". " or "! " or "? "
+            lowercase_char = match.group(2)
+            return f'{period_space}{lowercase_char.upper()}'
+        
+        # Match period/exclaim/question followed by space and lowercase letter
+        # Be careful not to match abbreviations (e.g., "e.g. the") 
+        # Only match if preceded by a lowercase letter (end of word)
+        content = re.sub(
+            r'([a-z])([.!?])\s+([a-z])',
+            lambda m: f'{m.group(1)}{m.group(2)} {m.group(3).upper()}',
+            content
+        )
+        logger.info("🔤 Fixed lowercase letters after sentence-ending punctuation")
+        
         # Pattern 0a: Fix missing spaces after commas
         # Matches: "flows,capture" → "flows, capture"
         content = re.sub(r'([a-z]),([A-Z])', r'\1, \2', content)
@@ -1590,6 +1803,18 @@ class HTMLRenderer:
         # Pattern 0i: Fix sentence fragments starting with period
         # Matches: "<p>. Also, built-in" → "<p>Also, built-in"
         content = re.sub(r'<p>\s*\.\s+([A-Z])', r'<p>\1', content)
+        
+        # Pattern 0i2: Fix orphaned period at start of list item
+        # Matches: "<li>. Identity" → "<li>Identity"
+        content = re.sub(r'<li>\s*\.\s*(\d+\.?\s*)?([A-Z])', r'<li>\2', content)
+        
+        # Pattern 0i3: Fix period followed by number at start of paragraph
+        # Matches: "<p>. 3. Identity" → "<p>3. Identity" or "<p>Identity"
+        content = re.sub(r'<p>\s*\.\s*(\d+\.?\s*)([A-Z][^<]+)', r'<p>\2', content)
+        
+        # Pattern 0i4: Fix orphaned period before any capital letter
+        # Matches: ". Several" at start → "Several"
+        content = re.sub(r'^[\.\s]+([A-Z])', r'\1', content)
         
         # Pattern 0j: Fix empty paragraphs
         # Matches: <p></p> or <p> </p>

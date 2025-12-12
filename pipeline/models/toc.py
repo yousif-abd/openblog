@@ -78,15 +78,75 @@ class TableOfContents(BaseModel):
         NOTE: Uses simple numeric keys (01, 02) not toc_01, toc_02
         because stage_10_cleanup flattens nested dicts with prefix.
         So toc["01"] becomes toc_01 after flattening.
+        
+        FIXED: Now uses full_title (truncated to ~50 chars) instead of short_label
+        to avoid over-truncation of TOC entries.
 
         Returns:
-            Dictionary with numeric keys and short labels as values.
+            Dictionary with numeric keys and readable labels as values.
         """
         result = {}
         for entry in self.entries:
             # Use simple numeric key, will become toc_01 after flattening
-            result[f"{entry.section_num:02d}"] = entry.short_label
+            # CRITICAL FIX: Use full_title (truncated) instead of short_label
+            # Short labels (1-2 words) were too aggressive and lost meaning
+            label = self._truncate_title(entry.full_title)
+            result[f"{entry.section_num:02d}"] = label
         return result
+    
+    @staticmethod
+    def _truncate_title(title: str, max_length: int = 50) -> str:
+        """
+        Truncate title to max_length chars at word boundary.
+        
+        Args:
+            title: Full section title
+            max_length: Maximum character length (default 50)
+            
+        Returns:
+            Truncated title with ellipsis if needed
+        """
+        if not title:
+            return ""
+        
+        # Clean up the title first
+        title = title.strip()
+        
+        # Remove any leading question words that make it awkward
+        # "What is X?" → "X" for TOC
+        question_prefixes = [
+            "What is the difference between ",
+            "What are the future trends in ",
+            "What is ",
+            "What are ",
+            "How do ",
+            "How does ",
+            "Why is ",
+            "Why are ",
+        ]
+        for prefix in question_prefixes:
+            if title.lower().startswith(prefix.lower()):
+                title = title[len(prefix):].strip()
+                # Capitalize first letter
+                if title:
+                    title = title[0].upper() + title[1:]
+                break
+        
+        # Remove trailing question marks (cleaned up questions)
+        title = title.rstrip('?')
+        
+        # If short enough, return as-is
+        if len(title) <= max_length:
+            return title
+        
+        # Truncate at word boundary
+        truncated = title[:max_length]
+        # Find last space
+        last_space = truncated.rfind(' ')
+        if last_space > max_length // 2:  # Only truncate if we don't lose too much
+            truncated = truncated[:last_space]
+        
+        return truncated.rstrip() + '...'
 
     def get_entry(self, section_num: int) -> Optional[TOCEntry]:
         """Get entry by section number."""

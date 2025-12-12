@@ -251,6 +251,8 @@ class MarkdownProcessor:
         - Empty paragraphs
         - Double-wrapped lists
         - Orphaned list items
+        - Dash bullets appearing in prose
+        - Improperly nested lists (li containing ul/ol)
         """
         # Remove empty paragraphs
         content = re.sub(r'<p>\s*</p>', '', content)
@@ -261,8 +263,59 @@ class MarkdownProcessor:
         content = re.sub(r'<ol>\s*<ol>', '<ol>', content)
         content = re.sub(r'</ol>\s*</ol>', '</ol>', content)
         
-        # Remove orphaned list items (not in ul/ol)
-        # This is complex - skip for now, handle in cleanup
+        # FIX: Flatten improperly nested lists
+        # Pattern: <li>text<ul><li>more text</li></ul></li>
+        # Should become: <li>text</li><li>more text</li>
+        content = self._fix_nested_list_issues(content)
+        
+        # CRITICAL FIX: Handle dash bullets appearing in prose
+        # Pattern: "<p>text - Item: description - Item2: description</p>"
+        # Should become: "<p>text</p><ul><li><strong>Item:</strong> description</li>..."
+        def fix_inline_dash_bullets(match):
+            """Convert inline dash bullets to proper list or clean them up."""
+            para_content = match.group(1)
+            
+            # Check if this looks like inline bullet list (has "- Label:" pattern)
+            dash_items = re.findall(r'-\s+([A-Z][^-]*?)(?=\s+-\s+[A-Z]|$)', para_content)
+            
+            if len(dash_items) >= 2:
+                # Multiple dash items - convert to proper list
+                # Find the intro text (before first dash)
+                intro_match = re.match(r'^([^-]*?)(?=\s*-\s+[A-Z])', para_content)
+                intro = intro_match.group(1).strip() if intro_match else ''
+                
+                # Build list items
+                list_items = []
+                for item in dash_items:
+                    item = item.strip()
+                    if ':' in item:
+                        # Item has label: "Label: description"
+                        label, desc = item.split(':', 1)
+                        list_items.append(f'<li><strong>{label.strip()}:</strong>{desc}</li>')
+                    else:
+                        list_items.append(f'<li>{item}</li>')
+                
+                result = ''
+                if intro:
+                    result = f'<p>{intro}</p>'
+                result += f'<ul>{"".join(list_items)}</ul>'
+                return result
+            
+            # Single dash or not a list pattern - just clean up the dashes
+            # "- Label:" at start of prose → "Label:"
+            content_cleaned = re.sub(r'^\s*-\s+([A-Z])', r'\1', para_content)
+            content_cleaned = re.sub(r'\.\s+-\s+([A-Z])', r'. \1', content_cleaned)  # ". - Item" → ". Item"
+            return f'<p>{content_cleaned}</p>'
+        
+        # Apply dash bullet fix to paragraphs containing "- Label:" patterns
+        content = re.sub(
+            r'<p>([^<]*-\s+[A-Z][^<]*)</p>',
+            fix_inline_dash_bullets,
+            content
+        )
+        
+        # Fix single dash at start of paragraph (not a list, just orphaned dash)
+        content = re.sub(r'<p>\s*-\s+([A-Z])', r'<p>\1', content)
         
         # Ensure proper paragraph structure
         # If content starts with text (not a tag), wrap in <p>
@@ -276,6 +329,43 @@ class MarkdownProcessor:
                     content = f'<p>{intro}</p>{rest}'
         
         return content
+    
+    def _fix_nested_list_issues(self, html: str) -> str:
+        """
+        Fix malformed nested lists created by mixed Gemini output.
+        
+        Problem patterns:
+        - <li>text<ul><li>more text</li></ul></li> → <li>text</li><li>more text</li>
+        - <ul><li><ul><li>... → <ul><li>...
+        - Orphaned closing tags
+        """
+        # Pattern 1: List directly inside list item - flatten to siblings
+        # <li>text<ul><li>item</li></ul></li> → <li>text</li><li>item</li>
+        html = re.sub(
+            r'(<li>[^<]*)<(ul|ol)>\s*<li>',
+            r'\1</li><li>',
+            html
+        )
+        
+        # Pattern 2: Clean up orphaned closing tags from Pattern 1
+        html = re.sub(r'</li>\s*</(ul|ol)></li>', '</li>', html)
+        
+        # Pattern 3: List immediately inside another list (no li)
+        # <ul><ul>... → <ul>...
+        html = re.sub(r'<(ul|ol)>\s*<(ul|ol)>', r'<\2>', html)
+        
+        # Pattern 4: Multiple nested closing tags
+        html = re.sub(r'</ul>\s*</li>\s*</ul>', '</ul>', html)
+        html = re.sub(r'</ol>\s*</li>\s*</ol>', '</ol>', html)
+        
+        # Pattern 5: <p> directly followed by </li> (broken structure)
+        html = re.sub(r'<p>([^<]+)</p>\s*</li>', r'\1</li>', html)
+        
+        # Pattern 6: List tags inside <p> tags (malformed nesting)
+        html = re.sub(r'<p>\s*(<ul|<ol)', r'\1', html)
+        html = re.sub(r'(</ul>|</ol>)\s*</p>', r'\1', html)
+        
+        return html
 
 
 # Module-level function for easy import

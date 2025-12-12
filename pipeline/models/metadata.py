@@ -101,19 +101,19 @@ class MetadataCalculator:
 
         Algorithm:
         - Generate random date within last N days
-        - Format as DD.MM.YYYY
+        - Format as ISO 8601 (YYYY-MM-DD) for compatibility with meta tags
         - Avoid future dates
 
         Args:
             days_back: How many days back to consider (default 90)
 
         Returns:
-            Publication date string (DD.MM.YYYY format)
+            Publication date string (YYYY-MM-DD ISO 8601 format)
         """
         today = datetime.now()
         random_days = random.randint(0, days_back)
         publication_datetime = today - timedelta(days=random_days)
-        publication_date = publication_datetime.strftime("%d.%m.%Y")
+        publication_date = publication_datetime.strftime("%Y-%m-%d")
 
         logger.debug(f"Generated publication date: {publication_date}")
         return publication_date

@@ -128,15 +128,47 @@ You are an expert content writer optimizing for AI search engines (AEO - Agentic
 - AUTHORITY: Name specific analysts, researchers, companies
 - TRUST: Every claim needs source attribution
 
+=== SOURCES FIELD (CRITICAL - FULL URLs REQUIRED) ===
+In the Sources field, you MUST provide COMPLETE, SPECIFIC URLs to the actual articles/reports.
+
+WRONG (generic URLs - NEVER DO THIS):
+[1]: Gartner Cybersecurity Trends – https://www.gartner.com/en/newsroom
+[2]: IBM Report – https://www.ibm.com/reports
+[3]: Forrester Predictions – https://www.forrester.com
+
+CORRECT (specific URLs with full paths):
+[1]: Gartner Top Cybersecurity Trends 2025 – https://www.gartner.com/en/articles/top-cybersecurity-trends-for-2025
+[2]: IBM Cost of a Data Breach 2024 – https://www.ibm.com/reports/data-breach
+[3]: Forrester Predictions 2025 – https://www.forrester.com/report/predictions-2025-cybersecurity-risk-and-privacy
+
+Rules for Sources:
+- Every URL MUST include the full path to the specific article/report/page
+- NEVER use just the domain or generic newsroom/blog landing pages
+- Use the ACTUAL URLs you found during your research via Google Search
+- If you cite "IBM Cost of Data Breach Report", the URL must go to THAT specific report
+
 === PUNCTUATION RULES ===
 - NEVER use em dashes (—) or en dashes (–)
 - Use commas, parentheses, or colons instead
 
-=== FORBIDDEN PATTERNS ===
-- "Here are key points:" followed by list
-- Summarizing paragraph content as bullet points
-- Lists with fewer than 3 complete items
-- Generic statements without data or citations
+=== FORBIDDEN PATTERNS (CRITICAL - NEVER GENERATE THESE) ===
+NEVER create bullet lists that summarize the paragraph above them.
+WRONG pattern to AVOID:
+  "AI is transforming security with automation and speed. Machine learning enables real-time detection."
+  - AI is transforming security
+  - Automation and speed
+  - Machine learning enables detection
+  
+CORRECT pattern:
+  "AI is transforming security with automation and speed. Machine learning enables real-time detection."
+  [NO bullet list needed - the paragraph already contains the content]
+
+Additional rules:
+- NEVER follow a paragraph with "Here are key points:" + bullet list
+- NEVER repeat the same information as both prose AND list
+- Each section should have EITHER explanatory paragraphs OR a list - NOT both repeating the same content
+- Lists are only for GENUINELY enumerable items (steps, options, features) - NOT for summarizing paragraphs
+- If a section has prose, let the prose stand alone without duplicate lists
 """
 
         raw_response = await self._generate_content_with_retry(
@@ -147,6 +179,16 @@ You are an expert content writer optimizing for AI search engines (AEO - Agentic
 
         logger.info(f"✅ Gemini API call succeeded")
         logger.info(f"   Response size: {len(raw_response)} characters")
+        
+        # CRITICAL: Extract grounding URLs from Gemini's deep research
+        # These are the ACTUAL source URLs (not generic like gartner.com/newsroom)
+        grounding_urls = self.client.get_last_grounding_urls()
+        if grounding_urls:
+            logger.info(f"📎 Storing {len(grounding_urls)} specific source URLs from Google Search grounding")
+            context.grounding_urls = grounding_urls
+        else:
+            logger.warning("⚠️  No grounding URLs extracted from Gemini response")
+            context.grounding_urls = []
 
         # Validate response
         self._validate_response(raw_response)

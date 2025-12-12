@@ -118,6 +118,16 @@ class CitationsStage(Stage):
         for citation in citation_list.citations:
             logger.debug(f"   [{citation.number}]: {citation.url}")
 
+        # CRITICAL: Enhance citations with SPECIFIC URLs from Gemini's grounding
+        # The Sources field often has generic URLs (gartner.com/newsroom) but 
+        # grounding_urls contains the ACTUAL source URLs from Google Search
+        grounding_urls = getattr(context, 'grounding_urls', [])
+        if grounding_urls:
+            logger.info(f"📎 Enhancing {citation_list.count()} citations with {len(grounding_urls)} grounding URLs")
+            citation_list = self._enhance_with_grounding_urls(citation_list, grounding_urls)
+        else:
+            logger.warning("⚠️  No grounding URLs available to enhance citations")
+
         # CRITICAL FIX: Preserve original URLs before validation
         # This allows fallback to original URLs if validation replaces them incorrectly
         original_urls = {}
@@ -182,11 +192,30 @@ class CitationsStage(Stage):
         # Format as HTML
         citations_html = citation_list.to_html_paragraph_list()
         logger.info(f"   HTML size: {len(citations_html)} chars")
+        
+        # Build validated citation map for in-body links
+        # This ensures ONLY validated URLs are used for natural language linking
+        validated_citation_map = {}
+        validated_source_name_map = {}
+        for citation in citation_list.citations:
+            # Map by citation number: {1: "https://...", 2: "https://..."}
+            validated_citation_map[citation.number] = citation.url
+            # Extract source name from title for natural language linking
+            # Title format: "Gartner Top Trends 2025" -> source_name = "Gartner"
+            title_words = citation.title.split() if citation.title else []
+            if title_words:
+                source_name = title_words[0]  # First word is usually the source name
+                validated_source_name_map[source_name.lower()] = citation.url
+        
+        logger.info(f"   Validated citation map: {len(validated_citation_map)} entries")
+        logger.info(f"   Validated source names: {list(validated_source_name_map.keys())}")
 
         # Store in context
         context.parallel_results["citations_html"] = citations_html
         context.parallel_results["citations_count"] = citation_list.count()
         context.parallel_results["citations_list"] = citation_list
+        context.parallel_results["validated_citation_map"] = validated_citation_map
+        context.parallel_results["validated_source_name_map"] = validated_source_name_map
 
         return context
 
@@ -287,6 +316,112 @@ class CitationsStage(Stage):
             logger.warning("Continuing with original citations")
             return citation_list
 
+    def _enhance_with_grounding_urls(
+        self, 
+        citation_list: CitationList, 
+        grounding_urls: List[Dict[str, str]]
+    ) -> CitationList:
+        """
+        Enhance citations with SPECIFIC URLs from Gemini's Google Search grounding.
+        
+        The Sources field often contains generic URLs (gartner.com/newsroom)
+        but grounding_urls contains the ACTUAL source URLs that Gemini found.
+        
+        Strategy:
+        1. For each citation, find a grounding URL from the same domain
+        2. If found, replace the generic URL with the specific one
+        3. If multiple matches, prefer the one with most similar title
+        
+        Args:
+            citation_list: CitationList with potentially generic URLs
+            grounding_urls: List of {'url': str, 'title': str} from Gemini grounding
+            
+        Returns:
+            Enhanced CitationList with specific URLs where available
+        """
+        if not grounding_urls:
+            return citation_list
+        
+        # Build domain -> specific URLs map
+        domain_to_urls: Dict[str, List[Dict[str, str]]] = {}
+        for grounding in grounding_urls:
+            url = grounding.get('url', '')
+            if not url:
+                continue
+            # Extract domain
+            try:
+                from urllib.parse import urlparse
+                domain = urlparse(url).netloc.lower().replace('www.', '')
+                if domain not in domain_to_urls:
+                    domain_to_urls[domain] = []
+                domain_to_urls[domain].append(grounding)
+            except Exception:
+                pass
+        
+        logger.info(f"   Grounding URL domains: {', '.join(domain_to_urls.keys())}")
+        
+        enhanced_count = 0
+        for citation in citation_list.citations:
+            # Extract domain from citation URL
+            try:
+                from urllib.parse import urlparse
+                citation_domain = urlparse(citation.url).netloc.lower().replace('www.', '')
+            except Exception:
+                continue
+            
+            # Check if we have specific URLs for this domain
+            if citation_domain in domain_to_urls:
+                specific_urls = domain_to_urls[citation_domain]
+                
+                # Check if current URL is generic (short path)
+                is_generic = len(urlparse(citation.url).path.strip('/').split('/')) <= 2
+                
+                if is_generic and specific_urls:
+                    # Find best match by title similarity
+                    best_match = self._find_best_title_match(citation.title, specific_urls)
+                    if best_match and best_match['url'] != citation.url:
+                        old_url = citation.url
+                        citation.url = best_match['url']
+                        enhanced_count += 1
+                        logger.info(f"   📎 Citation [{citation.number}] enhanced:")
+                        logger.info(f"      OLD: {old_url}")
+                        logger.info(f"      NEW: {citation.url}")
+        
+        if enhanced_count > 0:
+            logger.info(f"✅ Enhanced {enhanced_count} citations with specific URLs")
+        else:
+            logger.info("   No generic URLs needed enhancement")
+        
+        return citation_list
+    
+    def _find_best_title_match(
+        self, 
+        citation_title: str, 
+        grounding_urls: List[Dict[str, str]]
+    ) -> Optional[Dict[str, str]]:
+        """Find the grounding URL with the most similar title."""
+        if not grounding_urls:
+            return None
+        
+        if len(grounding_urls) == 1:
+            return grounding_urls[0]
+        
+        # Simple word overlap scoring
+        citation_words = set(citation_title.lower().split())
+        
+        best_match = grounding_urls[0]
+        best_score = 0
+        
+        for grounding in grounding_urls:
+            title = grounding.get('title', '')
+            grounding_words = set(title.lower().split())
+            overlap = len(citation_words & grounding_words)
+            if overlap > best_score:
+                best_score = overlap
+                best_match = grounding
+        
+        return best_match
+
     def _parse_sources(self, sources_text: str) -> CitationList:
         """
         Parse sources text into Citation objects.
@@ -304,9 +439,18 @@ class CitationsStage(Stage):
         """
         citation_list = CitationList()
 
+        # CRITICAL FIX: Clean escaped HTML from sources BEFORE parsing
+        # Gemini sometimes outputs &lt;/p&gt; and other HTML entities in source text
+        sources_text = sources_text.replace('&lt;', '<').replace('&gt;', '>')
+        sources_text = sources_text.replace('</p>', '').replace('<p>', '')
+        sources_text = sources_text.replace('&amp;', '&')
+        sources_text = sources_text.replace('&nbsp;', ' ')
+        # Remove any remaining HTML tags
+        sources_text = re.sub(r'<[^>]+>', '', sources_text)
+        
         # Split by lines
         lines = sources_text.strip().split("\n")
-        logger.debug(f"Parsing {len(lines)} source lines")
+        logger.debug(f"Parsing {len(lines)} source lines (after HTML cleanup)")
 
         for line in lines:
             line = line.strip()

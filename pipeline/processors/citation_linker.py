@@ -44,52 +44,126 @@ class CitationLinker:
     """
     
     # Common patterns for source attribution in professional content
+    # NOTE: Patterns are applied in order - more specific patterns should come first
     CITATION_PATTERNS = [
+        # Pattern 1: "according to IBM" / "according to Gartner research"
         CitationPattern(
-            pattern=r'(?i)\baccording to\s+([A-Z][A-Za-z\s&]+?)(?=[,\.\s]|\'s|\s+research|\s+report|\s+study|\s+data)',
+            pattern=r'(?i)\baccording to\s+(?:the\s+)?([A-Z][A-Za-z\s&]+?)(?=[,\.\s]|\'s|\s+research|\s+report|\s+study|\s+data)',
             source_group=1,
             link_format='according to <a href="{url}" target="_blank" rel="noopener noreferrer" class="citation">{source}</a>'
         ),
+        # Pattern 2: "IBM reports that" / "Gartner predicts that" / "McKinsey found that"
         CitationPattern(
-            pattern=r'(?i)\b([A-Z][A-Za-z\s&]+?)\s+(reports?|states?|notes?|predicts?|estimates?|indicates?|found|shows?|reveals?|highlights?)\s+that\b',
+            pattern=r'(?i)\b([A-Z][A-Za-z\s&]+?)\s+(reports?|states?|notes?|predicts?|estimates?|indicates?|found|shows?|reveals?|highlights?|concludes?|demonstrates?|suggests?|warns?|recommends?)\s+that\b',
             source_group=1,
             link_format='<a href="{url}" target="_blank" rel="noopener noreferrer" class="citation">{source}</a> {verb} that'
         ),
+        # Pattern 3: "the 2024 IBM report" / "the 2025 Gartner study"
+        CitationPattern(
+            pattern=r'(?i)\bthe\s+\d{4}\s+([A-Z][A-Za-z\s&]+?)\s+(report|study|survey|analysis|research)\b',
+            source_group=1,
+            link_format='the {year} <a href="{url}" target="_blank" rel="noopener noreferrer" class="citation">{source}</a> {suffix}'
+        ),
+        # Pattern 4: "research by IBM" / "report from Gartner"
         CitationPattern(
             pattern=r'(?i)\b(research|report|study|survey|analysis)\s+(?:by|from)\s+([A-Z][A-Za-z\s&]+?)(?=[,\.\s])',
             source_group=2,
             link_format='{prefix} by <a href="{url}" target="_blank" rel="noopener noreferrer" class="citation">{source}</a>'
         ),
+        # Pattern 5: "IBM's research" / "Gartner's latest report"
         CitationPattern(
-            pattern=r'(?i)\b([A-Z][A-Za-z\s&]+?)\'s\s+(research|report|study|survey|analysis|data|findings)\b',
+            pattern=r'(?i)\b([A-Z][A-Za-z\s&]+?)\'s\s+(?:latest\s+)?(research|report|study|survey|analysis|data|findings)\b',
             source_group=1,
             link_format='<a href="{url}" target="_blank" rel="noopener noreferrer" class="citation">{source}</a>\'s {suffix}'
         ),
+        # Pattern 6: "data from IBM" / "statistics from Gartner"
         CitationPattern(
-            pattern=r'(?i)\b(data|statistics|figures|numbers)\s+from\s+([A-Z][A-Za-z\s&]+?)(?=[,\.\s])',
+            pattern=r'(?i)\b(data|statistics|figures|numbers|insights)\s+from\s+([A-Z][A-Za-z\s&]+?)(?=[,\.\s])',
             source_group=2,
             link_format='{prefix} from <a href="{url}" target="_blank" rel="noopener noreferrer" class="citation">{source}</a>'
         ),
+        # Pattern 7: "as IBM notes" / "as Gartner highlights"
+        CitationPattern(
+            pattern=r'(?i)\bas\s+([A-Z][A-Za-z\s&]+?)\s+(notes?|highlights?|points out|emphasizes?|stresses?)\b',
+            source_group=1,
+            link_format='as <a href="{url}" target="_blank" rel="noopener noreferrer" class="citation">{source}</a> {verb}'
+        ),
+        # Pattern 8: "per IBM" / "per Gartner's analysis"
+        CitationPattern(
+            pattern=r'(?i)\bper\s+([A-Z][A-Za-z\s&]+?)(?=[,\.\s]|\'s)',
+            source_group=1,
+            link_format='per <a href="{url}" target="_blank" rel="noopener noreferrer" class="citation">{source}</a>'
+        ),
+        # Pattern 9: "X%, according to IBM" / "X percent, per Gartner"
+        CitationPattern(
+            pattern=r'(?i)(\d+%|\d+\s+percent)[,\s]+(?:according to|per)\s+([A-Z][A-Za-z\s&]+?)(?=[,\.\s])',
+            source_group=2,
+            link_format='{percent}, according to <a href="{url}" target="_blank" rel="noopener noreferrer" class="citation">{source}</a>'
+        ),
+        # Pattern 10: "IBM analysis shows" / "Gartner data suggests"
+        CitationPattern(
+            pattern=r'(?i)\b([A-Z][A-Za-z\s&]+?)\s+(analysis|data|research|study)\s+(shows?|suggests?|indicates?|reveals?)\b',
+            source_group=1,
+            link_format='<a href="{url}" target="_blank" rel="noopener noreferrer" class="citation">{source}</a> {middle} {verb}'
+        ),
     ]
     
-    # Known source name mappings
+    # Known source name mappings - used for fuzzy matching source names to URLs
     SOURCE_ALIASES = {
-        'ibm': ['ibm', 'ibm security', 'ibm research'],
-        'gartner': ['gartner', 'gartner research', 'gartner inc'],
-        'mckinsey': ['mckinsey', 'mckinsey & company', 'mckinsey and company'],
-        'forrester': ['forrester', 'forrester research'],
+        'ibm': ['ibm', 'ibm security', 'ibm research', 'ibm cost of a data breach'],
+        'gartner': ['gartner', 'gartner research', 'gartner inc', 'gartner group'],
+        'mckinsey': ['mckinsey', 'mckinsey & company', 'mckinsey and company', 'mckinsey global institute'],
+        'forrester': ['forrester', 'forrester research', 'forrester wave'],
         'palo alto': ['palo alto', 'palo alto networks'],
-        'crowdstrike': ['crowdstrike'],
+        'crowdstrike': ['crowdstrike', 'crowd strike'],
         'splunk': ['splunk'],
         'darktrace': ['darktrace'],
         'sans': ['sans', 'sans institute'],
         'isc2': ['isc2', 'isc²', '(isc)²'],
         'owasp': ['owasp'],
-        'nist': ['nist'],
-        'cisa': ['cisa'],
+        'nist': ['nist', 'national institute'],
+        'cisa': ['cisa', 'cybersecurity and infrastructure'],
+        'github': ['github', 'github copilot'],
+        'google': ['google', 'google cloud', 'google dora'],
+        'microsoft': ['microsoft', 'microsoft security'],
+        'amazon': ['amazon', 'aws', 'amazon web services'],
+        'cisco': ['cisco', 'cisco talos'],
+        'deloitte': ['deloitte'],
+        'accenture': ['accenture'],
+        'pwc': ['pwc', 'pricewaterhousecoopers'],
+        'kpmg': ['kpmg'],
+        'ey': ['ey', 'ernst & young', 'ernst and young'],
+        'gitclear': ['gitclear'],
+        'dora': ['dora', 'google dora', 'dora report'],
     }
     
-    def __init__(self, citation_map: Optional[Dict[str, str]] = None, max_links_per_source: int = 2):
+    # Multi-word source names that should be matched as complete units
+    # These are checked BEFORE regular pattern matching to prevent partial matches like "Palo" instead of "Palo Alto Networks"
+    MULTI_WORD_SOURCES = [
+        'Palo Alto Networks',
+        'McKinsey & Company',
+        'McKinsey and Company',
+        'McKinsey Global Institute',
+        'IBM Security',
+        'IBM Research',
+        'Google Cloud',
+        'Google DORA',
+        'Amazon Web Services',
+        'Microsoft Security',
+        'Cisco Talos',
+        'Gartner Research',
+        'Forrester Research',
+        'Forrester Wave',
+        'SANS Institute',
+        'Ernst & Young',
+        'National Institute of Standards and Technology',
+        'World Economic Forum',
+        'Cloud Security Alliance',
+        'Ponemon Institute',
+        'Check Point Research',
+    ]
+    
+    def __init__(self, citation_map: Optional[Dict[str, str]] = None, max_links_per_source: int = 3):
         """
         Initialize for natural language citation linking.
         
@@ -133,6 +207,49 @@ class CitationLinker:
             pass
         return None
     
+    def _link_multi_word_sources(self, content: str) -> tuple[str, int]:
+        """
+        Link multi-word source names before regular pattern matching.
+        
+        This prevents partial matches like "Palo" instead of "Palo Alto Networks".
+        
+        Args:
+            content: HTML content
+            
+        Returns:
+            Tuple of (updated content, number of links made)
+        """
+        linked_count = 0
+        
+        for source_name in self.MULTI_WORD_SOURCES:
+            url = self._find_matching_url(source_name)
+            if not url:
+                continue
+            
+            current_count = self.link_counts.get(url, 0)
+            if current_count >= self.max_links_per_source:
+                continue
+            
+            # Only match if not already linked (check for <a> tag)
+            # Match: source_name NOT preceded by ">" (end of tag) or followed by "</a"
+            pattern = rf'(?<!>)(?<!")\b({re.escape(source_name)})\b(?!</a)(?!.*?</a)'
+            
+            def replace_source(match):
+                nonlocal linked_count
+                if self.link_counts.get(url, 0) >= self.max_links_per_source:
+                    return match.group(0)
+                linked = f'<a href="{url}" target="_blank" rel="noopener noreferrer" class="citation">{match.group(1)}</a>'
+                self.link_counts[url] = self.link_counts.get(url, 0) + 1
+                linked_count += 1
+                return linked
+            
+            content = re.sub(pattern, replace_source, content, count=self.max_links_per_source - current_count, flags=re.IGNORECASE)
+        
+        if linked_count > 0:
+            logger.info(f"✅ Linked {linked_count} multi-word source citations")
+        
+        return content, linked_count
+    
     def _find_matching_url(self, source_name: str) -> Optional[str]:
         """Find URL for a source name, handling aliases."""
         normalized = source_name.lower().strip()
@@ -170,6 +287,12 @@ class CitationLinker:
         
         linked_count = 0
         
+        # STEP 1: Link multi-word sources FIRST to prevent partial matches
+        # e.g., "Palo Alto Networks" should be linked as a whole, not just "Palo"
+        content, multi_word_links = self._link_multi_word_sources(content)
+        linked_count += multi_word_links
+        
+        # STEP 2: Apply regular citation patterns
         for pattern_def in self.CITATION_PATTERNS:
             matches = list(re.finditer(pattern_def.pattern, content))
             

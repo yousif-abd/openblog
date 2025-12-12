@@ -392,6 +392,13 @@ class CleanupStage(Stage):
             merged["citations_html"] = parallel_results["citations_html"]
         if "internal_links_html" in parallel_results:
             merged["internal_links_html"] = parallel_results["internal_links_html"]
+        
+        # Add validated citation maps for in-body linking
+        # These ensure only validated URLs are used for natural language linking
+        if "validated_citation_map" in parallel_results:
+            merged["validated_citation_map"] = parallel_results["validated_citation_map"]
+        if "validated_source_name_map" in parallel_results:
+            merged["validated_source_name_map"] = parallel_results["validated_source_name_map"]
 
         logger.info(
             f"Merged {len(parallel_results)} parallel results into article "
@@ -1105,13 +1112,17 @@ class CleanupStage(Stage):
         
         # Check existing question headers
         question_patterns = ["what is", "how does", "why does", "when should", "where can", "what are", "how can"]
+        # Question words at the START of a title that indicate it's already a question
+        question_start_words = ["what", "how", "why", "when", "where", "which", "who", "can", "does", "is", "are", "should", "will"]
         question_count = 0
         
         for i in range(1, 10):
             title = article.get(f"section_{i:02d}_title", "")
             if title:
                 title_lower = title.lower()
-                if any(pattern in title_lower for pattern in question_patterns) or title.endswith("?"):
+                first_word = title_lower.split()[0] if title_lower.split() else ""
+                # Count as question if it has a question pattern, ends with ?, or STARTS with a question word
+                if any(pattern in title_lower for pattern in question_patterns) or title.endswith("?") or first_word in question_start_words:
                     question_count += 1
         
         logger.debug(f"Found {question_count} question headers (target: 3-4)")
@@ -1134,8 +1145,15 @@ class CleanupStage(Stage):
                 continue
             
             title_lower = title.lower()
-            # Skip if already a question
+            first_word = title_lower.split()[0] if title_lower.split() else ""
+            
+            # CRITICAL FIX: Skip if already a question - check both patterns AND starting question words
+            # This prevents "What is What is..." type double conversions
             if any(pattern in title_lower for pattern in question_patterns):
+                continue
+            if first_word in question_start_words:
+                continue
+            if title.endswith("?"):
                 continue
             
             # Convert to question format

@@ -223,6 +223,9 @@ class GeminiClient:
             logger.info(f"Normalizing Flash model: {self.MODEL} → {normalized_model}")
             self.MODEL = normalized_model
         
+        # Store grounding URLs from last API call
+        self._last_grounding_urls: List[Dict[str, str]] = []
+        
         # Initialize client with appropriate API version
         try:
             from google import genai
@@ -347,7 +350,8 @@ class GeminiClient:
 
                 logger.info(f"✅ API call succeeded ({len(response_text)} chars)")
                 
-                # Log grounding metadata if available
+                # Extract and store grounding sources (actual URLs from Google Search)
+                grounding_urls = []
                 if hasattr(response, 'candidates') and response.candidates:
                     candidate = response.candidates[0]
                     if hasattr(candidate, 'grounding_metadata') and candidate.grounding_metadata:
@@ -356,6 +360,19 @@ class GeminiClient:
                             logger.info("🔍 Google Search grounding used")
                         if hasattr(gm, 'grounding_chunks') and gm.grounding_chunks:
                             logger.info(f"📎 {len(gm.grounding_chunks)} grounding sources")
+                            # CRITICAL: Extract actual URLs from grounding chunks
+                            for chunk in gm.grounding_chunks:
+                                if hasattr(chunk, 'web') and chunk.web:
+                                    url = getattr(chunk.web, 'uri', None)
+                                    title = getattr(chunk.web, 'title', None)
+                                    if url:
+                                        grounding_urls.append({'url': url, 'title': title or url})
+                                        logger.debug(f"   📎 {title}: {url}")
+                            if grounding_urls:
+                                logger.info(f"✅ Extracted {len(grounding_urls)} specific source URLs from grounding")
+                
+                # Store grounding URLs for later use (will be injected into Sources field)
+                self._last_grounding_urls = grounding_urls
 
                 return response_text
 
@@ -428,6 +445,16 @@ class GeminiClient:
                 return True
                 
         return False
+    
+    def get_last_grounding_urls(self) -> List[Dict[str, str]]:
+        """
+        Get the grounding URLs from the last API call.
+        
+        Returns:
+            List of dicts with 'url' and 'title' keys from Google Search grounding.
+            These are the ACTUAL source URLs found by Gemini's deep research.
+        """
+        return self._last_grounding_urls.copy()
 
     async def _try_dataforseo_fallback(
         self, 
