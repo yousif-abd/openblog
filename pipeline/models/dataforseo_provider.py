@@ -356,3 +356,4 @@ class DataForSeoProvider:
         
         return "\n\n".join(snippets)
 
+

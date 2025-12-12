@@ -38,8 +38,9 @@ def generate_article_schema(
             return ""
         # Strip HTML first
         cleaned = _strip_html(text)
-        # Remove em dashes (replace with commas)
-        cleaned = cleaned.replace("—", ", ")
+        # Remove em/en dashes (replace with hyphen, not comma - comma corrupts ranges like "25-45%")
+        cleaned = cleaned.replace("—", " - ")  # Em dash
+        cleaned = cleaned.replace("–", "-")     # En dash (for ranges)
         # Remove robotic phrases
         cleaned = cleaned.replace("Here's how ", "")
         cleaned = cleaned.replace("Here's what ", "")

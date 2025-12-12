@@ -378,18 +378,22 @@ class ArticleOutput(BaseModel):
         """
         Fix Issue 2: AUTO-CORRECT em dashes to prevent pipeline failures
         
-        Converts: —, &mdash;, &#8212;, &#x2014; → " - "
-        Em dashes are AI-generated content markers - auto-correct instead of blocking.
+        Converts: —, –, &mdash;, &#8212;, &#x2014; → " - " or "-"
+        Em dashes and en dashes are AI-generated content markers - auto-correct instead of blocking.
         """
         if not v or not isinstance(v, str):
             return v
         
-        # Check for em dash patterns and auto-correct
+        # Check for em dash and en dash patterns and auto-correct
         em_dash_patterns = [
-            ('—', ' - '),           # Direct em dash
-            ('&mdash;', ' - '),     # HTML entity
-            ('&#8212;', ' - '),     # Numeric entity
-            ('&#x2014;', ' - ')     # Hex entity
+            ('—', ' - '),           # Direct em dash (U+2014)
+            ('–', '-'),             # Direct en dash (U+2013) - for ranges like 25–45%
+            ('&mdash;', ' - '),     # HTML entity em dash
+            ('&ndash;', '-'),       # HTML entity en dash
+            ('&#8212;', ' - '),     # Numeric entity em dash
+            ('&#8211;', '-'),       # Numeric entity en dash
+            ('&#x2014;', ' - '),    # Hex entity em dash
+            ('&#x2013;', '-')       # Hex entity en dash
         ]
         
         original = v

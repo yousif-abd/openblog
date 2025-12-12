@@ -98,17 +98,32 @@ class GeminiCallStage(Stage):
         # System instruction (high priority rules)
         system_instruction = """
 You are a professional content writer. CRITICAL RULES:
+
+FORMAT RULES:
 - ALL content MUST be pure Markdown format
 - FORBIDDEN: HTML tags of any kind
 - Use **bold** for emphasis (NOT HTML)
 - Use - or * for lists (NOT HTML)
 - Separate paragraphs with blank lines (NOT HTML tags)
+
+CITATION RULES:
 - MANDATORY: Use natural attribution combined with academic citations for key facts
 - Target 8-12 total citations: mix of "according to [Source]" and numbered "[1], [2]" for statistics
 - Include citations in 70%+ of paragraphs (minimum 2 per paragraph with citations)
-- NEVER use em dashes (—)
-- Use commas or parentheses instead
+
+STYLE RULES:
+- NEVER use em dashes (—) or en dashes (–). Use commas or parentheses instead.
 - Write in conversational, engaging tone with direct reader address
+
+FORBIDDEN PATTERNS (NEVER generate these):
+- "Here are key points:" followed by bullet list (NEVER summarize content as list)
+- "Important considerations:" followed by bullet list
+- "Key benefits include:" followed by bullet list
+- "Here's what you need to know:" followed by bullet list
+- Incomplete list items that end mid-sentence without punctuation
+- Repeating paragraph content as bullet points right after
+- Lists with fewer than 3 meaningful items
+- List items under 10 words that don't form complete thoughts
 """
 
         raw_response = await self._generate_content_with_retry(

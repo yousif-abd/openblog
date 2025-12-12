@@ -157,7 +157,9 @@ class HTMLRenderer:
         schemas_html = ""
         if article_output:
             try:
-                base_url = company_url.rsplit('/', 1)[0] if company_url else None
+                # FIX: Use company_url directly as base_url (rsplit was breaking protocol)
+                # "https://scaile.tech".rsplit('/', 1)[0] was returning "https:" (wrong)
+                base_url = company_url.rstrip('/') if company_url else None
                 # CRITICAL FIX: Pass validated citations to schema generator
                 # Get validated CitationList from article dict (set in stage_10_ai_cleanup)
                 validated_citations = article.get("_validated_citations_list")
@@ -345,6 +347,11 @@ class HTMLRenderer:
     </footer>
 </body>
 </html>"""
+        # FINAL CLEANUP: Remove any remaining em/en dashes that slipped through
+        # This is a safety net for content generated during retry loops
+        html = html.replace('—', ' - ')  # Em dash
+        html = html.replace('–', '-')    # En dash
+        
         return html
 
     @staticmethod
@@ -1317,6 +1324,44 @@ class HTMLRenderer:
         # Replace with single punctuation
         content = re.sub(r'([.,;:!?])\1+', r'\1', content)
         
+        # TYPO CORRECTIONS (common Gemini mistakes)
+        # Fix "applys" → "applies", "applyd" → "applied" (verb conjugation errors)
+        typo_fixes = [
+            (r'\bapplys\b', 'applies'),
+            (r'\bapplyd\b', 'applied'),
+            (r'\banalyzs\b', 'analyzes'),
+            (r'\banalyzd\b', 'analyzed'),
+            (r'\borganizs\b', 'organizes'),
+            (r'\borganizd\b', 'organized'),
+            (r'\bminimizs\b', 'minimizes'),
+            (r'\bminimizd\b', 'minimized'),
+            (r'\bmaximizs\b', 'maximizes'),
+            (r'\bmaximizd\b', 'maximized'),
+            (r'\boptimizs\b', 'optimizes'),
+            (r'\boptimizd\b', 'optimized'),
+            (r'\bsynchronizs\b', 'synchronizes'),
+            (r'\bsynchronizd\b', 'synchronized'),
+            (r'\bprioritizs\b', 'prioritizes'),
+            (r'\bprioritizd\b', 'prioritized'),
+            (r'\bauthorizs\b', 'authorizes'),
+            (r'\bauthorizd\b', 'authorized'),
+            (r'\brecognizs\b', 'recognizes'),
+            (r'\brecognizd\b', 'recognized'),
+            (r'\bspecializs\b', 'specializes'),
+            (r'\bspecializd\b', 'specialized'),
+            (r'\butilizs\b', 'utilizes'),
+            (r'\butilizd\b', 'utilized'),
+        ]
+        for pattern, replacement in typo_fixes:
+            content = re.sub(pattern, replacement, content, flags=re.IGNORECASE)
+        logger.info("📝 Applied typo corrections")
+        
+        # FIX ". Also," pattern (orphaned period before conjunctions)
+        # Matches: ". Also," at paragraph start or after sentence break
+        content = re.sub(r'<p>\s*\.\s*Also,\s*', '<p>Also, ', content, flags=re.IGNORECASE)
+        content = re.sub(r'\.\s*\.\s*Also,', '. Also,', content, flags=re.IGNORECASE)  # Fix double period
+        logger.info("🔧 Fixed orphaned period patterns")
+        
         # Pattern 0a: Fix missing spaces after commas
         # Matches: "flows,capture" → "flows, capture"
         content = re.sub(r'([a-z]),([A-Z])', r'\1, \2', content)
@@ -1457,16 +1502,27 @@ class HTMLRenderer:
             flags=re.IGNORECASE
         )
         
-        # Pattern 2a: Remove standalone list introduction labels
+        # Pattern 2a: Remove standalone list introduction labels (DUPLICATE SUMMARY REMOVAL)
         # Matches: <p>Here are key points:</p> or <p>Key benefits include:</p> followed by list
-        # CONSERVATIVE FIX: Remove ONLY truly robotic list introductions (preserve meaningful content)
+        # These are robotic Gemini patterns that create duplicate content
         list_intro_patterns = [
-            # Only remove completely generic intros that add zero value
-            (r'<p>\s*(?:Key points|Here are the)\s*:?\s*</p>\s*(?=<(?:ul|ol))', ''),
-            (r'<p>\s*(?:Important|Key)\s*:?\s*</p>\s*(?=<(?:ul|ol))', ''),  # Single word labels only
+            # Generic list introductions that add zero value
+            (r'<p>\s*(?:Key points|Here are the|Here are key points)\s*:?\s*</p>\s*(?=<(?:ul|ol))', ''),
+            (r'<p>\s*(?:Important|Key)\s*:?\s*</p>\s*(?=<(?:ul|ol))', ''),
+            # Specific forbidden patterns from system instruction
+            (r'<p>\s*Here are key points\s*:?\s*</p>', ''),
+            (r'<p>\s*Important considerations\s*:?\s*</p>', ''),
+            (r'<p>\s*Key benefits include\s*:?\s*</p>', ''),
+            (r'<p>\s*Here\'?s what you need to know\s*:?\s*</p>', ''),
+            # Also catch inline versions (not followed by list)
+            (r'Here are key points\s*:\s*', ''),
+            (r'Important considerations\s*:\s*', ''),
+            (r'Key benefits include\s*:\s*', ''),
+            (r'Here\'?s what you need to know\s*:\s*', ''),
         ]
         for pattern, replacement in list_intro_patterns:
             content = re.sub(pattern, replacement, content, flags=re.IGNORECASE)
+        logger.info("🗑️ Removed duplicate summary list introductions")
         
         # Pattern 3: Remove plain text labels with only citations (no HTML)
         # Matches: "Security Compliance: [2][3]" on its own line

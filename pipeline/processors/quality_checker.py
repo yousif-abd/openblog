@@ -103,6 +103,11 @@ class QualityChecker:
         report["suggestions"].extend(QualityChecker._check_conversational_phrases(article))
         report["suggestions"].extend(QualityChecker._check_list_count(article))
         report["suggestions"].extend(QualityChecker._check_ai_phrases(article))
+        
+        # Content quality checks (truncated lists, duplicates, typos)
+        report["critical_issues"].extend(QualityChecker._check_truncated_list_items(article))
+        report["suggestions"].extend(QualityChecker._check_duplicate_summaries(article))
+        report["suggestions"].extend(QualityChecker._check_common_typos(article))
 
         # Market awareness now handled through enhanced prompting
         if target_market and market_profile:
@@ -882,6 +887,103 @@ class QualityChecker:
                 f"⚠️  Suggestion: Broken #source-N links found ({link_count} instances) - "
                 f"will be cleaned by Layer 4 regex"
             )
+        
+        return issues
+
+    @staticmethod
+    def _check_truncated_list_items(article: Dict[str, Any]) -> List[str]:
+        """
+        Check for truncated/incomplete list items (CRITICAL).
+        
+        Truncated list items are broken content that should never appear.
+        Examples:
+        - List items under 10 words without punctuation
+        - Items ending mid-sentence
+        - Items with only 1-2 words
+        """
+        issues = []
+        
+        for key in article:
+            value = article.get(key, "")
+            if isinstance(value, str):
+                # Find all list items
+                list_items = re.findall(r'<li>([^<]+)</li>', value)
+                for item in list_items:
+                    item_text = item.strip()
+                    words = item_text.split()
+                    
+                    # Check for truncated items
+                    if len(words) < 3:
+                        issues.append(f"❌ CRITICAL: Truncated list item (too short): '{item_text[:50]}'")
+                    elif len(words) < 8 and not item_text.rstrip().endswith(('.', '!', '?', ':', ';')):
+                        # Short items without proper punctuation
+                        issues.append(f"⚠️  Suggestion: Potentially truncated list item: '{item_text[:50]}'")
+        
+        return issues
+
+    @staticmethod
+    def _check_duplicate_summaries(article: Dict[str, Any]) -> List[str]:
+        """
+        Check for duplicate summary sections (SUGGESTION).
+        
+        Gemini sometimes generates "Here are key points:" followed by bullet lists
+        that duplicate content from preceding paragraphs.
+        """
+        issues = []
+        
+        # Patterns that indicate duplicate summaries
+        summary_patterns = [
+            r'Here are key points\s*:',
+            r'Important considerations\s*:',
+            r'Key benefits include\s*:',
+            r'Here\'?s what you need to know\s*:',
+        ]
+        
+        for key in article:
+            value = article.get(key, "")
+            if isinstance(value, str):
+                for pattern in summary_patterns:
+                    matches = re.findall(pattern, value, re.IGNORECASE)
+                    if matches:
+                        issues.append(
+                            f"⚠️  Suggestion: Duplicate summary pattern found in {key}: '{matches[0]}' - "
+                            f"will be cleaned by html_renderer"
+                        )
+        
+        return issues
+
+    @staticmethod
+    def _check_common_typos(article: Dict[str, Any]) -> List[str]:
+        """
+        Check for common Gemini typos (SUGGESTION).
+        
+        Gemini sometimes makes verb conjugation errors like "applys" instead of "applies".
+        """
+        issues = []
+        
+        # Common typo patterns
+        typo_patterns = [
+            (r'\bapplys\b', 'applys (should be: applies)'),
+            (r'\bapplyd\b', 'applyd (should be: applied)'),
+            (r'\banalyzs\b', 'analyzs (should be: analyzes)'),
+            (r'\borganizs\b', 'organizs (should be: organizes)'),
+            (r'\bminimizs\b', 'minimizs (should be: minimizes)'),
+            (r'\bmaximizs\b', 'maximizs (should be: maximizes)'),
+            (r'\boptimizs\b', 'optimizs (should be: optimizes)'),
+            (r'\bprioritizs\b', 'prioritizs (should be: prioritizes)'),
+            (r'\butilizs\b', 'utilizs (should be: utilizes)'),
+        ]
+        
+        for key in article:
+            value = article.get(key, "")
+            if isinstance(value, str):
+                for pattern, description in typo_patterns:
+                    matches = re.findall(pattern, value, re.IGNORECASE)
+                    if matches:
+                        issues.append(
+                            f"⚠️  Suggestion: Typo found in {key}: {description} - "
+                            f"will be corrected by html_renderer"
+                        )
         
         return issues
 

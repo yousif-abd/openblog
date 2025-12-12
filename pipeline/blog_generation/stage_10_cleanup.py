@@ -342,9 +342,16 @@ class CleanupStage(Stage):
         merged = article.copy() if isinstance(article, dict) else dict(article)
 
         # Add metadata if present
+        # FIX: Handle both Pydantic models and dicts (ArticleMetadata is Pydantic)
         if "metadata" in parallel_results:
             metadata = parallel_results["metadata"]
-            if isinstance(metadata, dict):
+            if hasattr(metadata, 'model_dump'):
+                # Pydantic v2 model - convert to dict
+                merged.update(metadata.model_dump())
+            elif hasattr(metadata, 'dict'):
+                # Pydantic v1 model - convert to dict
+                merged.update(metadata.dict())
+            elif isinstance(metadata, dict):
                 merged.update(metadata)
 
         # Add image
