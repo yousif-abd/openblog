@@ -412,10 +412,16 @@ def render_schemas_as_json_ld(schemas: List[Dict]) -> str:
 
 
 def _strip_html(text: str) -> str:
-    """Remove HTML tags from text."""
+    """Remove HTML tags and markdown from text for clean schema output."""
     if not text:
         return ""
-    return re.sub(r"<[^>]+>", "", text).strip()
+    # First, convert markdown to plain text (for schema, we want clean text)
+    text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)  # Remove **bold** markers
+    text = re.sub(r'\*([^*]+)\*', r'\1', text)  # Remove *italic* markers
+    text = re.sub(r'\[\d+\]', '', text)  # Remove [N] citations
+    # Then remove HTML tags
+    text = re.sub(r"<[^>]+>", "", text)
+    return text.strip()
 
 
 def _get_all_section_content(output: ArticleOutput) -> str:

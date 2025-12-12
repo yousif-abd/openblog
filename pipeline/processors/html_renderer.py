@@ -513,8 +513,10 @@ class HTMLRenderer:
             q = item.get("question", "")
             a = item.get("answer", "")
             if q and a:
+                # Apply cleanup to answer (convert **bold**, strip [N], etc.)
+                a_clean = HTMLRenderer._cleanup_content(a)
                 items_html.append(
-                    f'<div class="faq-item"><h3>{HTMLRenderer._escape_html(q)}</h3><p>{a}</p></div>'
+                    f'<div class="faq-item"><h3>{HTMLRenderer._escape_html(q)}</h3><p>{a_clean}</p></div>'
                 )
 
         if not items_html:
@@ -536,8 +538,10 @@ class HTMLRenderer:
             q = item.get("question", "")
             a = item.get("answer", "")
             if q and a:
+                # Apply cleanup to answer (convert **bold**, strip [N], etc.)
+                a_clean = HTMLRenderer._cleanup_content(a)
                 items_html.append(
-                    f'<div class="paa-item"><h3>{HTMLRenderer._escape_html(q)}</h3><p>{a}</p></div>'
+                    f'<div class="paa-item"><h3>{HTMLRenderer._escape_html(q)}</h3><p>{a_clean}</p></div>'
                 )
 
         if not items_html:
@@ -1140,6 +1144,40 @@ class HTMLRenderer:
         content = re.sub(r'\*\*([^*]+)\*\*', r'<strong>\1</strong>', content)  # **bold** -> <strong>
         content = re.sub(r'\*([^*]+)\*', r'<em>\1</em>', content)  # *italic* -> <em>
         logger.info("📝 Converted markdown **bold** and *italic* to HTML")
+        
+        # STEP 0.3: FIX MALFORMED PUNCTUATION PATTERNS
+        # Fix ". - " (period before bullet point) → just ". " (treat as new sentence)
+        content = re.sub(r'\.\s*-\s+([A-Z])', r'. \1', content)  # ". - Word" → ". Word"
+        content = re.sub(r':\s*\n\s*-\s+', r':\n\n- ', content)  # Fix spacing after colons
+        # Fix truncated list items ending with prepositions
+        content = re.sub(r'<li>([^<]*\b(?:to|of|the|and|with|for|in|on|at|from|a|an))\s*</li>', '', content)
+        logger.info("🔧 Fixed malformed punctuation patterns")
+        
+        # STEP 0.4: REMOVE DUPLICATE CONTENT BLOCKS
+        # Gemini sometimes outputs the same paragraph/list item twice
+        # Find and remove exact duplicate paragraphs
+        paragraphs = re.findall(r'<p>([^<]{50,})</p>', content)  # Only check paragraphs > 50 chars
+        seen = set()
+        for p in paragraphs:
+            p_normalized = ' '.join(p.split())  # Normalize whitespace
+            if p_normalized in seen:
+                # Remove duplicate (keep first occurrence)
+                content = content.replace(f'<p>{p}</p>', '', 1)  # Remove only one occurrence
+                logger.warning(f"🗑️ Removed duplicate paragraph: {p[:50]}...")
+            else:
+                seen.add(p_normalized)
+        
+        # Also check for duplicate list items
+        list_items = re.findall(r'<li>([^<]{30,})</li>', content)
+        seen_items = set()
+        for item in list_items:
+            item_normalized = ' '.join(item.split())
+            if item_normalized in seen_items:
+                content = content.replace(f'<li>{item}</li>', '', 1)
+                logger.warning(f"🗑️ Removed duplicate list item: {item[:40]}...")
+            else:
+                seen_items.add(item_normalized)
+        logger.info("🧹 Checked and removed duplicate content blocks")
         
         # STEP 0.1: PRESERVE LIST CONTENT BUT REMOVE ONLY TRULY EMPTY ITEMS
         # After removing citations, only remove list items that are completely empty
