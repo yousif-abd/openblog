@@ -450,7 +450,8 @@ class HTMLRenderer:
             if title and title.strip():
                 # Strip any <p> tags from title before escaping
                 title_clean = HTMLRenderer._strip_html(title)
-                parts.append(f"<h2>{HTMLRenderer._escape_html(title_clean)}</h2>")
+                # Add id for TOC anchor linking (toc_01, toc_02, etc.)
+                parts.append(f'<h2 id="toc_{i:02d}">{HTMLRenderer._escape_html(title_clean)}</h2>')
 
             if content and content.strip():
                 # First clean up useless patterns
@@ -1133,6 +1134,12 @@ class HTMLRenderer:
         content = re.sub(r'<a[^>]*href=["\']#source-\d+["\'][^>]*>\s*\[\d+\]\s*</a>', '', content)  # Linked [N]
         content = re.sub(r'\[\d+\]', '', content)  # Standalone [N]
         logger.info("🚫 Stripped all [N] academic citations (enforcing inline-only style)")
+        
+        # STEP 0.2: CONVERT MARKDOWN TO HTML
+        # Gemini outputs **bold** and *italic* - convert to proper HTML
+        content = re.sub(r'\*\*([^*]+)\*\*', r'<strong>\1</strong>', content)  # **bold** -> <strong>
+        content = re.sub(r'\*([^*]+)\*', r'<em>\1</em>', content)  # *italic* -> <em>
+        logger.info("📝 Converted markdown **bold** and *italic* to HTML")
         
         # STEP 0.1: PRESERVE LIST CONTENT BUT REMOVE ONLY TRULY EMPTY ITEMS
         # After removing citations, only remove list items that are completely empty
