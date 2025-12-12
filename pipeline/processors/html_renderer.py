@@ -151,9 +151,14 @@ class HTMLRenderer:
             # Try to reconstruct from flattened keys (toc_01, toc_02, etc.)
             toc = {}
             for i in range(1, 10):
-                key = f"toc_{i:02d}"
-                if key in article and article[key]:
-                    toc[key] = article[key]
+                # Try new format first (toc_01), then old format (toc_toc_01)
+                key_new = f"toc_{i:02d}"
+                key_old = f"toc_toc_{i:02d}"
+                if key_new in article and article[key_new]:
+                    toc[key_new] = article[key_new]
+                elif key_old in article and article[key_old]:
+                    # Backward compatibility for old toc_toc_XX format
+                    toc[key_new] = article[key_old]
         # Use passed faq_items if provided, otherwise extract from article
         if faq_items is None:
             faq_items = article.get("faq_items", [])
