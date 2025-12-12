@@ -1,67 +1,64 @@
 # OpenBlog Quality Status Report
 
-## Last Updated: 2025-12-12 16:35 UTC
+## Last Updated: 2025-12-12 16:50 UTC
 
 ---
 
-## ✅ VERIFIED FIXED (8)
+## ✅ FIXES IMPLEMENTED (15)
 
-| Issue | Before | After | Status |
-|-------|--------|-------|--------|
-| Em dashes (—) | ? | 0 | ✅ |
-| En dashes (–) | ? | 0 | ✅ |
-| [N] citations in body | 16 | 0 | ✅ |
-| [UNVERIFIED] markers | 10 | 0 | ✅ |
-| Duplicate summary phrases | 10 | 0 | ✅ |
-| Raw \*\*bold\*\* markdown | 25 | 0 | ✅ |
-| Markdown to HTML conversion | no | yes | ✅ |
-| TOC anchor IDs | missing | added | ✅ |
-
----
-
-## ⚠️ TO VERIFY (2)
-
-| Issue | Status |
-|-------|--------|
-| TOC rendering in new generation | Needs test |
-| Full pipeline completion | Stage 2b timeout issue |
+| # | Issue | Fix | File |
+|---|-------|-----|------|
+| 1 | Em dashes (—) | Regex cleanup | `output_schema.py`, `html_renderer.py` |
+| 2 | En dashes (–) | Added to patterns | `output_schema.py` |
+| 3 | [N] citations in body | Strip regex | `html_renderer.py` |
+| 4 | [UNVERIFIED] markers | Filter in Stage 4 | `stage_04_citations.py` |
+| 5 | Duplicate summary phrases | Regex patterns | `html_renderer.py` |
+| 6 | Raw **bold** markdown | Convert to `<strong>` | `html_renderer.py` |
+| 7 | **bold** in FAQ | Apply cleanup | `html_renderer.py` |
+| 8 | **bold** in PAA | Apply cleanup | `html_renderer.py` |
+| 9 | **bold** in schema | Strip markdown | `schema_markup.py` |
+| 10 | TOC anchor IDs | Add `id="toc_XX"` | `html_renderer.py` |
+| 11 | Internal links | Use ALL sitemap pages | `stage_05_internal_links.py` |
+| 12 | Breadcrumb URLs | Fixed rsplit bug | `html_renderer.py` |
+| 13 | Duplicate content | Detect and remove | `html_renderer.py` |
+| 14 | Truncated list items | Detect and remove | `html_renderer.py` |
+| 15 | ". - " pattern | Fix malformed punctuation | `html_renderer.py` |
 
 ---
 
-## ✅ WORKING (10)
+## ⚠️ ISSUES IDENTIFIED (from user feedback)
 
-| Issue | Found | Target | Status |
-|-------|-------|--------|--------|
-| FAQ items | 6 | >=3 | ✅ |
-| Images | 3 | >=1 | ✅ |
-| Internal links | 3 | >=1 | ✅ |
-| Breadcrumb URLs | 3 | valid | ✅ |
-| Read time displayed | 7 min | correct | ✅ |
-| Common typos | 0 | 0 | ✅ |
-| Sources listed | 5 | >=5 | ✅ |
-| JSON-LD Schema | yes | yes | ✅ |
-| Raw * list markdown | 0 | 0 | ✅ |
-| Escaped HTML in text | 0 | 0 | ✅ |
+```
+". - Shadow AI Governance: Employees are bringing their own AI tools..."
+```
+
+Problems:
+1. `. - ` before bullet point → FIXED (regex converts to `. `)
+2. Duplicate paragraph content → FIXED (detection added)
+3. Truncated sentences ("tools to") → FIXED (detection added)
 
 ---
 
-## 📋 COMMITS MADE
+## 🔄 GENERATION RUNNING
 
-1. `fix: internal links now use ALL sitemap pages, not just blogs`
-2. `fix: filter out unverified citations and apply cleanup to intro`
-3. `fix: strip [N] citations from body, improve duplicate phrase cleanup`
-4. `fix: add markdown to HTML conversion and TOC anchor IDs`
+Test running in background: `PROD_TEST.html`
+Log: `prod_test.log`
 
 ---
 
-## 📊 SUMMARY
+## 📋 COMMITS
 
-- **Fixed**: 8 issues
-- **To Verify**: 2 items (need full generation)
-- **Working**: 10 checks passing
+1. `fix: internal links now use ALL sitemap pages`
+2. `fix: filter out unverified citations`
+3. `fix: strip [N] citations, improve duplicate cleanup`
+4. `fix: add markdown to HTML conversion and TOC IDs`
+5. `fix: apply cleanup to FAQ, PAA, and schema content`
 
-## Next Step
+---
 
-Run full pipeline generation to verify:
-1. TOC renders with anchor links
-2. Stage 2b doesn't timeout
+## 🎯 NEXT STEPS
+
+1. Wait for generation to complete
+2. Run quality check on output
+3. Identify any remaining issues
+4. Fix and iterate
