@@ -442,8 +442,67 @@ def link_natural_citations(content: str, citation_map: Dict[str, str],
     Returns:
         Content with linked citations
     """
+    # STEP 1: Convert <strong>SOURCE</strong> to links where SOURCE matches a known source
+    # Gemini often wraps source names in <strong> tags
+    content = convert_strong_tags_to_links(content, citation_map)
+    
+    # STEP 2: Apply natural language pattern matching for any remaining citations
     linker = CitationLinker(citation_map, max_links_per_source)
     return linker.link_citations(content)
+
+
+def convert_strong_tags_to_links(content: str, citation_map: Dict[str, str]) -> str:
+    """
+    Convert <strong>SOURCE_NAME</strong> patterns to <a href="...">SOURCE_NAME</a>.
+    
+    Gemini often outputs: "According to the <strong>IBM Cost of Data Breach Report</strong>"
+    This converts to: "According to the <a href="...">IBM Cost of Data Breach Report</a>"
+    
+    Args:
+        content: HTML content with <strong> tags
+        citation_map: Dict mapping source names to URLs
+        
+    Returns:
+        Content with <strong> tags converted to links where source matches
+    """
+    if not content or not citation_map:
+        return content
+    
+    # Build a list of source names sorted by length (longest first to avoid partial matches)
+    source_names = sorted(citation_map.keys(), key=len, reverse=True)
+    
+    links_added = 0
+    source_link_counts: Dict[str, int] = {}
+    
+    for source_name in source_names:
+        url = citation_map.get(source_name)
+        if not url:
+            continue
+        
+        # Pattern: <strong>...SOURCE_NAME...</strong>
+        # Match <strong> tags that contain the source name
+        pattern = rf'<strong>([^<]*{re.escape(source_name)}[^<]*)</strong>'
+        
+        def replace_strong_with_link(match):
+            nonlocal links_added
+            full_text = match.group(1)
+            
+            # Check if we've already linked this source enough times
+            if source_link_counts.get(source_name, 0) >= 2:
+                return match.group(0)  # Keep original <strong> tag
+            
+            source_link_counts[source_name] = source_link_counts.get(source_name, 0) + 1
+            links_added += 1
+            
+            # Replace with link
+            return f'<a href="{url}" target="_blank" rel="noopener noreferrer" class="citation">{full_text}</a>'
+        
+        content = re.sub(pattern, replace_strong_with_link, content, flags=re.IGNORECASE)
+    
+    if links_added > 0:
+        logger.info(f"📎 Converted {links_added} <strong> tags to citation links")
+    
+    return content
 
 
 def link_internal_articles(content: str, internal_links: List[Dict[str, str]], 

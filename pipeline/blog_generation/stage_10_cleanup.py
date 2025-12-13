@@ -400,6 +400,11 @@ class CleanupStage(Stage):
         if "validated_source_name_map" in parallel_results:
             merged["validated_source_name_map"] = parallel_results["validated_source_name_map"]
         
+        # Add source_name_map from Stage 2 grounding (for natural language citation linking)
+        if "source_name_map_from_grounding" in parallel_results:
+            merged["_source_name_map"] = parallel_results["source_name_map_from_grounding"]
+            logger.info(f"📎 Using source_name_map from grounding: {list(merged['_source_name_map'].keys())}")
+        
         # Add internal links list for in-body linking to related blog posts
         if "internal_links_list" in parallel_results:
             merged["internal_links_list"] = parallel_results["internal_links_list"]

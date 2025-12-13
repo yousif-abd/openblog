@@ -26,7 +26,7 @@ Combined with tools = deep research happens naturally.
 
 import logging
 import json
-from typing import Dict, Any
+from typing import Dict, Any, List
 from pathlib import Path
 from datetime import datetime
 
@@ -225,14 +225,14 @@ Additional rules:
             logger.info(f"✅ JSON parsing successful")
             logger.info(f"   Top-level keys: {', '.join(list(json_data.keys())[:5])}...")
             
-            # NOTE: Inline link insertion via groundingSupports is DISABLED
-            # It was causing sentence fragmentation. Instead:
-            # - External links: Handled by natural language citations ("According to IBM...")
-            # - Stage 2b: Fixes any quality issues and can add proper source links
-            # - Stage 4: Validates and enhances citations with grounding URLs
-            # 
-            # The grounding_urls are still stored in context for Stage 4 to use
+            # Build source_name_map from grounding URLs for natural language linking
+            # This enables "According to IBM" → <a>IBM</a> in html_renderer
             if context.grounding_urls:
+                source_name_map = self._build_source_name_map(context.grounding_urls)
+                if source_name_map:
+                    # Store for html_renderer to use during natural citation linking
+                    context.parallel_results["source_name_map_from_grounding"] = source_name_map
+                    logger.info(f"📎 Built source_name_map with {len(source_name_map)} source names: {list(source_name_map.keys())[:5]}...")
                 logger.info(f"📎 Stored {len(context.grounding_urls)} grounding URLs for Stage 4 citation enhancement")
             
         except Exception as e:
@@ -240,6 +240,66 @@ Additional rules:
             logger.warning("   This may cause issues in Stage 3 (Extraction)")
 
         return context
+
+    def _build_source_name_map(self, grounding_urls: List[Dict[str, str]]) -> Dict[str, str]:
+        """
+        Build source_name_map from grounding URLs for natural language linking.
+        
+        Maps source names (IBM, Gartner, Forrester) to their URLs so that
+        natural mentions like "According to IBM" can become <a>IBM</a>.
+        
+        Args:
+            grounding_urls: List of {url, title, domain} dicts from grounding metadata
+            
+        Returns:
+            Dict mapping source names to URLs
+        """
+        source_name_map = {}
+        
+        # Known authoritative sources with their name variations
+        known_sources = [
+            ("IBM", ["ibm.com", "ibm"]),
+            ("Gartner", ["gartner.com", "gartner"]),
+            ("Forrester", ["forrester.com", "forrester"]),
+            ("McKinsey", ["mckinsey.com", "mckinsey"]),
+            ("Deloitte", ["deloitte.com", "deloitte"]),
+            ("Accenture", ["accenture.com", "accenture"]),
+            ("NIST", ["nist.gov", "nist"]),
+            ("OWASP", ["owasp.org", "owasp"]),
+            ("Google", ["cloud.google.com", "google.com"]),
+            ("Microsoft", ["microsoft.com", "azure.microsoft.com"]),
+            ("AWS", ["aws.amazon.com", "amazon.com/aws"]),
+            ("Cisco", ["cisco.com", "cisco"]),
+            ("Palo Alto", ["paloaltonetworks.com", "palo alto"]),
+            ("CrowdStrike", ["crowdstrike.com", "crowdstrike"]),
+            ("Splunk", ["splunk.com", "splunk"]),
+        ]
+        
+        for source in grounding_urls:
+            url = source.get('url', '')
+            domain = source.get('domain', '').lower()
+            title = source.get('title', '')
+            
+            if not url:
+                continue
+            
+            # Match against known sources
+            for source_name, patterns in known_sources:
+                for pattern in patterns:
+                    if pattern in domain or pattern in url.lower():
+                        if source_name not in source_name_map:
+                            source_name_map[source_name] = url
+                        break
+            
+            # Also extract from title (e.g., "IBM Cost of Data Breach Report")
+            title_lower = title.lower()
+            for source_name, patterns in known_sources:
+                if source_name.lower() in title_lower:
+                    if source_name not in source_name_map:
+                        source_name_map[source_name] = url
+                    break
+        
+        return source_name_map
 
     def _validate_response(self, response: str) -> None:
         """
