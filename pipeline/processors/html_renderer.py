@@ -345,6 +345,12 @@ class HTMLRenderer:
         .more-links li {{ margin: 10px 0; }}
         .more-links a {{ color: var(--primary); text-decoration: none; }}
 
+        /* Section-specific internal links (1Komma5 style) */
+        .section-related {{ margin: 15px 0 30px; padding: 10px 15px; background: var(--bg-light); border-radius: 6px; font-size: 0.9em; }}
+        .section-related span {{ color: var(--text-light); margin-right: 8px; }}
+        .section-related a {{ color: var(--primary); text-decoration: none; }}
+        .section-related a:hover {{ text-decoration: underline; }}
+
         footer {{ border-top: 1px solid var(--border); margin-top: 60px; padding: 40px 0; color: var(--text-light); font-size: 0.9em; }}
         footer a {{ color: var(--primary); }}
 
@@ -592,29 +598,18 @@ class HTMLRenderer:
                     logger.debug(f"Using citation_map with {len(citation_map)} entries for section {i}")
                 content_with_links = HTMLRenderer._linkify_citations(content_linked, citation_map, url_link_count)
                 
-                # STEP 5: Add internal links to related blog posts
-                internal_links_data = article.get("internal_links_list") or article.get("_internal_links_list")
-                if internal_links_data and i <= 5:  # Only add to first 5 sections
-                    # Convert InternalLinkList object to list of dicts if needed
-                    if hasattr(internal_links_data, 'links'):
-                        # It's an InternalLinkList object
-                        internal_links_list = [
-                            {'url': link.url, 'title': link.title}
-                            for link in internal_links_data.links[:10]
-                        ]
-                    elif isinstance(internal_links_data, list):
-                        internal_links_list = internal_links_data
-                    else:
-                        internal_links_list = []
-                    
-                    if internal_links_list:
-                        content_with_links = link_internal_articles(
-                            content_with_links,
-                            internal_links_list,
-                            max_links=1  # Max 1 per section to avoid over-linking
-                        )
-                
                 parts.append(content_with_links)
+                
+                # STEP 5: Add internal links BELOW section (1Komma5 style)
+                # Links are placed in a "Related" block after each section, not embedded in text
+                section_internal_links = article.get("_section_internal_links", {})
+                section_links = section_internal_links.get(i, [])
+                if section_links:
+                    links_html = ' • '.join([
+                        f'<a href="{HTMLRenderer._escape_attr(link["url"])}">{HTMLRenderer._escape_html(link["title"])}</a>'
+                        for link in section_links[:2]  # Max 2 per section
+                    ])
+                    parts.append(f'<aside class="section-related"><span>Related:</span> {links_html}</aside>')
             
             # Inject first comparison table after section 2
             if i == 2 and tables and len(tables) >= 1:

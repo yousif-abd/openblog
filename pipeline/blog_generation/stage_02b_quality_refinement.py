@@ -265,6 +265,35 @@ class QualityRefinementStage(Stage):
             content = re.sub(r'^<p>\.\s*', '<p>', content)
             content = re.sub(r'<p>\.\s*Also,', '<p>Also,', content)
             
+            # 9. Fix brand capitalization (deterministic replacements)
+            brand_fixes = [
+                (r'\biBM\b', 'IBM'),
+                (r'\bnIST\b', 'NIST'),
+                (r'\bmCKinsey\b', 'McKinsey'),
+                (r'\bgARTNER\b', 'Gartner'),
+                (r'\bgartner\b', 'Gartner'),  # When at start of sentence (after period)
+                (r'\bfORRESTER\b', 'Forrester'),
+                (r'\bdELOITTE\b', 'Deloitte'),
+                (r'\baCCENTURE\b', 'Accenture'),
+                (r'\bgOOGLE\b', 'Google'),
+                (r'\bmICROSOFT\b', 'Microsoft'),
+                (r'\baMAZON\b', 'Amazon'),
+                (r'\baWS\b', 'AWS'),
+            ]
+            for pattern, replacement in brand_fixes:
+                content = re.sub(pattern, replacement, content)
+            
+            # 10. Fix single-item fragment lists (orphaned list items)
+            # Pattern: <ul><li>short text without punctuation</li></ul>
+            content = re.sub(
+                r'<ul>\s*<li>([^<]{1,50})</li>\s*</ul>',
+                lambda m: '' if not m.group(1).strip().endswith(('.', '!', '?', ':')) else m.group(0),
+                content
+            )
+            
+            # 11. Fix </p><ul><li> pattern (orphaned list after paragraph)
+            content = re.sub(r'</p>\s*<ul>\s*<li>([^<]{1,80})</li>\s*</ul>', '</p>', content)
+            
             if content != original:
                 article_dict[field] = content
                 changes_made += 1
@@ -300,32 +329,55 @@ class QualityRefinementStage(Stage):
             issues_fixed: int = Field(description="Number of issues fixed")
             fixes: List[ContentFix] = Field(default_factory=list)
         
-        # Full quality checklist
+        # Full quality checklist - SUPERCHARGED for production
         CHECKLIST = """
-You are a quality editor reviewing article content. Check for ALL issues:
+You are an expert quality editor. Your job is to find and fix ALL issues.
+Be SURGICAL - only change what's broken, preserve everything else.
 
-STRUCTURAL ISSUES:
-□ Truncated list items (end mid-word: "secur", "autom", "manag")
-□ Duplicate summary lists ("Here are key points:" followed by bullets repeating content)
-□ Orphaned HTML tags (</p> or </li> in wrong places)
-□ Malformed paragraphs starting with period (<p>. Also,)
-□ Empty or near-empty list items
+=== STRUCTURAL ISSUES (CRITICAL) ===
+□ Truncated list items ending mid-word ("secur", "autom", "manag")
+□ Fragment lists - single-item lists that are clearly part of a sentence
+□ Duplicate summary lists ("Here are key points:" repeating paragraph content)
+□ Orphaned HTML tags (</p>, </li>, </ul> in wrong places)
+□ Malformed HTML nesting (<ul> inside <p>, </p> inside <li>)
+□ Empty or near-empty paragraphs (<p>This </p>, <p>. Also,</p>)
+□ Broken sentences split across multiple <p> tags
+□ Lists where most items lack proper sentence structure
 
-FORMATTING ISSUES:
-□ Em dashes (—) → replace with " - "
+=== CAPITALIZATION ISSUES ===
+□ Wrong capitalization of brands: "iBM" → "IBM", "nIST" → "NIST", "mCKinsey" → "McKinsey"
+□ Lowercase after period: "sentence. the next" → "sentence. The next"
+□ All-caps words that shouldn't be: "THE BEST" → "the best"
+
+=== AI MARKER ISSUES ===
+□ Em dashes (—) → replace with " - " or comma
 □ En dashes (–) → replace with "-"
-□ Academic citations [N] → remove entirely
-□ Bold keywords that shouldn't be bold → unbold
-□ Lowercase after period → capitalize
+□ Academic citations [N], [1][2] → remove entirely
+□ Robotic phrases: "delve into", "crucial to note", "it's important to understand"
+□ "Here's how/what" introductions → rewrite naturally
+□ "Key points include:" followed by redundant list
 
-CONTENT ISSUES:
-□ Incomplete sentences ending abruptly
-□ "What is Why is" double prefixes → fix
-□ Repeated/redundant content
-□ Awkward AI phrasing ("delve into", "crucial to note")
+=== CONTENT QUALITY ISSUES ===
+□ Incomplete sentences ending abruptly without punctuation
+□ Double prefixes: "What is Why is X" → "Why is X"
+□ Repeated/redundant content in same section
+□ Sentences that don't make sense or are grammatically broken
+□ Missing verbs or subjects in sentences
+□ Orphaned conjunctions at start: ". Also, the" → ". The"
 
-Fix ALL issues. Be surgical - only change what's broken.
-Return the complete fixed content.
+=== LINK ISSUES ===
+□ Broken link insertions causing sentence fragmentation
+□ Links with wrong text (domain name instead of title)
+□ External links splitting sentences
+
+=== YOUR TASK ===
+1. Read the content carefully
+2. Find ALL issues matching the checklist above
+3. ALSO find any OTHER issues you notice (typos, grammar, awkward phrasing)
+4. Fix each issue surgically
+5. Return the complete fixed content
+
+Be thorough. Production quality means ZERO defects.
 """
         
         data = context.structured_data

@@ -98,14 +98,22 @@ class InternalLinksStage(Stage):
         for link in link_list.links:
             logger.debug(f"   {link.url} (relevance={link.relevance})")
 
-        # Format as HTML
+        # Format as HTML (for "More on this topic" section at bottom)
         internal_links_html = link_list.to_html()
         logger.info(f"   HTML size: {len(internal_links_html)} chars")
+
+        # NEW: Assign 1-2 links per section based on topic matching (1Komma5 style)
+        section_internal_links = self._assign_links_per_section(
+            context.structured_data, 
+            link_list
+        )
+        logger.info(f"📎 Assigned internal links to {len([s for s in section_internal_links.values() if s])} sections")
 
         # Store in context
         context.parallel_results["internal_links_html"] = internal_links_html
         context.parallel_results["internal_links_count"] = link_list.count()
         context.parallel_results["internal_links_list"] = link_list
+        context.parallel_results["section_internal_links"] = section_internal_links  # NEW
 
         return context
 
@@ -146,6 +154,88 @@ class InternalLinksStage(Stage):
 
         logger.debug(f"Extracted topics: {topics}")
         return topics
+
+    def _assign_links_per_section(
+        self, 
+        article, 
+        link_list: InternalLinkList
+    ) -> Dict[int, List[Dict[str, str]]]:
+        """
+        Assign 1-2 internal links per section based on topic matching.
+        
+        1Komma5 style: Links are placed BELOW each section, not embedded in text.
+        This is easier to maintain and has the same SEO power.
+        
+        Args:
+            article: ArticleOutput instance with section titles
+            link_list: InternalLinkList with all available internal links
+            
+        Returns:
+            Dict mapping section number (1-9) to list of link dicts {url, title}
+        """
+        section_links: Dict[int, List[Dict[str, str]]] = {}
+        
+        if not link_list or link_list.count() == 0:
+            return section_links
+        
+        # Get all available links as list of dicts
+        available_links = [
+            {'url': link.url, 'title': link.title, 'relevance': link.relevance}
+            for link in link_list.links
+        ]
+        
+        # Track used links to avoid duplicates across sections
+        used_urls = set()
+        
+        # Section titles for matching
+        section_titles = [
+            (1, getattr(article, 'section_01_title', '') or ''),
+            (2, getattr(article, 'section_02_title', '') or ''),
+            (3, getattr(article, 'section_03_title', '') or ''),
+            (4, getattr(article, 'section_04_title', '') or ''),
+            (5, getattr(article, 'section_05_title', '') or ''),
+            (6, getattr(article, 'section_06_title', '') or ''),
+            (7, getattr(article, 'section_07_title', '') or ''),
+            (8, getattr(article, 'section_08_title', '') or ''),
+            (9, getattr(article, 'section_09_title', '') or ''),
+        ]
+        
+        for section_num, section_title in section_titles:
+            if not section_title.strip():
+                continue
+            
+            # Find best matching links for this section
+            section_matches = []
+            for link in available_links:
+                if link['url'] in used_urls:
+                    continue
+                
+                # Calculate relevance to this specific section
+                relevance = self._calculate_relevance(
+                    link['title'] + ' ' + link['url'], 
+                    [section_title]
+                )
+                if relevance >= 2:  # Minimum threshold
+                    section_matches.append({
+                        'url': link['url'],
+                        'title': link['title'],
+                        'score': relevance
+                    })
+            
+            # Sort by score and take top 2
+            section_matches.sort(key=lambda x: x['score'], reverse=True)
+            top_matches = section_matches[:2]
+            
+            if top_matches:
+                section_links[section_num] = [
+                    {'url': m['url'], 'title': m['title']} 
+                    for m in top_matches
+                ]
+                # Mark as used
+                for m in top_matches:
+                    used_urls.add(m['url'])
+        
+        return section_links
 
     async def _generate_suggestions(
         self, topics: List[str], context: ExecutionContext

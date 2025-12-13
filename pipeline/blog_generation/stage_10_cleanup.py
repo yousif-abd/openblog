@@ -403,6 +403,10 @@ class CleanupStage(Stage):
         # Add internal links list for in-body linking to related blog posts
         if "internal_links_list" in parallel_results:
             merged["internal_links_list"] = parallel_results["internal_links_list"]
+        
+        # Add section-specific internal links (1Komma5 style - below each section)
+        if "section_internal_links" in parallel_results:
+            merged["_section_internal_links"] = parallel_results["section_internal_links"]
 
         logger.info(
             f"Merged {len(parallel_results)} parallel results into article "

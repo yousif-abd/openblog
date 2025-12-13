@@ -225,14 +225,15 @@ Additional rules:
             logger.info(f"✅ JSON parsing successful")
             logger.info(f"   Top-level keys: {', '.join(list(json_data.keys())[:5])}...")
             
-            # OPTION B: Insert inline HTML links using groundingSupports metadata
-            # This happens BEFORE Stage 2b so 2b can review/fix any issues
+            # NOTE: Inline link insertion via groundingSupports is DISABLED
+            # It was causing sentence fragmentation. Instead:
+            # - External links: Handled by natural language citations ("According to IBM...")
+            # - Stage 2b: Fixes any quality issues and can add proper source links
+            # - Stage 4: Validates and enhances citations with grounding URLs
+            # 
+            # The grounding_urls are still stored in context for Stage 4 to use
             if context.grounding_urls:
-                logger.info("📎 Inserting inline links via groundingSupports (Option B)...")
-                json_data = self.client.insert_inline_links_in_json(json_data)
-                # Re-serialize to JSON string with links inserted
-                context.raw_article = json.dumps(json_data, ensure_ascii=False)
-                logger.info("✅ Updated raw_article with inline source links")
+                logger.info(f"📎 Stored {len(context.grounding_urls)} grounding URLs for Stage 4 citation enhancement")
             
         except Exception as e:
             logger.warning(f"⚠️  Could not parse JSON from response: {e}")
