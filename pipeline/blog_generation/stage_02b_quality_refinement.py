@@ -709,7 +709,7 @@ Be GENEROUS - add 2-3 citations, 2-3 conversational phrases, and 1-2 question pa
                     article_dict[field] = response.strip()
                     optimized_count += 1
                     logger.info(f"   ✅ Optimized {field} (had {section_citations} citations, {section_phrases} phrases)")
-        except Exception as e:
+            except Exception as e:
                 logger.debug(f"   ⚠️ {field}: AEO optimization failed - {e}")
         
         # Optimize Direct Answer if needed (CRITICAL - worth 25 points!)
