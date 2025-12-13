@@ -189,6 +189,12 @@ class QualityRefinementStage(Stage):
         logger.info("🤖 Step 2: Gemini quality review (MANDATORY)...")
         context = await self._gemini_full_review(context)
         
+        # ============================================================
+        # STEP 3: AEO OPTIMIZATION (boost score to 95+)
+        # ============================================================
+        logger.info("🚀 Step 3: AEO optimization (target: score 95+)...")
+        context = await self._optimize_aeo_components(context)
+        
         # Log any remaining issues (for transparency)
         remaining_issues = self._detect_quality_issues(context)
         if remaining_issues:
@@ -419,14 +425,27 @@ Be SURGICAL - only change what's broken, preserve everything else.
 □ Trailing citations: "sentence. [2]" → "sentence."
 □ Sentence fragments: "those that integrate AI deeply - expect" → complete sentence
 
+=== AEO OPTIMIZATION (CRITICAL FOR SCORE 95+) ===
+□ Citation distribution: Ensure 40%+ paragraphs have natural language citations
+  - If a paragraph lacks citations, add: "According to [Source]..." or "[Source] reports..."
+  - Target: 12-15 citations across the article
+□ Conversational phrases: Ensure 8+ instances of phrases like:
+  - "you can", "you'll", "here's", "let's", "this is", "when you", "if you"
+  - Add these naturally if missing (don't force them)
+□ Question patterns: Ensure 5+ question patterns ("what is", "how does", "why does", etc.)
+  - Add rhetorical questions naturally if missing
+□ Direct statements: Use direct language ("is", "are", "does") not vague ("might be", "could be")
+  - Replace vague language with direct statements where appropriate
+
 === YOUR TASK ===
 1. Read the content carefully
-2. Find ALL issues matching the checklist above
+2. Find ALL issues matching the checklist above (structural, capitalization, AI markers, content quality, AEO)
 3. ALSO find any OTHER issues you notice (typos, grammar, awkward phrasing)
 4. Fix each issue surgically - complete broken sentences, remove duplicates, fix grammar
-5. Return the complete fixed content
+5. ENHANCE AEO components - add citations, conversational phrases, question patterns where missing
+6. Return the complete fixed content
 
-Be thorough. Production quality means ZERO defects.
+Be thorough. Production quality means ZERO defects AND AEO score 95+.
 """
         
         data = context.structured_data
@@ -500,6 +519,159 @@ If no issues, return original content unchanged with issues_fixed=0.
             context.structured_data = ArticleOutput(**article_dict)
         else:
             logger.info("   ℹ️ Gemini review: no additional issues found")
+        
+        return context
+    
+    async def _optimize_aeo_components(self, context: ExecutionContext) -> ExecutionContext:
+        """
+        Optimize AEO components to boost score to 95+.
+        
+        Checks and fixes:
+        - Citation distribution (40%+ paragraphs have citations)
+        - Conversational phrases (8+ instances)
+        - Question patterns (5+ instances)
+        - Direct Answer quality (length, keyword, citation)
+        """
+        from ..models.gemini_client import GeminiClient
+        import json
+        
+        data = context.structured_data
+        if not data:
+            return context
+        
+        article_dict = data.dict() if hasattr(data, 'dict') else dict(data)
+        
+        # Check AEO components
+        all_content = article_dict.get('Intro', '') + ' ' + article_dict.get('Direct_Answer', '')
+        for i in range(1, 10):
+            all_content += ' ' + article_dict.get(f'section_{i:02d}_content', '')
+        
+        # Count citations (natural language)
+        import re
+        natural_citation_patterns = [
+            r'according to [A-Z]', r'[A-Z][a-z]+ reports?', r'[A-Z][a-z]+ states?',
+            r'[A-Z][a-z]+ notes?', r'[A-Z][a-z]+ predicts?', r'research by [A-Z]',
+        ]
+        citation_count = sum(len(re.findall(pattern, all_content, re.IGNORECASE)) for pattern in natural_citation_patterns)
+        
+        # Count conversational phrases
+        conversational_phrases = ['you can', "you'll", "here's", "let's", "this is", "when you", "if you", "so you can"]
+        phrase_count = sum(1 for phrase in conversational_phrases if phrase in all_content.lower())
+        
+        # Count question patterns
+        question_patterns = ['what is', 'how does', 'why does', 'when should', 'where can', 'how can', 'what are']
+        question_count = sum(1 for pattern in question_patterns if pattern in all_content.lower())
+        
+        # Check Direct Answer
+        direct_answer = article_dict.get('Direct_Answer', '')
+        direct_answer_words = len(direct_answer.split()) if direct_answer else 0
+        has_citation_in_da = any(re.search(pattern, direct_answer, re.IGNORECASE) for pattern in natural_citation_patterns) if direct_answer else False
+        
+        logger.info(f"📊 AEO Status: Citations={citation_count} (target: 12+), Phrases={phrase_count} (target: 8+), Questions={question_count} (target: 5+)")
+        logger.info(f"   Direct Answer: {direct_answer_words} words (target: 40-60), Citation={'✅' if has_citation_in_da else '❌'}")
+        
+        # Only optimize if significantly below targets
+        needs_optimization = (
+            citation_count < 10 or
+            phrase_count < 6 or
+            question_count < 3 or
+            (direct_answer_words < 30 or direct_answer_words > 70 or not has_citation_in_da)
+        )
+        
+        if not needs_optimization:
+            logger.info("✅ AEO components already optimal")
+            return context
+        
+        # Use Gemini to optimize AEO components
+        gemini_client = GeminiClient()
+        
+        aeo_prompt = f"""You are an AEO (Agentic Search Optimization) expert. Optimize this article to score 95+/100.
+
+CURRENT STATUS:
+- Citations: {citation_count} (target: 12-15 natural language citations)
+- Conversational phrases: {phrase_count} (target: 8+)
+- Question patterns: {question_count} (target: 5+)
+- Direct Answer: {direct_answer_words} words (target: 40-60), Citation: {'Yes' if has_citation_in_da else 'No'}
+
+OPTIMIZATION TASKS:
+1. Add natural language citations to paragraphs missing them (target: 40%+ paragraphs have citations)
+   - Use patterns: "According to [Source]...", "[Source] reports...", "Research by [Source]..."
+   - Add 2-5 more citations if below 12 total
+2. Add conversational phrases naturally (target: 8+ total)
+   - Use: "you can", "you'll", "here's", "let's", "this is", "when you", "if you"
+   - Add 2-4 more phrases if below 8 total
+3. Add question patterns naturally (target: 5+ total)
+   - Use: "what is", "how does", "why does", "when should", "where can"
+   - Add 2-3 more question patterns if below 5 total
+4. Enhance Direct Answer if needed:
+   - Ensure 40-60 words
+   - Include primary keyword
+   - Include natural language citation
+
+Return the optimized article content. Be surgical - only add what's missing, don't rewrite everything.
+"""
+        
+        # Optimize each section that needs it
+        optimized_count = 0
+        for i in range(1, 10):
+            field = f'section_{i:02d}_content'
+            content = article_dict.get(field, '')
+            if not content or len(content) < 200:
+                continue
+            
+            # Check if this section needs optimization
+            section_citations = sum(len(re.findall(pattern, content, re.IGNORECASE)) for pattern in natural_citation_patterns)
+            section_phrases = sum(1 for phrase in conversational_phrases if phrase in content.lower())
+            
+            if section_citations == 0 and section_phrases < 2:
+                # This section needs optimization
+                try:
+                    section_prompt = f"""{aeo_prompt}
+
+SECTION TO OPTIMIZE:
+{content}
+
+Return ONLY the optimized section content with added citations and conversational phrases.
+"""
+                    response = await gemini_client.generate_content(
+                        prompt=section_prompt,
+                        response_schema=None  # Free-form response
+                    )
+                    
+                    if response and len(response) > 100:
+                        article_dict[field] = response.strip()
+                        optimized_count += 1
+                        logger.info(f"   ✅ Optimized {field}")
+                except Exception as e:
+                    logger.debug(f"   ⚠️ {field}: AEO optimization failed - {e}")
+        
+        # Optimize Direct Answer if needed
+        if direct_answer and (direct_answer_words < 30 or direct_answer_words > 70 or not has_citation_in_da):
+            try:
+                da_prompt = f"""{aeo_prompt}
+
+DIRECT ANSWER TO OPTIMIZE:
+{direct_answer}
+
+Return optimized Direct Answer (40-60 words, includes keyword, includes citation).
+"""
+                response = await gemini_client.generate_content(
+                    prompt=da_prompt,
+                    response_schema=None
+                )
+                
+                if response and 30 <= len(response.split()) <= 70:
+                    article_dict['Direct_Answer'] = response.strip()
+                    optimized_count += 1
+                    logger.info("   ✅ Optimized Direct_Answer")
+            except Exception as e:
+                logger.debug(f"   ⚠️ Direct_Answer: AEO optimization failed - {e}")
+        
+        if optimized_count > 0:
+            logger.info(f"🚀 AEO optimization: Enhanced {optimized_count} fields")
+            context.structured_data = ArticleOutput(**article_dict)
+        else:
+            logger.info("ℹ️ AEO optimization: No fields needed enhancement")
         
         return context
     
