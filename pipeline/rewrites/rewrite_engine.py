@@ -497,25 +497,80 @@ class RewriteEngine:
         - Simple fields: "Headline", "Intro"
         - Section fields: "section_03_content"
         - Special: "all_sections" (splits and updates all sections)
+        - Special: "all_content" (splits intro + sections)
         """
         updated = article.copy()
         
         if field_path == "all_sections":
-            # Split content back into sections
-            # BACKLOG: Implement smart splitting for bulk section updates
-            # Current behavior: updates not applied to preserve existing content
-            self.logger.warning("all_sections bulk update skipped (use individual section updates)")
-            return updated
+            # Split content back into sections using section markers
+            return self._split_and_update_sections(updated, value, include_intro=False)
         
         elif field_path == "all_content":
-            # Similar issue - need to split intro + sections
-            self.logger.warning("all_content update not fully implemented yet")
-            return updated
+            # Split intro + sections
+            return self._split_and_update_sections(updated, value, include_intro=True)
         
         else:
             # Simple field update
             updated[field_path] = value
             return updated
+    
+    def _split_and_update_sections(
+        self,
+        article: Dict[str, Any],
+        content: str,
+        include_intro: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Split rewritten content back into individual section fields.
+        
+        Uses section headers (## or <h2>) to identify section boundaries.
+        Maps back to section_01_content, section_02_content, etc.
+        
+        Args:
+            article: Original article dict
+            content: Combined content to split
+            include_intro: Whether first part is Intro
+            
+        Returns:
+            Updated article dict
+        """
+        updated = article.copy()
+        
+        # Split by section headers (## or <h2>)
+        # Pattern matches: ## Title or <h2>Title</h2>
+        section_pattern = r'(?:^|\n)(?:##\s+|<h2[^>]*>)([^#\n<]+)(?:</h2>)?'
+        
+        # Find all section boundaries
+        matches = list(re.finditer(section_pattern, content))
+        
+        if not matches:
+            self.logger.warning("Could not find section headers in rewritten content")
+            return updated
+        
+        # Extract sections
+        sections = []
+        for i, match in enumerate(matches):
+            start = match.start()
+            end = matches[i + 1].start() if i + 1 < len(matches) else len(content)
+            section_content = content[start:end].strip()
+            sections.append(section_content)
+        
+        # If include_intro, the content before first header is the intro
+        if include_intro and matches[0].start() > 0:
+            intro_content = content[:matches[0].start()].strip()
+            if intro_content:
+                updated["Intro"] = intro_content
+                self.logger.info(f"Updated Intro ({len(intro_content)} chars)")
+        
+        # Map sections to fields
+        for i, section_content in enumerate(sections):
+            field_name = f"section_{i+1:02d}_content"
+            if field_name in updated or i < 9:  # Allow up to 9 sections
+                updated[field_name] = section_content
+                self.logger.info(f"Updated {field_name} ({len(section_content)} chars)")
+        
+        self.logger.info(f"✅ Split and updated {len(sections)} sections")
+        return updated
 
 
 # Convenience function for direct use
