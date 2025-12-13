@@ -154,6 +154,10 @@ class QualityRefinementStage(Stage):
         """
         Execute Stage 2b: Detect and fix quality issues.
         
+        NEW FLOW (Dec 2024):
+        1. REGEX CLEANUP FIRST - fast, deterministic fixes
+        2. GEMINI REVIEW - semantic fixes that need AI
+        
         Args:
             context: ExecutionContext with structured_data from Stage 2
         
@@ -167,7 +171,13 @@ class QualityRefinementStage(Stage):
             logger.warning("No structured_data available, skipping refinement")
             return context
         
-        # Detect quality issues
+        # ============================================================
+        # STEP 1: REGEX CLEANUP (deterministic, fast)
+        # ============================================================
+        logger.info("🔧 Step 1: Applying regex cleanup...")
+        context = self._apply_regex_cleanup(context)
+        
+        # Detect remaining quality issues (after regex)
         issues = self._detect_quality_issues(context)
         
         if not issues:
@@ -223,6 +233,112 @@ class QualityRefinementStage(Stage):
             logger.info("📊 This failure is logged but does NOT block the pipeline")
         
         return context
+    
+    def _apply_regex_cleanup(self, context: ExecutionContext) -> ExecutionContext:
+        """
+        Apply deterministic regex fixes to all content fields.
+        
+        These are fast, reliable fixes that don't need AI:
+        - Em/en dashes → hyphens
+        - Academic citations [N] → remove
+        - Duplicate summary lists → remove
+        - Double prefixes → fix
+        - Truncated fragment lists → remove
+        """
+        data = context.structured_data
+        if not data:
+            return context
+        
+        # Get all fields as dict
+        article_dict = data.dict() if hasattr(data, 'dict') else dict(data)
+        changes_made = 0
+        
+        # Fields to process
+        content_fields = [
+            'Intro', 'Direct_Answer', 'Teaser',
+            'section_01_content', 'section_02_content', 'section_03_content',
+            'section_04_content', 'section_05_content', 'section_06_content',
+            'section_07_content', 'section_08_content', 'section_09_content',
+            'section_01_title', 'section_02_title', 'section_03_title',
+            'section_04_title', 'section_05_title', 'section_06_title',
+            'section_07_title', 'section_08_title', 'section_09_title',
+        ]
+        
+        for field in content_fields:
+            content = article_dict.get(field)
+            if not content or not isinstance(content, str):
+                continue
+            
+            original = content
+            
+            # 1. Em/en dashes → hyphens
+            content = content.replace("—", " - ")
+            content = content.replace("–", "-")
+            
+            # 2. Remove academic citations [N]
+            content = re.sub(r'\[(\d+)\]', '', content)
+            
+            # 3. Remove "Here are key points:" + duplicate lists
+            summary_patterns = [
+                r'<p>Here are key points:</p>\s*<ul>.*?</ul>',
+                r'<p>Key benefits include:</p>\s*<ul>.*?</ul>',
+                r'<p>Important considerations:</p>\s*<ul>.*?</ul>',
+                r"<p>Here's what matters:</p>\s*<ul>.*?</ul>",
+            ]
+            for pattern in summary_patterns:
+                content = re.sub(pattern, '', content, flags=re.DOTALL)
+            
+            # 4. Fix ". Also,," → ". Also,"
+            content = re.sub(r'\.\s*Also,+', '. Also,', content)
+            
+            # 5. Remove truncated fragment lists (75%+ items without punctuation)
+            content = self._remove_fragment_lists(content)
+            
+            # 6. Fix double prefixes: "What is <p>How is..." → "<p>How is..."
+            content = re.sub(r'What is\s*<p>', '<p>', content)
+            content = re.sub(r'What are the future trends in\s*<p>', '<p>', content)
+            content = re.sub(r'What is Why is\s*', '', content)
+            
+            # 7. Fix lowercase after period
+            content = re.sub(r'(\. )([a-z])', lambda m: m.group(1) + m.group(2).upper(), content)
+            
+            # 8. Remove orphaned periods at start
+            content = re.sub(r'^<p>\.\s*', '<p>', content)
+            content = re.sub(r'<p>\.\s*Also,', '<p>Also,', content)
+            
+            if content != original:
+                article_dict[field] = content
+                changes_made += 1
+        
+        if changes_made > 0:
+            logger.info(f"   ✅ Regex cleanup applied to {changes_made} fields")
+            # Update context with cleaned data
+            from ..models.output_schema import ArticleOutput
+            context.structured_data = ArticleOutput(**article_dict)
+        else:
+            logger.info("   ℹ️ Regex cleanup: no changes needed")
+        
+        return context
+    
+    def _remove_fragment_lists(self, content: str) -> str:
+        """Remove lists where 75%+ of items are truncated fragments."""
+        pattern = r'<ul>((?:<li>(?:[^<]|<(?!/?li>)[^>]*>)*</li>\s*){2,})</ul>'
+        
+        def check_fragments(match):
+            list_content = match.group(1)
+            items_raw = re.findall(r'<li>((?:[^<]|<(?!/?li>)[^>]*>)*)</li>', list_content)
+            if not items_raw:
+                return match.group(0)
+            
+            items = [re.sub(r'<[^>]+>', '', item).strip() for item in items_raw]
+            fragment_count = sum(1 for item in items if not item.endswith(('.', '!', '?', ':')))
+            
+            if fragment_count >= len(items) * 0.75:
+                logger.debug(f"   🗑️ Removing fragment list ({fragment_count}/{len(items)} truncated)")
+                return ''
+            return match.group(0)
+        
+        return re.sub(pattern, check_fragments, content, flags=re.DOTALL)
     
     def _detect_quality_issues(self, context: ExecutionContext) -> List[QualityIssue]:
         """
