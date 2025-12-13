@@ -1595,28 +1595,33 @@ class HTMLRenderer:
         # Pattern: <ul> where every <li> ends without punctuation (obvious fragments)
         def remove_all_fragment_lists(html: str) -> str:
             """Remove entire lists where all items are clearly truncated fragments."""
-            pattern = r'<ul>((?:<li>[^<]+</li>\s*){2,})</ul>'
+            # Match <ul> with 2+ <li> items (items may contain HTML like <a> tags)
+            pattern = r'<ul>((?:<li>(?:[^<]|<(?!/?li>)[^>]*>)*</li>\s*){2,})</ul>'
             
             def check_all_fragments(match):
                 list_content = match.group(1)
-                items = re.findall(r'<li>([^<]+)</li>', list_content)
+                # Extract items - handle items with HTML tags inside
+                items_raw = re.findall(r'<li>((?:[^<]|<(?!/?li>)[^>]*>)*)</li>', list_content)
                 
-                if not items:
+                if not items_raw:
                     return match.group(0)
                 
-                # Check if ALL items are fragments (end without punctuation)
-                fragment_count = sum(1 for item in items if not item.strip().endswith(('.', '!', '?', ':')))
+                # Strip HTML tags to get plain text for each item
+                items = [re.sub(r'<[^>]+>', '', item).strip() for item in items_raw]
                 
-                # If ALL items are fragments, remove the entire list
-                # (Don't check avg length - long fragments are still fragments)
-                if fragment_count == len(items):
-                    avg_len = sum(len(item) for item in items) / len(items)
-                    logger.warning(f"🗑️ NUCLEAR: Removing list with {len(items)} fragment items (all truncated, avg {avg_len:.0f} chars)")
+                # Check how many items are fragments (end without proper punctuation)
+                fragment_count = sum(1 for item in items if not item.endswith(('.', '!', '?', ':')))
+                
+                # If 75%+ of items are fragments, remove the entire list
+                # (One proper item doesn't save a mostly-broken list)
+                if fragment_count >= len(items) * 0.75:
+                    avg_len = sum(len(item) for item in items) / len(items) if items else 0
+                    logger.warning(f"🗑️ NUCLEAR: Removing list with {fragment_count}/{len(items)} fragment items (avg {avg_len:.0f} chars)")
                     return ''  # Remove entire list
                 
                 return match.group(0)
             
-            return re.sub(pattern, check_all_fragments, html)
+            return re.sub(pattern, check_all_fragments, html, flags=re.DOTALL)
         
         content = remove_all_fragment_lists(content)
         
