@@ -90,6 +90,19 @@ class ExecutionContext:
     Contains complete article content, unstructured.
     """
 
+    # ========== STAGE 2b: Quality Refinement Flag ==========
+    stage_2b_optimized: bool = False
+    """
+    Flag indicating if Stage 2b (Quality Refinement) has optimized AEO components.
+    
+    When True, Stage 10 should skip AEO enforcement to avoid conflicts:
+    - Stage 2b uses Gemini to add natural language citations, conversational phrases, question patterns
+    - Stage 10 uses regex to add academic citations [N] and inject phrases
+    - Stage 10's academic citations get stripped by HTML renderer anyway
+    
+    Set to True in Stage 2b when _optimize_aeo_components() successfully optimizes content.
+    """
+
     # ========== STAGE 3: Structured Data ==========
     structured_data: Optional[Any] = None
     """

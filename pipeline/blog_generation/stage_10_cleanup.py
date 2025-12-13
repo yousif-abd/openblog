@@ -109,10 +109,15 @@ class CleanupStage(Stage):
             merged_article = self._resolve_sources_proxy_urls(merged_article)
 
         # Step 4a: Enforce AEO requirements (post-processing corrections)
-        # Pass language for language-aware phrase injection
+        # Skip if Stage 2b already optimized (avoids conflicts with natural language citations/phrases)
         language = context.job_config.get("language", "en")
-        logger.debug(f"Step 32a: Enforcing AEO requirements (language={language})...")
-        merged_article = self._enforce_aeo_requirements(merged_article, context.job_config, language)
+        if context.stage_2b_optimized:
+            logger.info("⏭️ Skipping Stage 10 AEO enforcement (Stage 2b already optimized with natural language)")
+            logger.debug("   Stage 2b uses Gemini for natural citations/phrases, Stage 10 uses regex for academic [N] citations")
+            logger.debug("   Stage 10's academic citations would be stripped by HTML renderer anyway")
+        else:
+            logger.debug(f"Step 32a: Enforcing AEO requirements (language={language})...")
+            merged_article = self._enforce_aeo_requirements(merged_article, context.job_config, language)
 
         # Step 4a.5: Humanize content (remove AI-typical phrases)
         logger.debug("Step 32a.5: Humanizing content...")

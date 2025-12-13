@@ -209,8 +209,8 @@ class QualityRefinementStage(Stage):
         else:
             logger.info("✅ All quality checks passed")
         
-        return context
-    
+            return context
+        
     def _apply_regex_cleanup(self, context: ExecutionContext) -> ExecutionContext:
         """
         Apply deterministic regex fixes to all content fields.
@@ -358,8 +358,8 @@ class QualityRefinementStage(Stage):
         else:
             logger.info("   ℹ️ Regex cleanup: no changes needed")
         
-        return context
-    
+            return context
+        
     async def _gemini_full_review(self, context: ExecutionContext) -> ExecutionContext:
         """
         MANDATORY Gemini review with full quality checklist.
@@ -523,7 +523,7 @@ If no issues, return original content unchanged with issues_fixed=0.
         if total_fixes > 0:
             logger.info(f"   📝 Gemini fixed {total_fixes} total issues across all fields")
             context.structured_data = ArticleOutput(**article_dict)
-        else:
+            else:
             logger.info("   ℹ️ Gemini review: no additional issues found")
         
         return context
@@ -709,7 +709,7 @@ Be GENEROUS - add 2-3 citations, 2-3 conversational phrases, and 1-2 question pa
                     article_dict[field] = response.strip()
                     optimized_count += 1
                     logger.info(f"   ✅ Optimized {field} (had {section_citations} citations, {section_phrases} phrases)")
-            except Exception as e:
+        except Exception as e:
                 logger.debug(f"   ⚠️ {field}: AEO optimization failed - {e}")
         
         # Optimize Direct Answer if needed (CRITICAL - worth 25 points!)
@@ -748,6 +748,9 @@ Return optimized Direct Answer meeting ALL requirements above.
         if optimized_count > 0:
             logger.info(f"🚀 AEO optimization: Enhanced {optimized_count} fields")
             context.structured_data = ArticleOutput(**article_dict)
+            # Set flag to skip Stage 10's AEO enforcement (avoids conflicts)
+            context.stage_2b_optimized = True
+            logger.info("   🏷️ Flagged: Stage 10 will skip AEO enforcement (Stage 2b already optimized)")
         else:
             logger.info("ℹ️ AEO optimization: No fields needed enhancement")
         
