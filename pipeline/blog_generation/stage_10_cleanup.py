@@ -1221,6 +1221,10 @@ class CleanupStage(Stage):
             if not title:
                 continue
             
+            # CRITICAL FIX: Strip <p> tags from titles (defense in depth - Stage 2b should have done this, but ensure it here)
+            import re
+            title = re.sub(r'</?p>', '', title).strip()
+            
             title_lower = title.lower()
             first_word = title_lower.split()[0] if title_lower.split() else ""
             
@@ -1346,6 +1350,8 @@ class CleanupStage(Stage):
                         # Keep original - too long/descriptive to be a question
                         continue
             
+            # Final cleanup: ensure no <p> tags in final title (defense in depth)
+            new_title = re.sub(r'</?p>', '', new_title).strip()
             article[f"section_{i:02d}_title"] = new_title
             converted += 1
             logger.debug(f"Converted section {i} title to question: '{new_title}'")
