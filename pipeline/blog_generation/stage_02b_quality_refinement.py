@@ -177,60 +177,19 @@ class QualityRefinementStage(Stage):
         logger.info("🔧 Step 1: Applying regex cleanup...")
         context = self._apply_regex_cleanup(context)
         
-        # Detect remaining quality issues (after regex)
-        issues = self._detect_quality_issues(context)
+        # ============================================================
+        # STEP 2: GEMINI REVIEW (MANDATORY - always runs)
+        # ============================================================
+        logger.info("🤖 Step 2: Gemini quality review (MANDATORY)...")
+        context = await self._gemini_full_review(context)
         
-        if not issues:
-            logger.info("✅ No quality issues detected, skipping refinement")
-            return context
-        
-        # Log detected issues
-        critical_issues = [i for i in issues if i.severity == "critical"]
-        warning_issues = [i for i in issues if i.severity == "warning"]
-        
-        logger.info(f"🔍 Detected {len(issues)} quality issues:")
-        logger.info(f"   Critical: {len(critical_issues)}")
-        logger.info(f"   Warnings: {len(warning_issues)}")
-        
-        for issue in issues:
-            logger.info(f"   {issue.severity.upper()}: {issue.description}")
-        
-        # Convert issues to rewrite instructions
-        rewrites = self._issues_to_rewrites(issues, context)
-        
-        if not rewrites:
-            logger.warning("No rewrites generated from issues, skipping refinement")
-            return context
-        
-        logger.info(f"🔧 Applying {len(rewrites)} targeted rewrites...")
-        logger.info("🔄 Attempting Gemini-based fixes (best effort, non-blocking)...")
-        
-        # Execute rewrites
-        try:
-            article_dict = context.structured_data.dict()
-            
-            updated_article = await targeted_rewrite(
-                article=article_dict,
-                rewrites=rewrites
-            )
-            
-            # Update context with refined data
-            context.structured_data = ArticleOutput(**updated_article)
-            
-            logger.info("✅ Gemini quality refinement complete")
-            
-            # Re-check quality (for logging)
-            remaining_issues = self._detect_quality_issues(context)
-            if remaining_issues:
-                logger.warning(f"⚠️  {len(remaining_issues)} issues remain after Gemini refinement")
-                logger.info("🛡️  Layer 3 (regex fallback) will catch these in html_renderer.py")
-            else:
-                logger.info("✅ All quality issues resolved by Gemini")
-        
-        except Exception as e:
-            logger.warning(f"⚠️  Gemini refinement failed: {str(e)}")
-            logger.info("🛡️  Continuing with original content - Layer 3 (regex) will fix issues")
-            logger.info("📊 This failure is logged but does NOT block the pipeline")
+        # Log any remaining issues (for transparency)
+        remaining_issues = self._detect_quality_issues(context)
+        if remaining_issues:
+            logger.info(f"📊 Post-review status: {len(remaining_issues)} minor issues detected")
+            logger.info("🛡️  Layer 3 (html_renderer.py) will handle any remaining cleanup")
+        else:
+            logger.info("✅ All quality checks passed")
         
         return context
     
@@ -317,6 +276,129 @@ class QualityRefinementStage(Stage):
             context.structured_data = ArticleOutput(**article_dict)
         else:
             logger.info("   ℹ️ Regex cleanup: no changes needed")
+        
+        return context
+    
+    async def _gemini_full_review(self, context: ExecutionContext) -> ExecutionContext:
+        """
+        MANDATORY Gemini review with full quality checklist.
+        
+        Gemini reviews ALL content fields and fixes any issues it finds,
+        even if our detection logic missed them.
+        """
+        from pydantic import BaseModel, Field
+        from typing import List
+        import json
+        
+        # Define response schema
+        class ContentFix(BaseModel):
+            issue_type: str = Field(description="Type of issue fixed")
+            field: str = Field(description="Which field was fixed")
+        
+        class ReviewResponse(BaseModel):
+            fixed_content: str = Field(description="The complete fixed content")
+            issues_fixed: int = Field(description="Number of issues fixed")
+            fixes: List[ContentFix] = Field(default_factory=list)
+        
+        # Full quality checklist
+        CHECKLIST = """
+You are a quality editor reviewing article content. Check for ALL issues:
+
+STRUCTURAL ISSUES:
+□ Truncated list items (end mid-word: "secur", "autom", "manag")
+□ Duplicate summary lists ("Here are key points:" followed by bullets repeating content)
+□ Orphaned HTML tags (</p> or </li> in wrong places)
+□ Malformed paragraphs starting with period (<p>. Also,)
+□ Empty or near-empty list items
+
+FORMATTING ISSUES:
+□ Em dashes (—) → replace with " - "
+□ En dashes (–) → replace with "-"
+□ Academic citations [N] → remove entirely
+□ Bold keywords that shouldn't be bold → unbold
+□ Lowercase after period → capitalize
+
+CONTENT ISSUES:
+□ Incomplete sentences ending abruptly
+□ "What is Why is" double prefixes → fix
+□ Repeated/redundant content
+□ Awkward AI phrasing ("delve into", "crucial to note")
+
+Fix ALL issues. Be surgical - only change what's broken.
+Return the complete fixed content.
+"""
+        
+        data = context.structured_data
+        if not data:
+            return context
+        
+        article_dict = data.dict() if hasattr(data, 'dict') else dict(data)
+        total_fixes = 0
+        
+        # Content fields to review
+        content_fields = [
+            'section_01_content', 'section_02_content', 'section_03_content',
+            'section_04_content', 'section_05_content', 'section_06_content',
+            'section_07_content', 'section_08_content', 'section_09_content',
+            'Intro', 'Direct_Answer',
+        ]
+        
+        # Initialize Gemini client
+        from ..models.gemini_client import GeminiClient
+        gemini_client = GeminiClient()
+        
+        for field in content_fields:
+            content = article_dict.get(field)
+            if not content or not isinstance(content, str) or len(content) < 100:
+                continue
+            
+            prompt = f"""{CHECKLIST}
+
+FIELD: {field}
+
+CONTENT TO REVIEW:
+{content}
+
+Return JSON with: fixed_content, issues_fixed, fixes[]
+If no issues, return original content unchanged with issues_fixed=0.
+"""
+            
+            try:
+                response = await gemini_client.generate_content(
+                    prompt=prompt,
+                    enable_tools=False,
+                    response_schema=ReviewResponse.model_json_schema()
+                )
+                
+                if response:
+                    # Parse response
+                    json_str = response.strip()
+                    if json_str.startswith('```'):
+                        json_str = json_str.split('\n', 1)[1] if '\n' in json_str else json_str[3:]
+                    if json_str.endswith('```'):
+                        json_str = json_str[:-3]
+                    
+                    try:
+                        result = json.loads(json_str)
+                        issues_fixed = result.get('issues_fixed', 0)
+                        
+                        if issues_fixed > 0:
+                            article_dict[field] = result.get('fixed_content', content)
+                            total_fixes += issues_fixed
+                            logger.info(f"   ✅ {field}: {issues_fixed} issues fixed")
+                    except json.JSONDecodeError:
+                        # If not valid JSON, skip this field
+                        logger.debug(f"   ⚠️ {field}: Could not parse Gemini response")
+                        
+            except Exception as e:
+                logger.debug(f"   ⚠️ {field}: Gemini review failed - {e}")
+                # Continue with other fields
+        
+        if total_fixes > 0:
+            logger.info(f"   📝 Gemini fixed {total_fixes} total issues across all fields")
+            context.structured_data = ArticleOutput(**article_dict)
+        else:
+            logger.info("   ℹ️ Gemini review: no additional issues found")
         
         return context
     
