@@ -536,20 +536,20 @@ def get_comprehensive_content_transformation_prompt(
     else:
         citation_reference = "**Note:** No citation metadata available. Remove [N] markers if found.\n\n"
     
-    return f"""You are an expert content editor transforming AI-generated content into professional, human-quality MARKDOWN text.
+    return f"""You are an expert content editor transforming AI-generated content into professional, human-quality HTML text.
 
 Your task is to perform a COMPREHENSIVE CONTENT TRANSFORMATION on this article.
 This is a SINGLE-PASS transformation that fixes ALL quality issues at once.
 
-⚠️ CRITICAL: Input is MARKDOWN format. Output must also be PURE MARKDOWN (NO HTML tags).
+⚠️ CRITICAL: Input is HTML format. Output must also be PURE HTML.
 
-*** ORIGINAL CONTENT (MARKDOWN) ***
+*** ORIGINAL CONTENT (HTML) ***
 
 {original_content}
 
 *** YOUR MISSION ***
 
-Transform this MARKDOWN content to be production-ready by fixing ALL of the following issues:
+Transform this HTML content to be production-ready by fixing ALL of the following issues:
 
 ═══════════════════════════════════════════════════════════════════
 🎯 TRANSFORMATION #1: Academic Citations [N] → Inline Natural Language
@@ -573,7 +573,7 @@ GitHub Copilot's 2024 enterprise report shows a **55% increase** in developer pr
 - Keep the factual accuracy - preserve the statistics and claims
 - Remove ALL bracket markers [1] [2] [3] completely
 - If citation metadata unavailable, keep the claim but remove the [N]
-- Use **bold** to emphasize key numbers and stats
+- Use <strong>text</strong> to emphasize key numbers and stats
 
 ═══════════════════════════════════════════════════════════════════
 🎯 TRANSFORMATION #2: Standalone Labels → Natural List Integration
@@ -739,14 +739,15 @@ What are the benefits?
 - Fix double exclamations (!!) → single
 
 ═══════════════════════════════════════════════════════════════════
-🎯 CRITICAL: PRESERVE STRUCTURE & FACTS (MARKDOWN FORMAT)
+🎯 CRITICAL: PRESERVE STRUCTURE & FACTS (HTML FORMAT)
 ═══════════════════════════════════════════════════════════════════
 
 ✅ **KEEP UNCHANGED:**
-- ALL Markdown formatting (**bold**, - lists, [links](url))
+- ALL HTML formatting (<strong>, <ul><li>, <a href>)
 - ALL facts, statistics, and data points
-- ALL internal links ([text](/magazine/slug))
-- Overall paragraph structure and flow (blank line separators)
+- ALL internal links (<a href="/magazine/slug">text</a>)
+- ALL external source links (<a href="https://...">)
+- Overall paragraph structure and flow
 - Technical accuracy of all claims
 
 ❌ **DO NOT:**
@@ -754,9 +755,8 @@ What are the benefits?
 - Change the meaning or intent
 - Add new information not in the original
 - Remove facts or data points
-- Add HTML tags (<p>, <ul>, <li>, <strong>, <em>)
-- Remove internal links
-- Change Markdown to HTML
+- Remove any links (internal or external)
+- Convert HTML to Markdown
 
 ═══════════════════════════════════════════════════════════════════
 🎯 VALIDATION CHECKLIST (VERIFY BEFORE SUBMITTING)
@@ -772,28 +772,29 @@ Before you return the transformed content, verify:
 6. ✅ ZERO weird passages (no "What is as we", "so you can with")
 7. ✅ ZERO incomplete sentences (no trailing "Ultimately,")
 8. ✅ ZERO double punctuation (,, .. ?? !!)
-9. ✅ ZERO HTML tags (should be pure Markdown: **bold**, - lists, [links](url))
-10. ✅ ALL internal links preserved ([text](/magazine/slug))
-11. ✅ ALL facts and data preserved
-12. ✅ Content flows naturally and reads like human-written text
-13. ✅ Paragraphs separated by blank lines
+9. ✅ Valid HTML structure (<strong>, <ul><li>, <a href>)
+10. ✅ ALL internal links preserved (<a href="/magazine/slug">)
+11. ✅ ALL external source links preserved (<a href="https://...">)
+12. ✅ ALL facts and data preserved
+13. ✅ Content flows naturally and reads like human-written text
 
 ═══════════════════════════════════════════════════════════════════
 🎯 OUTPUT INSTRUCTIONS
 ═══════════════════════════════════════════════════════════════════
 
-Return ONLY the transformed MARKDOWN content.
+Return ONLY the transformed HTML content.
 - No explanations or comments
-- No markdown code blocks (no ```)
+- No code fences (no ```)
 - No "Here's the transformed content" preface
-- Just the clean, transformed MARKDOWN
-- Start with plain text immediately (NOT with HTML tags)
-- Use **bold** for emphasis, - for lists, blank lines for paragraphs
+- Just the clean, transformed HTML content
+- Use <strong> for emphasis
+- Use <ul><li> for bullet lists
+- Use <a href> for links (preserve ALL existing links)
 
 **Quality Standard:** The output should be indistinguishable from professionally written content.
 No reader should be able to tell it was AI-generated.
 
-START TRANSFORMED MARKDOWN CONTENT NOW:
+START TRANSFORMED HTML CONTENT NOW:
 """
 
 

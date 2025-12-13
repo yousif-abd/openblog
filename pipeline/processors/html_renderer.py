@@ -16,7 +16,8 @@ from datetime import datetime
 
 from ..utils.schema_markup import generate_all_schemas, render_schemas_as_json_ld
 from ..models.output_schema import ArticleOutput
-from .markdown_processor import convert_markdown_to_html
+# NOTE: Markdown conversion removed - we now use HTML-first approach from Stage 2
+# from .markdown_processor import convert_markdown_to_html
 from .citation_linker import link_natural_citations, link_internal_articles
 from .content_cleanup_pipeline import cleanup_content as pipeline_cleanup
 
@@ -143,13 +144,13 @@ class HTMLRenderer:
             if source_name_map:
                 article["_source_name_map"] = source_name_map
         
-        # Process intro through the full pipeline (markdown, cleanup, citation linking)
+        # Process intro through the pipeline (HTML-first, cleanup, citation linking)
         intro_raw = article.get("Intro", "")
         if intro_raw:
-            # STEP 1: Convert markdown to HTML
-            intro_md = convert_markdown_to_html(intro_raw)
+            # STEP 1: Content is already HTML from Stage 2 (no markdown conversion needed)
+            intro_html = intro_raw
             # STEP 2: Clean up problematic patterns
-            intro_clean = HTMLRenderer._cleanup_content(intro_md)
+            intro_clean = HTMLRenderer._cleanup_content(intro_html)
             # STEP 3: Link natural language citations
             if source_name_map:
                 intro_linked = link_natural_citations(intro_clean, source_name_map, max_links_per_source=2)
@@ -569,8 +570,8 @@ class HTMLRenderer:
                 parts.append(f'<h2 id="toc_{i:02d}">{HTMLRenderer._escape_html(title_clean)}</h2>')
 
             if content and content.strip():
-                # STEP 1: Convert markdown to proper HTML (handles lists, bold, etc.)
-                content_html = convert_markdown_to_html(content)
+                # STEP 1: Content is already HTML from Stage 2 (no markdown conversion needed)
+                content_html = content
                 
                 # STEP 2: Clean up any remaining problematic patterns
                 content_clean = HTMLRenderer._cleanup_content(content_html)

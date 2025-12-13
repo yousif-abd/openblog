@@ -96,14 +96,17 @@ class GeminiCallStage(Stage):
         logger.info("(Deep research via googleSearch + urlContext, output forced to JSON)")
 
         # System instruction (high priority rules) - Optimized for AEO 95+
+        # HTML-first approach (no markdown) - matches ultimate-enhancement branch
         system_instruction = """
 You are an expert content writer optimizing for AI search engines (AEO - Agentic Search Optimization).
 
-=== FORMAT RULES ===
-- ALL content MUST be pure Markdown format
-- FORBIDDEN: HTML tags of any kind (<p>, <strong>, <li>, etc.)
-- Use **bold** for emphasis, - or * for lists
-- Separate paragraphs with blank lines
+=== FORMAT RULES (HTML ONLY - NO MARKDOWN) ===
+- ALL content MUST be HTML format
+- Use <strong>text</strong> for emphasis
+- Use <ul><li>item</li></ul> for bullet lists
+- Use <ol><li>item</li></ol> for numbered lists
+- Separate paragraphs with blank lines (we add <p> tags later)
+- FORBIDDEN: Markdown syntax (**bold**, - lists, [links](url))
 
 === CITATION RULES (CRITICAL FOR AEO) ===
 - EVERY paragraph MUST include a natural language citation
@@ -112,6 +115,7 @@ You are an expert content writer optimizing for AI search engines (AEO - Agentic
   "Forrester analysts note..." | "A recent study by [Source] found..."
 - Target 12-15 citations across the article (more is better)
 - Cite AUTHORITATIVE sources: Gartner, IBM, Forrester, McKinsey, NIST, Deloitte, Accenture
+- DO NOT add inline links yourself - we will add them using grounding metadata
 
 === CONVERSATIONAL TONE (CRITICAL FOR AEO) ===
 - Address reader DIRECTLY with "you" and "your" in EVERY paragraph
@@ -155,9 +159,7 @@ Rules for Sources:
 NEVER create bullet lists that summarize the paragraph above them.
 WRONG pattern to AVOID:
   "AI is transforming security with automation and speed. Machine learning enables real-time detection."
-  - AI is transforming security
-  - Automation and speed
-  - Machine learning enables detection
+  <ul><li>AI is transforming security</li><li>Automation and speed</li></ul>
   
 CORRECT pattern:
   "AI is transforming security with automation and speed. Machine learning enables real-time detection."
@@ -222,6 +224,16 @@ Additional rules:
             json_data = json.loads(raw_response)
             logger.info(f"✅ JSON parsing successful")
             logger.info(f"   Top-level keys: {', '.join(list(json_data.keys())[:5])}...")
+            
+            # OPTION B: Insert inline HTML links using groundingSupports metadata
+            # This happens BEFORE Stage 2b so 2b can review/fix any issues
+            if context.grounding_urls:
+                logger.info("📎 Inserting inline links via groundingSupports (Option B)...")
+                json_data = self.client.insert_inline_links_in_json(json_data)
+                # Re-serialize to JSON string with links inserted
+                context.raw_article = json.dumps(json_data, ensure_ascii=False)
+                logger.info("✅ Updated raw_article with inline source links")
+            
         except Exception as e:
             logger.warning(f"⚠️  Could not parse JSON from response: {e}")
             logger.warning("   This may cause issues in Stage 3 (Extraction)")
