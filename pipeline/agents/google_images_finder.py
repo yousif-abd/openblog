@@ -243,9 +243,12 @@ class GoogleImagesFinder:
                 task = data["tasks"][0]
                 status_code = task.get("status_code")
                 
-                # Still processing
-                if status_code == 20100:
-                    logger.debug(f"Poll attempt {attempt + 1}: Task still processing (20100)")
+                # Still processing status codes:
+                # 20100 = Task Created
+                # 40601 = Task Handed/Processing  
+                # 40602 = Task In Queue
+                if status_code in (20100, 40601, 40602):
+                    logger.debug(f"Poll attempt {attempt + 1}: Task still processing (status_code: {status_code})")
                     delay = min(delay * self.BACKOFF_MULTIPLIER, self.MAX_POLL_DELAY)
                     continue
                 
@@ -275,7 +278,7 @@ class GoogleImagesFinder:
         DataForSEO Google Images API structure:
         - results is a list with one task result dict
         - task_result["items"] contains image items
-        - Each item has type "images" and contains image data
+        - Each item has type "images_search" and contains image data in "image" field
         """
         images = []
         
@@ -290,37 +293,34 @@ class GoogleImagesFinder:
         logger.debug(f"Found {len(items)} items in task result")
         
         for idx, item in enumerate(items):
-            # DataForSEO Google Images items have type "images"
+            # DataForSEO Google Images items have type "images_search"
             item_type = item.get("type")
-            if item_type != "images":
-                logger.debug(f"Item {idx}: Skipping type '{item_type}' (not 'images')")
+            if item_type != "images_search":
+                logger.debug(f"Item {idx}: Skipping type '{item_type}' (not 'images_search')")
                 continue
             
-            # Extract image URL (can be in different places)
-            url = (
-                item.get("url") or 
-                item.get("image", {}).get("url") if isinstance(item.get("image"), dict) else None or
-                item.get("original", {}).get("url") if isinstance(item.get("original"), dict) else None or
-                ""
-            )
+            # Extract image data - DataForSEO puts image info in "image" field
+            image_data = item.get("image", {})
+            if not isinstance(image_data, dict):
+                logger.debug(f"Item {idx}: No image data found")
+                continue
+            
+            # Extract URL from image data
+            url = image_data.get("url") or image_data.get("original") or ""
             
             if not url:
-                logger.debug(f"Item {idx}: No URL found, skipping. Item keys: {list(item.keys())}")
+                logger.debug(f"Item {idx}: No URL found in image data")
                 continue
             
-            # Extract image metadata
-            image_data = item.get("image", {}) or item.get("original", {})
-            if not isinstance(image_data, dict):
-                image_data = {}
-            
+            # Extract metadata
             images.append(GoogleImageResult(
                 url=url,
-                title=item.get("title", "") or item.get("alt", "") or item.get("text", "") or "",
-                source=item.get("domain", "") or item.get("source", "") or "",
-                width=image_data.get("width") or item.get("width"),
-                height=image_data.get("height") or item.get("height"),
-                thumbnail_url=image_data.get("thumbnail_url") or item.get("thumbnail") or item.get("thumbnail_url"),
-                license=item.get("license", {}).get("type") if isinstance(item.get("license"), dict) else item.get("license")
+                title=item.get("title", "") or image_data.get("title", "") or "",
+                source=item.get("domain", "") or image_data.get("domain", "") or "",
+                width=image_data.get("width"),
+                height=image_data.get("height"),
+                thumbnail_url=image_data.get("thumbnail_url") or image_data.get("thumbnail"),
+                license=item.get("license") or image_data.get("license")
             ))
         
         logger.info(f"Successfully parsed {len(images)} images from {len(items)} items")
