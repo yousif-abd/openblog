@@ -190,9 +190,15 @@ class QualityRefinementStage(Stage):
         context = await self._gemini_full_review(context)
         
         # ============================================================
-        # STEP 3: AEO OPTIMIZATION (boost score to 95+)
+        # STEP 3: HUMANIZE LANGUAGE (remove AI markers)
         # ============================================================
-        logger.info("🚀 Step 3: AEO optimization (target: score 95+)...")
+        logger.info("✍️ Step 3: Humanizing language (removing AI markers)...")
+        context = self._humanize_language(context)
+        
+        # ============================================================
+        # STEP 4: AEO OPTIMIZATION (boost score to 95+)
+        # ============================================================
+        logger.info("🚀 Step 4: AEO optimization (target: score 95+)...")
         context = await self._optimize_aeo_components(context)
         
         # Log any remaining issues (for transparency)
@@ -519,6 +525,50 @@ If no issues, return original content unchanged with issues_fixed=0.
             context.structured_data = ArticleOutput(**article_dict)
         else:
             logger.info("   ℹ️ Gemini review: no additional issues found")
+        
+        return context
+    
+    def _humanize_language(self, context: ExecutionContext) -> ExecutionContext:
+        """
+        Humanize language by removing AI-typical phrases.
+        
+        Uses humanizer.py to replace robotic phrases with natural alternatives.
+        """
+        from ..utils.humanizer import humanize_content
+        
+        data = context.structured_data
+        if not data:
+            return context
+        
+        article_dict = data.dict() if hasattr(data, 'dict') else dict(data)
+        humanized_count = 0
+        
+        # Humanize content fields
+        content_fields = [
+            'Intro', 'Direct_Answer', 'Teaser',
+            'section_01_content', 'section_02_content', 'section_03_content',
+            'section_04_content', 'section_05_content', 'section_06_content',
+            'section_07_content', 'section_08_content', 'section_09_content',
+        ]
+        
+        for field in content_fields:
+            content = article_dict.get(field)
+            if not content or not isinstance(content, str) or len(content) < 50:
+                continue
+            
+            original = content
+            # Use moderate aggression - Stage 10 will do aggressive if needed
+            humanized = humanize_content(content, aggression="moderate")
+            
+            if humanized != original:
+                article_dict[field] = humanized
+                humanized_count += 1
+        
+        if humanized_count > 0:
+            logger.info(f"   ✍️ Humanized {humanized_count} fields")
+            context.structured_data = ArticleOutput(**article_dict)
+        else:
+            logger.info("   ℹ️ No AI phrases detected - content already natural")
         
         return context
     
