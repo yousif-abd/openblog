@@ -13,6 +13,11 @@ def build_article_prompt(
     primary_keyword: str,
     company_context: Dict[str, Any],
     language: str = "en",
+    word_count: int = None,
+    country: str = None,
+    content_generation_instruction: str = None,
+    tone_override: str = None,
+    system_prompts: list = None,
     **kwargs
 ) -> str:
     """
@@ -28,25 +33,34 @@ def build_article_prompt(
         Complete prompt string ready for Gemini
     """
     
+    # All fields are mandatory in output (from to_prompt_context)
     company_name = company_context.get("company_name", "the company")
     company_url = company_context.get("company_url", "")
     industry = company_context.get("industry", "")
     description = company_context.get("description", "")
-    brand_tone = company_context.get("brand_tone", "professional")
+    # Tone priority: job_config.tone_override > company_context.tone > "professional"
+    tone = tone_override or company_context.get("tone", "professional")  # Renamed from brand_tone
     
-    # Optional context sections
-    products_services = company_context.get("products_services", "")
+    # Products & Services (renamed from products_services)
+    products = company_context.get("products", "")
     target_audience = company_context.get("target_audience", "")
-    competitors = company_context.get("competitors", "")
+    competitors_raw = company_context.get("competitors", [])  # List format (matching opencontext)
+    competitors = ", ".join(competitors_raw) if isinstance(competitors_raw, list) else str(competitors_raw) if competitors_raw else ""
     pain_points = company_context.get("pain_points", "")
     value_propositions = company_context.get("value_propositions", "")
     use_cases = company_context.get("use_cases", "")
     content_themes = company_context.get("content_themes", "")
     
-    # Content guidelines
+    # Content guidelines (article-level from company_context)
     system_instructions = company_context.get("system_instructions", "")
     client_knowledge_base = company_context.get("client_knowledge_base", "")
     content_instructions = company_context.get("content_instructions", "")
+    
+    # Batch-level system prompts (merge with article-level)
+    system_prompts = system_prompts or []
+    batch_system_prompts_text = ""
+    if system_prompts:
+        batch_system_prompts_text = "\n".join([f"- {prompt}" for prompt in system_prompts])
     
     # Build the company context section
     company_section = f"""
@@ -60,14 +74,14 @@ Website: {company_url}"""
     if description:
         company_section += f"\nDescription: {description}"
         
-    if products_services:
-        company_section += f"\nProducts/Services: {products_services}"
+    if products:
+        company_section += f"\nProducts/Services: {products}"
     
     if target_audience:
         company_section += f"\nTarget Audience: {target_audience}"
     
-    if brand_tone:
-        company_section += f"\nBrand Tone: {brand_tone}"
+    if tone:
+        company_section += f"\nBrand Tone: {tone}"
     
     # Add optional sections if provided
     optional_sections = ""
@@ -103,66 +117,104 @@ COMPETITORS TO DIFFERENTIATE FROM: {competitors}"""
     # Content guidelines section
     guidelines_section = ""
     
+    # Article-level system instructions (from company_context)
     if system_instructions:
         guidelines_section += f"""
 
-SYSTEM INSTRUCTIONS:
+SYSTEM INSTRUCTIONS (Article-level):
 {system_instructions}"""
     
+    # Batch-level system prompts (applies to all articles in batch)
+    if batch_system_prompts_text:
+        guidelines_section += f"""
+
+BATCH INSTRUCTIONS (Applies to all articles in this batch):
+{batch_system_prompts_text}"""
+    
+    # Company knowledge base (article-level)
     if client_knowledge_base:
         guidelines_section += f"""
 
 COMPANY KNOWLEDGE BASE:
 {client_knowledge_base}"""
     
+    # Article-level content instructions
     if content_instructions:
         guidelines_section += f"""
 
-CONTENT WRITING INSTRUCTIONS:
+CONTENT WRITING INSTRUCTIONS (Article-level):
 {content_instructions}"""
+    
+    # Determine word count target (dynamic or default)
+    if word_count:
+        word_count_text = f"{word_count:,} words"
+        if word_count < 1500:
+            word_count_range = f"{max(800, word_count - 200)}-{word_count + 200} words"
+        elif word_count < 2500:
+            word_count_range = f"{word_count - 300}-{word_count + 300} words"
+        else:
+            word_count_range = f"{word_count - 500}-{word_count + 500} words"
+    else:
+        word_count_text = "1,500-2,500 words"
+        word_count_range = "1,500-2,500 words"
+    
+    # Build market context section (if country provided)
+    market_section = ""
+    if country:
+        country_name_map = {
+            "US": "United States", "DE": "Germany", "FR": "France", "GB": "United Kingdom", "UK": "United Kingdom",
+            "IT": "Italy", "ES": "Spain", "NL": "Netherlands", "BE": "Belgium", "AT": "Austria", "CH": "Switzerland",
+            "PL": "Poland", "SE": "Sweden", "NO": "Norway", "DK": "Denmark", "FI": "Finland", "IE": "Ireland",
+            "PT": "Portugal", "GR": "Greece", "CZ": "Czech Republic", "HU": "Hungary", "RO": "Romania"
+        }
+        country_display = country_name_map.get(country.upper(), country.upper())
+        market_section = f"""
+TARGET MARKET:
+- Primary country: {country_display} ({country.upper()})
+- Adapt content for {country_display} market context, regulations, and cultural expectations
+- Use market-appropriate examples, authorities, and references
+- Consider local business practices and industry standards for {country_display}
+"""
+    
+    # Build content generation instruction section (if provided)
+    custom_instruction_section = ""
+    if content_generation_instruction and content_generation_instruction.strip():
+        custom_instruction_section = f"""
+
+ADDITIONAL CONTENT INSTRUCTIONS:
+{content_generation_instruction}
+"""
     
     # Build the complete prompt
     prompt = f"""Write a comprehensive, high-quality blog article about "{primary_keyword}".
 
-{company_section}{optional_sections}{guidelines_section}
+TOPIC FOCUS:
+The article must be entirely focused on "{primary_keyword}". Every section, paragraph, and example should relate directly to this topic. 
+- Deep dive into what "{primary_keyword}" means, how it works, why it matters
+- Provide practical, actionable insights about "{primary_keyword}"
+- Include real-world examples and use cases related to "{primary_keyword}"
+- Address common questions and concerns about "{primary_keyword}"
+
+{company_section}{optional_sections}{guidelines_section}{market_section}{custom_instruction_section}
 
 ARTICLE REQUIREMENTS:
 - Target language: {language}
-- Write in {brand_tone} tone
+- Write in {tone} tone
 - Focus on providing genuine value to readers
 - Include specific examples and actionable insights
 - Structure with clear headings and subheadings
-- Aim for 1,500-2,500 words
 - Include introduction, main sections, and conclusion
 - Make it engaging and informative
+- Note: Word count target is specified dynamically in the system instruction (based on job configuration)
 
-CRITICAL CITATION REQUIREMENTS:
-- MANDATORY: Include citations in 70%+ of paragraphs (minimum 2 citations per paragraph)
-- Use natural attribution format: "according to [Source Name]", "based on [Study Name]", "[Expert Name] reports that"
-- Combine with academic format for key statistics: "According to Gartner [1]", "HubSpot research shows [2]"
-- Target 8-12 total citations for optimal balance of authority and performance
-- Cite statistics, studies, expert opinions, and industry data
-- Every major claim must be backed by a credible source
-
-SECTION HEADER REQUIREMENTS:
-- MANDATORY: Include 2+ question-format section headers
-- Examples: "What is...", "How does...", "Why should...", "When can..."
-- Mix question headers with declarative headers for variety
-- Question headers improve content discoverability
-
-CONVERSATIONAL TONE REQUIREMENTS:
-- Use conversational language throughout ("you", "your", direct address)
-- Include rhetorical questions to engage readers
-- Use transitional phrases like "Let's explore...", "Consider this...", "Here's why..."
-- Write as if speaking directly to the reader
-
-IMPORTANT GUIDELINES:
-- Write from an authoritative, knowledgeable perspective
-- Include relevant statistics and data when possible
-- Reference industry best practices
-- Provide actionable takeaways for readers
-- Ensure content is original and valuable
-- Optimize for search engines while prioritizing reader value
+CRITICAL REQUIREMENTS (Detailed specifications in system instruction):
+- Follow all citation requirements specified in the system instruction (every paragraph must include citations)
+- Follow all section header requirements specified in the system instruction (2+ question-format headers)
+- Follow all conversational tone requirements specified in the system instruction (10+ conversational phrases)
+- Follow all content quality requirements specified in the system instruction (E-E-A-T, data-driven content, section variety)
+- **MANDATORY:** Include `image_01_url` (Unsplash URL) and `image_01_alt_text` - these are REQUIRED fields in the JSON schema
+- **RECOMMENDED:** Include `image_02_url` and `image_03_url` (Unsplash URLs) with alt text and credits for better engagement
+- **CRITICAL FOR SEO:** Create VARIED section lengths (not uniform) - at least 2 LONG sections (700+ words), 2-3 MEDIUM sections (400-600 words), remaining SHORT (200-300 words). You decide which topics deserve LONG treatment based on their complexity and importance.
 
 Please write the complete article now."""
 
@@ -212,9 +264,9 @@ def get_prompt_length_estimate(
     
     # Add length of optional sections
     optional_length = sum([
-        len(company_context.get("products_services", "")),
+        len(company_context.get("products", "")),
         len(company_context.get("target_audience", "")),
-        len(company_context.get("competitors", "")),
+        len(", ".join(company_context.get("competitors", [])) if isinstance(company_context.get("competitors", []), list) else company_context.get("competitors", "")),
         len(company_context.get("pain_points", "")),
         len(company_context.get("value_propositions", "")),
         len(company_context.get("use_cases", "")),

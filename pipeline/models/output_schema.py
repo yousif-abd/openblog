@@ -159,14 +159,58 @@ class ArticleOutput(BaseModel):
     faq_06_question: Optional[str] = Field(default="", description="FAQ question #6")
     faq_06_answer: Optional[str] = Field(default="", description="FAQ answer #6")
 
-    # Image (optional, generated in Stage 9)
+    # Images (image_01_url is REQUIRED, others optional)
+    image_01_url: str = Field(
+        ...,
+        description="REQUIRED: URL to hero image (1200x630) - primary article image. Use Unsplash URLs (e.g., https://images.unsplash.com/photo-...). This field is MANDATORY.",
+    )
+    image_01_alt_text: str = Field(
+        ...,
+        description="REQUIRED: Alt text for hero image (max 125 chars). This field is MANDATORY.",
+    )
+    image_01_credit: Optional[str] = Field(
+        default="",
+        description="Image credit/attribution (e.g., 'Photo by John Doe on Unsplash')",
+    )
+    image_02_url: Optional[str] = Field(
+        default="",
+        description="URL to mid-article image (optional)",
+    )
+    image_02_alt_text: Optional[str] = Field(
+        default="",
+        description="Alt text for mid-article image (max 125 chars)",
+    )
+    image_02_credit: Optional[str] = Field(
+        default="",
+        description="Image credit/attribution for mid-article image",
+    )
+    image_03_url: Optional[str] = Field(
+        default="",
+        description="URL to bottom image (optional)",
+    )
+    image_03_alt_text: Optional[str] = Field(
+        default="",
+        description="Alt text for bottom image (max 125 chars)",
+    )
+    image_03_credit: Optional[str] = Field(
+        default="",
+        description="Image credit/attribution for bottom image",
+    )
+    
+    # Legacy single image field (for backward compatibility)
     image_url: Optional[str] = Field(
         default="",
-        description="URL to generated article image (1200x630)",
+        description="[DEPRECATED] Use image_01_url instead. URL to generated article image (1200x630)",
     )
     image_alt_text: Optional[str] = Field(
         default="",
-        description="Alt text for article image (max 125 chars)",
+        description="[DEPRECATED] Use image_01_alt_text instead. Alt text for article image (max 125 chars)",
+    )
+    
+    # TL;DR (optional, for long articles)
+    TLDR: Optional[str] = Field(
+        default="",
+        description="TL;DR summary (2-3 sentences) - include for articles 3000+ words",
     )
 
     # Sources and research

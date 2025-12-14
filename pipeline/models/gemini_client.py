@@ -91,6 +91,8 @@ def build_article_response_schema(genai):
     
     # Build properties dynamically from ArticleOutput model
     properties = {}
+    required = []
+    
     for field_name, field_info in ArticleOutput.model_fields.items():
         if field_name == "tables":
             # Special handling for tables (ARRAY of OBJECT)
@@ -105,15 +107,16 @@ def build_article_response_schema(genai):
                 type=types.Type.STRING,
                 description=field_info.description or f"{field_name} field"
             )
+        
+        # Mark as required if field is required (using Pydantic's is_required())
+        if field_info.is_required():
+            required.append(field_name)
     
-    # Main ArticleOutput schema
+    # Main ArticleOutput schema with dynamically determined required fields
     return types.Schema(
         type=types.Type.OBJECT,
         properties=properties,
-        required=[
-            "Headline", "Teaser", "Direct_Answer", "Intro", "Meta_Title", "Meta_Description",
-            "section_01_title", "section_01_content"  # At least one section required
-        ]
+        required=required if required else None  # None if no required fields (shouldn't happen)
     )
 
 
