@@ -246,3 +246,4 @@ comprehensive_score = scorer.score_article(
 3. Verify question patterns >= 5
 4. Check AEO score >= 80
 
+
