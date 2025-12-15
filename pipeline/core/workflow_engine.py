@@ -118,16 +118,16 @@ class WorkflowEngine:
         1. Stage 0: Data fetch → loads job config, company data
         2. Stage 1: Prompt build → creates prompt with variables
         3. Stage 2: Gemini call → generates raw article with tools
-        4. Stage 3: Extraction → extracts structured data
-        5. Stages 4-9: Parallel execution
-           - Stage 4: Citations → validate sources
-           - Stage 5: Internal links → generate "More Reading"
+        4. Stage 3: Quality Refinement (conditional) → fixes quality issues
+        5. Stage 4: Citations → validate sources and update body citations (sequential)
+        6. Stage 5: Internal links → generate "More Reading" and embed links in body (sequential)
+        7. Stages 6-9: Parallel execution (don't modify body content)
            - Stage 6: ToC → create table of contents labels
            - Stage 7: Metadata → calculate read time + date
            - Stage 8: FAQ/PAA → validate/generate Q&A
            - Stage 9: Image → generate article image
-        6. Stage 10: Cleanup → merge parallel results, validate
-        7. Stage 11: Storage → HTML generation and Supabase storage
+        8. Stage 10: Cleanup → merge parallel results, validate
+        9. Stage 11: Storage → HTML generation and Supabase storage
 
         Args:
             job_id: Unique job identifier
@@ -151,8 +151,14 @@ class WorkflowEngine:
             # Stage 3: Quality Refinement (conditional)
             context = await self._execute_stage_3_conditional(context)
 
-            # Parallel: Stages 4-9
-            context = await self._execute_parallel(context, [4, 5, 6, 7, 8, 9])
+            # Sequential: Stage 4 (Citations) - modifies body content
+            context = await self._execute_sequential(context, [4])
+            
+            # Sequential: Stage 5 (Internal Links) - modifies body content, must run after Stage 4
+            context = await self._execute_sequential(context, [5])
+
+            # Parallel: Stages 6-9 (ToC, Metadata, FAQ/PAA, Image) - don't modify body content
+            context = await self._execute_parallel(context, [6, 7, 8, 9])
 
             # OPTIMIZED: Stage 10 and Stage 11 can overlap
             # Stage 11 can start HTML generation as soon as validated_article is ready
@@ -332,14 +338,14 @@ class WorkflowEngine:
             Updated execution context with parallel_results populated
 
         Note:
-            Stages 4-9 each take 1-6+ minutes depending on complexity:
-            - Stage 4 (Citations): ~4 min (AI Agent3 loop)
-            - Stage 5 (Internal Links): ~3-4 min
+            Stages 6-9 each take varying times:
             - Stage 6 (ToC): ~30 sec (fast)
             - Stage 7 (Metadata): <1 sec (instant)
             - Stage 8 (FAQ/PAA): ~2-3 min
             - Stage 9 (Image): ~2-4 min
-            Total parallel time: ~6-10 min (limited by slowest = Stage 4)
+            Total parallel time: ~4-5 min (limited by slowest = Stage 9)
+            
+            Note: Stages 4-5 run sequentially before this (both modify body content)
         """
         self.logger.info(f"Starting parallel execution: Stages {stage_nums}")
         self.logger.info("   Note: All stages run concurrently")
@@ -612,8 +618,14 @@ class WorkflowEngine:
             # Keep Stage 0-1 results (keyword/prompt base)
             context = await self._execute_sequential(context, [2, 3])
             
-            # Parallel: Stages 4-9
-            context = await self._execute_parallel(context, [4, 5, 6, 7, 8, 9])
+            # Sequential: Stage 4 (Citations) - modifies body content
+            context = await self._execute_sequential(context, [4])
+            
+            # Sequential: Stage 5 (Internal Links) - modifies body content, must run after Stage 4
+            context = await self._execute_sequential(context, [5])
+            
+            # Parallel: Stages 6-9 (ToC, Metadata, FAQ/PAA, Image) - don't modify body content
+            context = await self._execute_parallel(context, [6, 7, 8, 9])
             
             # Stage 10 cleanup (this will trigger recursive quality check)
             stage_10 = self.stages.get(10)

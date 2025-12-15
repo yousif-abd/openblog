@@ -31,6 +31,7 @@ class Citation(BaseModel):
     number: int = Field(..., description="Citation number [1], [2], etc.", ge=1, le=999)
     url: str = Field(..., description="Source URL")
     title: str = Field(..., description="Short citation title (8-15 words)")
+    meta_description: Optional[str] = Field(default="", description="Short meta description (50-100 chars) for citation preview/tooltip")
     accessed_date: Optional[str] = Field(default="", description="Date accessed (YYYY-MM-DD)")
 
     @field_validator("title")
@@ -92,7 +93,8 @@ class Citation(BaseModel):
 
         Format: [n]: <a href="url">title</a>
         """
-        return f'[{self.number}]: <a href="{self.url}" target="_blank">{self.title}</a>'
+        meta_attr = f' data-description="{self.meta_description}"' if self.meta_description else ""
+        return f'[{self.number}]: <a href="{self.url}" target="_blank"{meta_attr}>{self.title}</a>'
 
     def to_markdown(self) -> str:
         """Convert to Markdown format."""
@@ -174,9 +176,10 @@ class CitationList(BaseModel):
         for citation in self.citations:
             # Create clickable link - clean the title for display
             clean_title = citation.title.strip() if citation.title else f"Source {citation.number}"
+            meta_attr = f' data-description="{citation.meta_description}"' if citation.meta_description else ""
             items.append(
                 f'<li id="source-{citation.number}">'
-                f'<a href="{citation.url}" target="_blank" rel="noopener noreferrer">{clean_title}</a>'
+                f'<a href="{citation.url}" target="_blank" rel="noopener noreferrer"{meta_attr}>{clean_title}</a>'
                 f'</li>'
             )
 

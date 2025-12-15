@@ -467,12 +467,42 @@ Search for: {search_query}"""
                 enable_tools=True  # Enable Google Search grounding
             )
             
-            if response:
-                potential_url = response.strip()
-                
-                # Validate that we got a URL
-                if potential_url.startswith(('http://', 'https://')) and 'NO_ALTERNATIVE_FOUND' not in potential_url.upper():
-                    return potential_url
+            if not response:
+                return None
+            
+            # Check for explicit "NO_ALTERNATIVE_FOUND" response
+            if 'NO_ALTERNATIVE_FOUND' in response.upper():
+                return None
+            
+            # Try to extract URL from response (Gemini might return text with URL embedded)
+            # Method 1: Direct URL in response
+            response_stripped = response.strip()
+            if response_stripped.startswith(('http://', 'https://')):
+                # Extract first URL from response
+                import re
+                url_match = re.search(r'https?://[^\s<>"\'\)]+', response_stripped)
+                if url_match:
+                    return url_match.group(0)
+            
+            # Method 2: Extract URL from text (might be embedded)
+            import re
+            url_pattern = r'https?://[^\s<>"\'\)]+'
+            urls = re.findall(url_pattern, response)
+            if urls:
+                # Return first valid URL
+                for url in urls:
+                    if 'NO_ALTERNATIVE_FOUND' not in url.upper():
+                        return url
+            
+            # Method 3: Check grounding URLs from Gemini (like Stage 2 does)
+            grounding_urls = self.gemini_client.get_last_grounding_urls()
+            if grounding_urls:
+                # Use first grounding URL as alternative
+                for grounding in grounding_urls[:1]:  # Take first result
+                    url = grounding.get('url', '')
+                    if url and url.startswith(('http://', 'https://')):
+                        logger.info(f"✅ Using grounding URL as alternative: {url}")
+                        return url
                     
             return None
             

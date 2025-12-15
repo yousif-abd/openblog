@@ -22,7 +22,6 @@ The citations from Gemini come in format:
 ...
 """
 
-import re
 import logging
 from typing import Dict, List, Any, Optional
 
@@ -70,13 +69,24 @@ class CitationsStage(Stage):
 
     async def execute(self, context: ExecutionContext) -> ExecutionContext:
         """
-        Execute Stage 4: Process and format citations.
+        Execute Stage 4: Process and format citations (sequential flow).
+
+        NEW SEQUENTIAL FLOW:
+        1. Extract URLs from Sources field (simple parsing)
+        2. HTTP Status Check (parallel)
+        3. Security Check (AI)
+        4. Identify Issues
+        5. Find Replacements (1 retry max)
+        6. Update Body Citations (AI-based)
+        7. Format Output
 
         Input from context:
         - structured_data: ArticleOutput with Sources field
 
         Output to context:
         - parallel_results['citations_html']: Formatted HTML
+        - parallel_results['citations_list']: Updated CitationList
+        - parallel_results['validated_citation_map']: Citation number -> URL mapping
 
         Args:
             context: ExecutionContext from Stage 3
@@ -108,14 +118,11 @@ class CitationsStage(Stage):
 
             logger.info(f"Processing sources ({len(sources_text)} chars)...")
 
-            # Get grounding URLs BEFORE parsing (AI will use them during parsing)
-            grounding_urls = getattr(context, 'grounding_urls', [])
-            if grounding_urls:
-                logger.info(f"📎 AI will use {len(grounding_urls)} grounding URLs during citation parsing")
-
-            # Parse citations using AI (no regex/string manipulation)
-            # AI receives grounding URLs to enhance citations with specific URLs
-            citation_list = await self._parse_sources(sources_text, grounding_urls=grounding_urls)
+            # ============================================================
+            # STEP 1: Extract URLs (Simple Parsing)
+            # ============================================================
+            logger.info("📝 Step 1: Extracting citations from Sources field (AI-only)...")
+            citation_list = await self._extract_citations_simple(sources_text)
 
             if not citation_list.citations:
                 logger.warning("No valid citations extracted")
@@ -123,70 +130,67 @@ class CitationsStage(Stage):
                 return context
 
             logger.info(f"✅ Extracted {citation_list.count()} citations")
-            for citation in citation_list.citations:
-                logger.debug(f"   [{citation.number}]: {citation.url}")
 
-            # Additional enhancement pass (AI may have already used grounding URLs, but this ensures all are enhanced)
-            if grounding_urls:
-                logger.info(f"📎 Final enhancement pass: {citation_list.count()} citations with {len(grounding_urls)} grounding URLs")
-                citation_list = self._enhance_with_grounding_urls(citation_list, grounding_urls)
-            else:
-                logger.warning("⚠️  No grounding URLs available to enhance citations")
+            # ============================================================
+            # STEP 2: HTTP Status Check (Parallel)
+            # ============================================================
+            logger.info("🔍 Step 2: Checking HTTP status for all URLs (parallel)...")
+            status_map = await self._check_url_status_parallel(citation_list)
 
-            # CRITICAL FIX: Preserve original URLs before validation
-            # This allows fallback to original URLs if validation replaces them incorrectly
-            original_urls = {}
-            for citation in citation_list.citations:
-                original_urls[citation.number] = citation.url
-            logger.debug(f"Preserved {len(original_urls)} original URLs before validation")
+            # ============================================================
+            # STEP 3: Security Check (AI)
+            # ============================================================
+            logger.info("🔒 Step 3: Checking citations for security risks (AI)...")
+            security_map = await self._check_security_ai(citation_list)
 
-            # ULTIMATE VALIDATION: Use enhanced citation validator
-            if self.config.enable_citation_validation and context.company_data and context.company_data.get("company_url"):
-                logger.info("🔍 Starting ultimate citation validation...")
-                logger.info(f"    enable_citation_validation = {self.config.enable_citation_validation}")
-                company_url_val = context.company_data.get('company_url') if context.company_data else ""
-                logger.info(f"    company_url = {company_url_val}")
-                logger.info(f"    Gemini client will be initialized for citation validation")
-                validated_list = await self._validate_citations_ultimate(
-                    citation_list, context
+            # ============================================================
+            # STEP 4: Identify Issues
+            # ============================================================
+            logger.info("📋 Step 4: Identifying citations needing replacement...")
+            issues_list = self._identify_issues(citation_list, status_map, security_map)
+
+            # ============================================================
+            # STEP 5: Find Replacements (1 Retry Max)
+            # ============================================================
+            if issues_list:
+                logger.info("🔍 Step 5: Finding replacements for broken/risky citations...")
+                citation_list, no_replacement_nums = await self._find_replacements(
+                    citation_list, issues_list, context
                 )
-                
-                # CRITICAL FIX: Check if validation replaced URLs with wrong fallbacks
-                for citation in validated_list.citations:
-                    original_url = original_urls.get(citation.number)
-                    if original_url and original_url != citation.url:
-                        is_generic_fallback = any(domain in citation.url.lower() for domain in [
-                            'pewresearch.org', 'nist.gov', 'census.gov', 'statista.com'
-                        ])
-                        
-                        if context.company_data:
-                            company_domain = context.company_data.get("company_url", "").replace("https://", "").replace("http://", "").split("/")[0]
-                            is_company_url = company_domain and company_domain in original_url.lower()
-                        else:
-                            is_company_url = False
-                        
-                        if is_generic_fallback:
-                            logger.warning(f"⚠️  Citation [{citation.number}] was replaced with generic fallback")
-                            logger.warning(f"    Original: {original_url}")
-                            logger.warning(f"    Replaced: {citation.url}")
-                        elif is_company_url:
-                            logger.warning(f"   ⚠️  Company URL was replaced - original was invalid (404)")
-                            logger.warning(f"   ❌ NOT restoring invalid company URL: {original_url}")
-                
-                citation_list = validated_list
-            elif self.config.enable_citation_validation:
-                logger.info("Citation URL validation skipped (no company_url)")
             else:
-                logger.info("Citation URL validation disabled")
+                logger.info("✅ Step 5: No citations need replacement")
+                no_replacement_nums = []
 
-            # Format as HTML
-            citations_html = citation_list.to_html_paragraph_list()
+            # ============================================================
+            # STEP 6: Update Body Citations (AI-Based)
+            # ============================================================
+            if no_replacement_nums or issues_list:
+                logger.info("🔗 Step 6: Updating body citations (AI-based)...")
+                context = await self._update_body_citations_ai(
+                    context, citation_list, no_replacement_nums
+                )
+            else:
+                logger.info("✅ Step 6: No body citations need updating")
+
+            # ============================================================
+            # STEP 7: Format Output
+            # ============================================================
+            logger.info("📄 Step 7: Formatting citations as HTML...")
+            
+            # Filter out citations with no replacement
+            valid_citations = CitationList()
+            valid_citations.citations = [
+                citation for citation in citation_list.citations
+                if citation.number not in no_replacement_nums
+            ]
+            
+            citations_html = valid_citations.to_html_paragraph_list()
             logger.info(f"   HTML size: {len(citations_html)} chars")
             
             # Build validated citation map for in-body links
             validated_citation_map = {}
             validated_source_name_map = {}
-            for citation in citation_list.citations:
+            for citation in valid_citations.citations:
                 validated_citation_map[citation.number] = citation.url
                 title_words = citation.title.split() if citation.title else []
                 if title_words:
@@ -194,12 +198,13 @@ class CitationsStage(Stage):
                     validated_source_name_map[source_name.lower()] = citation.url
             
             logger.info(f"   Validated citation map: {len(validated_citation_map)} entries")
-            logger.info(f"   Validated source names: {list(validated_source_name_map.keys())}")
+            if validated_source_name_map:
+                logger.info(f"   Validated source names: {list(validated_source_name_map.keys())[:5]}...")
 
             # Store in context
             context.parallel_results["citations_html"] = citations_html
-            context.parallel_results["citations_count"] = citation_list.count()
-            context.parallel_results["citations_list"] = citation_list
+            context.parallel_results["citations_count"] = valid_citations.count()
+            context.parallel_results["citations_list"] = valid_citations
             context.parallel_results["validated_citation_map"] = validated_citation_map
             context.parallel_results["validated_source_name_map"] = validated_source_name_map
 
@@ -454,18 +459,16 @@ class CitationsStage(Stage):
         
         return best_match
 
-    async def _parse_sources(self, sources_text: str, grounding_urls: List[Dict[str, str]] = None) -> CitationList:
+    async def _extract_citations_simple(self, sources_text: str) -> CitationList:
         """
-        Parse sources text into Citation objects using AI (Gemini).
+        Extract citations from Sources field using AI-only parsing (no regex).
         
-        NO REGEX, NO STRING MANIPULATION - AI-only parsing.
+        Format: [1]: Title – URL
+        Example: [1]: IBM Cost of a Data Breach Report 2024 – https://www.ibm.com/reports/data-breach
         
-        Uses Gemini grounding URLs to enhance citations with specific source URLs.
-
         Args:
             sources_text: Raw sources from structured_data
-            grounding_urls: Optional list of grounding URLs from Gemini search
-
+            
         Returns:
             CitationList with extracted citations
         """
@@ -474,13 +477,37 @@ class CitationsStage(Stage):
         if not sources_text or not sources_text.strip():
             return citation_list
         
-        # Use AI (Gemini) to parse citations - NO regex, NO string manipulation
-        logger.info("🤖 Using AI to parse citations (no regex/string manipulation)")
+        logger.info("📝 Extracting citations from Sources field (AI-only parsing)")
+        
+        # Initialize Gemini client if needed
+        if not self.gemini_client:
+            self.gemini_client = GeminiClient()
+        
+        prompt = f"""Extract all citations from the Sources field below. Parse each citation and return structured JSON.
+
+Sources field format: [number]: Title – URL
+Example: [1]: IBM Cost of a Data Breach Report 2024 – https://www.ibm.com/reports/data-breach
+
+CRITICAL REQUIREMENTS:
+1. Extract ALL citations from the text
+2. Parse citation number, title, and URL correctly
+3. Handle both em dash (—) and regular dash (-) as separators
+4. Validate URLs start with http:// or https://
+5. Return ONLY valid citations (skip any malformed entries)
+
+Sources field text:
+{sources_text}
+
+Return a JSON object with a "citations" array. Each citation must have:
+- number: integer (citation number)
+- title: string (citation title)
+- url: string (full URL starting with http:// or https://)
+"""
         
         try:
-            # Build schema for CitationList using genai types
             from google.genai import types
-            citation_schema = types.Schema(
+            
+            response_schema = types.Schema(
                 type=types.Type.OBJECT,
                 properties={
                     "citations": types.Schema(
@@ -488,74 +515,61 @@ class CitationsStage(Stage):
                         items=types.Schema(
                             type=types.Type.OBJECT,
                             properties={
-                                "number": types.Schema(type=types.Type.INTEGER, description="Citation number [1], [2], etc."),
-                                "url": types.Schema(type=types.Type.STRING, description="Full URL (must start with http:// or https://)"),
-                                "title": types.Schema(type=types.Type.STRING, description="Short descriptive title (8-15 words)"),
-                            },
-                            required=["number", "url", "title"]
-                        ),
-                        description="List of citations"
+                                "number": types.Schema(
+                                    type=types.Type.INTEGER,
+                                    description="Citation number (e.g., 1, 2, 3)"
+                                ),
+                                "title": types.Schema(
+                                    type=types.Type.STRING,
+                                    description="Citation title (8-15 words)"
+                                ),
+                                "url": types.Schema(
+                                    type=types.Type.STRING,
+                                    description="Full URL starting with http:// or https://"
+                                )
+                            }
+                        )
                     )
                 },
                 required=["citations"]
             )
             
-            # Build grounding URLs context for AI
-            grounding_context = ""
-            if grounding_urls:
-                grounding_context = "\n\nAvailable grounding URLs from Google Search (use these specific URLs when matching domains):\n"
-                for i, grounding in enumerate(grounding_urls[:10], 1):  # Limit to first 10
-                    url = grounding.get('url', '')
-                    title = grounding.get('title', '')
-                    domain = grounding.get('domain', '')
-                    if url:
-                        grounding_context += f"{i}. Domain: {domain} | URL: {url} | Title: {title}\n"
-            
-            # Prompt AI to extract citations
-            prompt = f"""Extract all citations from the following Sources text and return them as a structured CitationList.
-
-Sources text:
-{sources_text}
-{grounding_context}
-
-Extract each citation with:
-- number: The citation number [1], [2], etc.
-- url: The full URL (must start with http:// or https://)
-  * If a grounding URL matches the citation domain, use the SPECIFIC grounding URL instead of generic domain URLs
-  * Prefer specific article/report URLs over generic domain URLs
-- title: A short descriptive title (8-15 words)
-
-Return ONLY valid citations with proper URLs. Skip any invalid entries.
-Use the grounding URLs provided above to enhance citations with specific source URLs when available.
-"""
-            
-            gemini_client = GeminiClient()
-            response_text = await gemini_client.generate_content(
+            response = await self.gemini_client.generate_content(
                 prompt=prompt,
-                response_schema=citation_schema,
-                enable_tools=False,  # No web search needed for parsing (grounding URLs already provided)
+                response_schema=response_schema,
+                enable_tools=False
             )
             
-            if response_text:
-                import json
-                try:
-                    parsed_data = json.loads(response_text)
-                    citation_list = CitationList.model_validate(parsed_data)
-                    logger.info(f"✅ AI parsed {len(citation_list.citations)} citations")
-                except json.JSONDecodeError as e:
-                    logger.error(f"❌ Failed to parse AI response as JSON: {e}")
-                    logger.debug(f"   Response text: {response_text[:500]}")
-                except Exception as e:
-                    logger.error(f"❌ Failed to validate CitationList: {e}")
-            else:
+            if not response:
                 logger.warning("⚠️ AI parsing returned no response")
-                
+                return citation_list
+            
+            import json
+            parsed = json.loads(response)
+            citations_data = parsed.get('citations', [])
+            
+            for cit_data in citations_data:
+                try:
+                    citation = Citation(
+                        number=cit_data.get('number'),
+                        url=cit_data.get('url', '').strip(),
+                        title=cit_data.get('title', '').strip(),
+                        meta_description=""  # Will be populated later if needed
+                    )
+                    citation_list.citations.append(citation)
+                except Exception as e:
+                    logger.warning(f"   ⚠️ Could not create citation from AI response: {e}")
+                    continue
+            
+            # Resolve any proxy URLs (vertexaisearch.cloud.google.com redirects)
+            citation_list = self._resolve_proxy_urls(citation_list)
+            
+            logger.info(f"✅ Extracted {len(citation_list.citations)} citations (AI-only)")
+            
         except Exception as e:
-            logger.error(f"❌ AI citation parsing failed: {e}")
-            logger.warning("   Falling back to empty citation list")
-        
-        # Resolve any proxy URLs (vertexaisearch.cloud.google.com redirects)
-        citation_list = self._resolve_proxy_urls(citation_list)
+            logger.error(f"❌ AI citation extraction failed: {e}")
+            logger.warning("   Returning empty citation list")
+            return citation_list
         
         return citation_list
     
@@ -588,6 +602,516 @@ Use the grounding URLs provided above to enhance citations with specific source 
             logger.info(f"✅ Resolved {resolved_count} proxy URLs to real URLs")
         
         return citation_list
+    
+    async def _check_url_status_parallel(self, citation_list: CitationList) -> Dict[int, str]:
+        """
+        Check HTTP status of all citation URLs in parallel.
+        
+        Args:
+            citation_list: CitationList with citations to check
+            
+        Returns:
+            Dict mapping citation number to status: 'valid' | 'broken' | 'unknown'
+        """
+        import asyncio
+        import requests
+        from concurrent.futures import ThreadPoolExecutor
+        
+        def check_single_url_sync(citation: Citation) -> tuple[int, str]:
+            """Check a single URL synchronously and return (number, status)."""
+            try:
+                response = requests.head(
+                    citation.url,
+                    timeout=5,
+                    allow_redirects=True,
+                    headers={'User-Agent': 'OpenBlog Citation Validator'}
+                )
+                
+                # Some servers block HEAD, try GET
+                if response.status_code == 405:
+                    response = requests.get(
+                        citation.url,
+                        timeout=5,
+                        allow_redirects=True,
+                        headers={'User-Agent': 'OpenBlog Citation Validator'}
+                    )
+                
+                if 200 <= response.status_code < 400:
+                    return (citation.number, 'valid')
+                elif response.status_code in (404, 500, 503, 504):
+                    return (citation.number, 'broken')
+                else:
+                    return (citation.number, 'unknown')
+                    
+            except requests.exceptions.Timeout:
+                return (citation.number, 'broken')
+            except requests.exceptions.ConnectionError:
+                return (citation.number, 'broken')
+            except Exception as e:
+                logger.debug(f"   ⚠️ Citation [{citation.number}]: HTTP check failed - {e}")
+                return (citation.number, 'unknown')
+        
+        logger.info(f"🔍 Checking HTTP status for {len(citation_list.citations)} URLs (parallel)...")
+        
+        # Run all checks in parallel using thread pool executor
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            tasks = [
+                loop.run_in_executor(executor, check_single_url_sync, citation)
+                for citation in citation_list.citations
+            ]
+            results = await asyncio.gather(*tasks)
+        
+        # Build status map
+        status_map = {}
+        valid_count = 0
+        broken_count = 0
+        
+        for citation_num, status in results:
+            status_map[citation_num] = status
+            if status == 'valid':
+                valid_count += 1
+            elif status == 'broken':
+                broken_count += 1
+        
+        logger.info(f"   ✅ HTTP status check complete: {valid_count} valid, {broken_count} broken, {len(citation_list.citations) - valid_count - broken_count} unknown")
+        
+        return status_map
+    
+    async def _check_security_ai(self, citation_list: CitationList) -> Dict[int, bool]:
+        """
+        Use AI (Gemini) to check citations for spam/malicious content.
+        
+        Args:
+            citation_list: CitationList with citations to check
+            
+        Returns:
+            Dict mapping citation number to is_security_risk (True = security risk, False = safe)
+        """
+        if not citation_list.citations:
+            return {}
+        
+        # Initialize Gemini client if needed
+        if not self.gemini_client:
+            self.gemini_client = GeminiClient()
+        
+        logger.info(f"🔒 Checking {len(citation_list.citations)} citations for security risks (AI)...")
+        
+        # Build list of URLs and titles for analysis
+        citations_text = ""
+        for citation in citation_list.citations:
+            citations_text += f"[{citation.number}]: {citation.url} - {citation.title}\n"
+        
+        prompt = f"""Analyze these citation URLs for security risks, spam, malicious content, phishing, or low-quality sources.
+
+Citations:
+{citations_text}
+
+For each citation, determine if it's a security risk:
+- Spam websites
+- Malicious/phishing domains
+- Low-quality or suspicious sources
+- Known bad domains
+
+Return JSON with this structure:
+{{
+  "security_risks": [
+    {{"number": 1, "is_risk": true, "reason": "spam domain"}},
+    {{"number": 2, "is_risk": false, "reason": "legitimate source"}}
+  ]
+}}
+
+Only mark as security risk if you're confident it's spam/malicious. Legitimate sources should be marked as false.
+"""
+        
+        try:
+            from google.genai import types
+            security_schema = types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "security_risks": types.Schema(
+                        type=types.Type.ARRAY,
+                        items=types.Schema(
+                            type=types.Type.OBJECT,
+                            properties={
+                                "number": types.Schema(type=types.Type.INTEGER),
+                                "is_risk": types.Schema(type=types.Type.BOOLEAN),
+                                "reason": types.Schema(type=types.Type.STRING)
+                            },
+                            required=["number", "is_risk", "reason"]
+                        )
+                    )
+                },
+                required=["security_risks"]
+            )
+            
+            response = await self.gemini_client.generate_content(
+                prompt=prompt,
+                response_schema=security_schema,
+                enable_tools=False
+            )
+            
+            if response:
+                import json
+                parsed = json.loads(response)
+                security_map = {}
+                risk_count = 0
+                
+                for risk_info in parsed.get('security_risks', []):
+                    citation_num = risk_info.get('number')
+                    is_risk = risk_info.get('is_risk', False)
+                    reason = risk_info.get('reason', '')
+                    
+                    security_map[citation_num] = is_risk
+                    if is_risk:
+                        risk_count += 1
+                        logger.warning(f"   ⚠️ Citation [{citation_num}]: Security risk - {reason}")
+                
+                logger.info(f"   ✅ Security check complete: {risk_count} security risks found")
+                return security_map
+            else:
+                logger.warning("⚠️ Security check returned no response")
+                return {}
+                
+        except Exception as e:
+            logger.error(f"❌ Security check failed: {e}")
+            logger.warning("   Continuing without security check")
+            return {}
+    
+    def _identify_issues(
+        self,
+        citation_list: CitationList,
+        status_map: Dict[int, str],
+        security_map: Dict[int, bool]
+    ) -> List[Citation]:
+        """
+        Identify citations that need replacement based on HTTP status and security checks.
+        
+        Args:
+            citation_list: CitationList with all citations
+            status_map: Dict mapping citation number to HTTP status ('valid' | 'broken' | 'unknown')
+            security_map: Dict mapping citation number to is_security_risk (True/False)
+            
+        Returns:
+            List of Citation objects that need replacement
+        """
+        issues = []
+        
+        for citation in citation_list.citations:
+            needs_replacement = False
+            reason = []
+            
+            # Check HTTP status
+            status = status_map.get(citation.number, 'unknown')
+            if status == 'broken':
+                needs_replacement = True
+                reason.append('broken URL (404/500/timeout)')
+            
+            # Check security risk
+            is_security_risk = security_map.get(citation.number, False)
+            if is_security_risk:
+                needs_replacement = True
+                reason.append('security risk (spam/malicious)')
+            
+            # Check if domain-only (path has <= 1 part)
+            from urllib.parse import urlparse
+            try:
+                parsed = urlparse(citation.url)
+                path_parts = [p for p in parsed.path.split('/') if p]
+                if len(path_parts) <= 1:
+                    needs_replacement = True
+                    reason.append('domain-only URL')
+            except Exception:
+                pass
+            
+            if needs_replacement:
+                issues.append(citation)
+                logger.debug(f"   ⚠️ Citation [{citation.number}] needs replacement: {', '.join(reason)}")
+        
+        logger.info(f"📋 Identified {len(issues)} citations needing replacement")
+        return issues
+    
+    async def _find_replacements(
+        self,
+        citation_list: CitationList,
+        issues_list: List[Citation],
+        context: ExecutionContext
+    ) -> tuple[CitationList, List[int]]:
+        """
+        Find replacement URLs for broken/security-risk citations (1 retry max).
+        
+        Args:
+            citation_list: Original CitationList
+            issues_list: List of citations needing replacement
+            context: Execution context
+            
+        Returns:
+            Tuple of (updated CitationList, list of citation numbers with no replacement found)
+        """
+        if not issues_list:
+            return citation_list, []
+        
+        # Initialize Gemini client if needed
+        if not self.gemini_client:
+            self.gemini_client = GeminiClient()
+        
+        logger.info(f"🔍 Finding replacements for {len(issues_list)} citations (1 retry max)...")
+        
+        updated_list = CitationList()
+        updated_list.citations = citation_list.citations.copy()
+        no_replacement_nums = []
+        
+        for citation in issues_list:
+            # Try to find alternative URL using Gemini web search
+            alternative_url = await self._find_alternative_url(citation, context)
+            
+            if alternative_url:
+                # Validate replacement URL
+                status = await self._validate_replacement_url(alternative_url)
+                if status == 'valid':
+                    # Update citation URL
+                    for updated_citation in updated_list.citations:
+                        if updated_citation.number == citation.number:
+                            logger.info(f"   ✅ Citation [{citation.number}]: Replaced {citation.url[:60]}... → {alternative_url[:60]}...")
+                            updated_citation.url = alternative_url
+                            break
+                else:
+                    # Replacement URL also broken - mark as no replacement
+                    logger.warning(f"   ⚠️ Citation [{citation.number}]: Replacement URL also broken")
+                    no_replacement_nums.append(citation.number)
+            else:
+                # No alternative found - mark as no replacement
+                logger.warning(f"   ⚠️ Citation [{citation.number}]: No replacement found")
+                no_replacement_nums.append(citation.number)
+        
+        if no_replacement_nums:
+            logger.warning(f"❌ {len(no_replacement_nums)} citations have no replacement: {no_replacement_nums}")
+        else:
+            logger.info(f"✅ All {len(issues_list)} citations replaced successfully")
+        
+        return updated_list, no_replacement_nums
+    
+    async def _find_alternative_url(self, citation: Citation, context: ExecutionContext) -> Optional[str]:
+        """
+        Use Gemini web search to find alternative URL for a broken citation (AI-only, no regex).
+        
+        Args:
+            citation: Citation needing replacement
+            context: Execution context
+            
+        Returns:
+            Alternative URL if found, None otherwise
+        """
+        prompt = f"""Find a high-quality alternative source for this broken citation.
+
+Original Citation:
+Title: {citation.title}
+Original URL: {citation.url} (broken - 404/500/timeout or security risk)
+
+REQUIREMENTS:
+1. Search for authoritative sources (.edu, .gov, .org, major publications)
+2. Avoid blogs, personal websites, or low-quality sources
+3. Prefer recent sources (2020+) unless historical context needed
+4. Return the URL of the best alternative source in the "url" field
+5. If no good alternative exists, set "url" to null
+
+Search for: {citation.title}
+"""
+        
+        try:
+            # Use structured JSON output (AI-only, no regex)
+            from pipeline.models.gemini_client import build_response_schema
+            
+            response_schema = build_response_schema({
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "Alternative URL if found, null if no good alternative exists"
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": "Brief reason why this URL was chosen or why no alternative exists"
+                    }
+                },
+                "required": ["url", "reason"]
+            })
+            
+            response = await self.gemini_client.generate_content(
+                prompt=prompt,
+                response_schema=response_schema,
+                enable_tools=True  # Enable Google Search grounding
+            )
+            
+            if not response:
+                return None
+            
+            # Parse JSON response (AI-only, no regex)
+            import json
+            parsed = json.loads(response)
+            url = parsed.get('url')
+            
+            if url and url.strip() and url.lower() != 'null':
+                # Validate URL format (simple check, no regex)
+                if url.startswith(('http://', 'https://')):
+                    return url.strip()
+            
+            # Fallback: Check grounding URLs from Gemini search (from current response)
+            # Note: Gemini's grounding URLs are automatically included in the response
+            # We rely on Gemini's structured output above, but if that fails, we check context
+            grounding_urls = getattr(context, 'grounding_urls', [])
+            if grounding_urls:
+                # Use first grounding URL as fallback
+                for grounding in grounding_urls[:1]:
+                    url = grounding.get('url', '')
+                    if url and url.startswith(('http://', 'https://')):
+                        logger.debug(f"   Using grounding URL as alternative: {url[:60]}...")
+                        return url
+            
+            return None
+            
+        except Exception as e:
+            logger.warning(f"   Alternative search failed for citation [{citation.number}]: {e}")
+            return None
+    
+    async def _validate_replacement_url(self, url: str) -> str:
+        """
+        Validate a replacement URL with HTTP check.
+        
+        Args:
+            url: URL to validate
+            
+        Returns:
+            'valid' | 'broken' | 'unknown'
+        """
+        import requests
+        
+        try:
+            response = requests.head(
+                url,
+                timeout=5,
+                allow_redirects=True,
+                headers={'User-Agent': 'OpenBlog Citation Validator'}
+            )
+            
+            if response.status_code == 405:
+                response = requests.get(url, timeout=5, allow_redirects=True)
+            
+            if 200 <= response.status_code < 400:
+                return 'valid'
+            else:
+                return 'broken'
+        except Exception:
+            return 'broken'
+    
+    async def _update_body_citations_ai(
+        self,
+        context: ExecutionContext,
+        citation_list: CitationList,
+        no_replacement_nums: List[int]
+    ) -> ExecutionContext:
+        """
+        Update body citations using AI (find-and-replace similar to Stage 3).
+        
+        - Update href URLs to match validated citations
+        - Remove citations with no replacement
+        - Preserve citation numbers for remaining citations
+        
+        Args:
+            context: Execution context with structured_data
+            citation_list: Updated CitationList with validated URLs
+            no_replacement_nums: List of citation numbers to remove from body
+            
+        Returns:
+            Updated context with body citations updated
+        """
+        if not context.structured_data:
+            return context
+        
+        # Initialize Gemini client if needed
+        if not self.gemini_client:
+            self.gemini_client = GeminiClient()
+        
+        # Build citation map for URL updates
+        citation_map = {citation.number: citation.url for citation in citation_list.citations}
+        
+        # Build list of citations to remove
+        remove_nums_str = ', '.join(str(n) for n in no_replacement_nums) if no_replacement_nums else 'none'
+        
+        logger.info(f"🔗 Updating body citations: {len(citation_map)} valid, {len(no_replacement_nums)} to remove")
+        
+        # Fields to update
+        fields_to_update = [
+            'Intro', 'Direct_Answer',
+            'section_01_content', 'section_02_content', 'section_03_content',
+            'section_04_content', 'section_05_content', 'section_06_content',
+            'section_07_content', 'section_08_content', 'section_09_content'
+        ]
+        
+        article_dict = context.structured_data.model_dump()
+        
+        import asyncio
+        
+        async def update_field(field_name: str) -> tuple[str, str]:
+            """Update a single field's citations."""
+            content = article_dict.get(field_name, '')
+            if not content or not isinstance(content, str):
+                return field_name, content or ''
+            
+            prompt = f"""Update citation links in this content.
+
+VALIDATED CITATIONS (update href URLs to match these):
+{chr(10).join(f'[{num}]: {url}' for num, url in sorted(citation_map.items()))}
+
+CITATIONS TO REMOVE (remove these citation links completely):
+Citation numbers: {remove_nums_str if no_replacement_nums else 'none'}
+
+CONTENT TO UPDATE:
+{content}
+
+TASK:
+1. Update all <a href="..." class="citation"> tags to use validated URLs from the list above
+2. Remove all citation links for citations in the "remove" list (citation numbers: {remove_nums_str if no_replacement_nums else 'none'})
+3. Preserve all other content exactly as-is
+4. Preserve citation numbers for remaining citations
+
+Return ONLY the updated content, no explanations.
+"""
+            
+            try:
+                response = await self.gemini_client.generate_content(
+                    prompt=prompt,
+                    enable_tools=False
+                )
+                
+                if response and response.strip():
+                    return field_name, response.strip()
+                else:
+                    return field_name, content
+            except Exception as e:
+                logger.warning(f"   ⚠️ Field {field_name}: Citation update failed - {e}")
+                return field_name, content
+        
+        # Update all fields in parallel
+        tasks = [update_field(field) for field in fields_to_update]
+        results = await asyncio.gather(*tasks)
+        
+        # Apply updates
+        updated_count = 0
+        for field_name, updated_content in results:
+            if article_dict.get(field_name) != updated_content:
+                article_dict[field_name] = updated_content
+                updated_count += 1
+        
+        if updated_count > 0:
+            logger.info(f"✅ Updated citations in {updated_count} body fields")
+            # Update structured_data
+            from ..models.output_schema import ArticleOutput
+            context.structured_data = ArticleOutput(**article_dict)
+        else:
+            logger.debug("   No body citations needed updating")
+        
+        return context
 
     async def _validate_citations_ultimate(
         self,
@@ -682,23 +1206,46 @@ Use the grounding URLs provided above to enhance citations with specific source 
                             logger.warning(f"   ⚠️  {issue}")
                             
                 else:
-                    # Citation failed validation - KEEP IT but mark as potentially unverified
-                    # Only filter if it's clearly spam or malicious
-                    should_filter = any(
-                        'spam' in issue.lower() or 'malicious' in issue.lower() or 'phishing' in issue.lower()
-                        for issue in validation_result.issues
-                    )
+                    # Citation failed validation - check if we should keep it
+                    # Filter out if:
+                    # 1. Spam/malicious/phishing
+                    # 2. HTTP errors (404, 500, etc.) with no alternative found
+                    # 3. No valid URL found
+                    should_filter = False
+                    has_http_error = False
+                    has_alternative_attempt = False
+                    
+                    for issue in validation_result.issues:
+                        issue_lower = issue.lower()
+                        # Security concerns - always filter
+                        if any(keyword in issue_lower for keyword in ['spam', 'malicious', 'phishing']):
+                            should_filter = True
+                            break
+                        # HTTP errors (404, 500, etc.)
+                        if 'http' in issue_lower and any(code in issue for code in ['403', '404', '500', '503', '504']):
+                            has_http_error = True
+                        # Check if alternative was attempted
+                        if 'alternative' in issue_lower or 'no alternative' in issue_lower:
+                            has_alternative_attempt = True
+                    
+                    # Filter out if HTTP error AND no alternative found
+                    if has_http_error and ('no alternative source found' in ' '.join(validation_result.issues).lower()):
+                        should_filter = True
+                    
+                    # Filter out if no valid URL found
+                    if 'no valid url found' in ' '.join(validation_result.issues).lower():
+                        should_filter = True
                     
                     if should_filter:
-                        logger.warning(f"⚠️ Filtering out Citation [{original_citation.number}]: Security concern")
+                        logger.warning(f"❌ Filtering out Citation [{original_citation.number}]: Validation failed")
                         for issue in validation_result.issues:
-                            logger.warning(f"   {issue}")
+                            logger.warning(f"   ⚠️  {issue}")
+                        # Don't add to validated_list - citation is removed
                     else:
-                        # Keep citation even if validation failed (HTTP errors are common)
-                        # Users can verify sources themselves
-                        logger.warning(f"⚠️ Keeping Citation [{original_citation.number}] despite validation issues:")
+                        # Only keep if it's a minor issue (metadata quality, etc.) but URL is valid
+                        logger.warning(f"⚠️ Keeping Citation [{original_citation.number}] with minor issues:")
                         for issue in validation_result.issues:
-                            logger.warning(f"   {issue}")
+                            logger.warning(f"   ⚠️  {issue}")
                         validated_list.citations.append(original_citation)
             
             # Renumber citations

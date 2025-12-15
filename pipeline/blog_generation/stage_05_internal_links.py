@@ -109,6 +109,13 @@ class InternalLinksStage(Stage):
         )
         logger.info(f"📎 Assigned internal links to {len([s for s in section_internal_links.values() if s])} sections")
 
+        # NEW: Embed links directly into section content using Gemini (AI-only)
+        if section_internal_links and context.structured_data:
+            logger.info("🔗 Step 6: Embedding internal links into section content (AI-only)...")
+            context = await self._embed_links_in_content(context, section_internal_links)
+        else:
+            logger.info("   Skipping link embedding (no links assigned or no structured_data)")
+
         # Store in context
         context.parallel_results["internal_links_html"] = internal_links_html
         context.parallel_results["internal_links_count"] = link_list.count()
@@ -626,6 +633,138 @@ class InternalLinksStage(Stage):
         
         # Fallback
         return "/magazine/"
+
+    async def _embed_links_in_content(
+        self,
+        context: ExecutionContext,
+        section_internal_links: Dict[int, List[Dict[str, str]]]
+    ) -> ExecutionContext:
+        """
+        Embed internal links directly into section content using Gemini AI.
+        
+        Uses AI-only approach (similar to Stage 3) to naturally insert links
+        into appropriate places in the content.
+        
+        Args:
+            context: ExecutionContext with structured_data
+            section_internal_links: Dict mapping section numbers to lists of link dicts
+            
+        Returns:
+            Updated context with links embedded in section content
+        """
+        if not context.structured_data:
+            return context
+        
+        # Initialize Gemini client
+        if not hasattr(self, 'gemini_client') or not self.gemini_client:
+            from ..models.gemini_client import GeminiClient
+            self.gemini_client = GeminiClient()
+        
+        article_dict = context.structured_data.dict() if hasattr(context.structured_data, 'dict') else dict(context.structured_data)
+        updated_fields = {}
+        
+        # Process sections with assigned links in parallel
+        async def embed_links_in_section(section_num: int, links: List[Dict[str, str]]) -> tuple[str, str]:
+            """Embed links into a single section's content."""
+            field_name = f"section_{section_num:02d}_content"
+            content = article_dict.get(field_name, '')
+            
+            if not content or not isinstance(content, str) or len(content) < 50:
+                return field_name, content or ''
+            
+            # Build links list for prompt
+            links_text = "\n".join([
+                f"- {link['title']}: {link['url']}"
+                for link in links
+            ])
+            
+            prompt = f"""You are an expert content editor. Your task is to naturally embed internal links into the provided content.
+
+INTERNAL LINKS TO EMBED (embed these links naturally into the content):
+{links_text}
+
+CONTENT TO UPDATE:
+{content}
+
+INSTRUCTIONS:
+1. Find 1-2 natural places in the content where each link would fit contextually
+2. Embed links naturally using HTML anchor tags: <a href="{{url}}">{{title}}</a>
+3. Make the link text flow naturally with the sentence - don't force it
+4. Prefer embedding links in:
+   - Sentences that mention related concepts
+   - Transition sentences between paragraphs
+   - Examples or case study mentions
+   - Conclusion sentences
+5. DO NOT:
+   - Add links at the very beginning or end (too obvious)
+   - Force links where they don't fit naturally
+   - Change the meaning or structure of the content
+   - Add more than 2 links per section (even if 2 links are provided)
+6. Preserve all other content exactly as-is
+7. Return ONLY the updated content with embedded links, no explanations
+
+Example:
+Original: "Cloud security requires multiple layers of protection."
+With link: "Cloud security requires multiple layers of protection. Learn more about <a href="/blog/cloud-security-best-practices">cloud security best practices</a>."
+
+Return the complete updated content with links naturally embedded.
+"""
+            
+            try:
+                response = await self.gemini_client.generate_content(
+                    prompt=prompt,
+                    enable_tools=False
+                )
+                
+                if response and response.strip() and len(response.strip()) > len(content) * 0.3:
+                    # Validate response is reasonable length (at least 30% of original)
+                    return field_name, response.strip()
+                else:
+                    logger.warning(f"   ⚠️ Section {section_num}: Link embedding returned invalid response, keeping original")
+                    return field_name, content
+            except Exception as e:
+                logger.warning(f"   ⚠️ Section {section_num}: Link embedding failed - {e}")
+                return field_name, content
+        
+        # Create tasks for sections with links
+        tasks = []
+        for section_num, links in section_internal_links.items():
+            if links:
+                tasks.append(embed_links_in_section(section_num, links))
+        
+        if not tasks:
+            logger.info("   No sections to update")
+            return context
+        
+        # Process in parallel (max 5 concurrent to avoid rate limits)
+        import asyncio
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Apply updates
+        updated_count = 0
+        for result in results:
+            if isinstance(result, Exception):
+                logger.warning(f"   ⚠️ Link embedding exception: {result}")
+                continue
+            
+            field_name, updated_content = result
+            if updated_content != article_dict.get(field_name, ''):
+                updated_fields[field_name] = updated_content
+                updated_count += 1
+        
+        # Update structured_data
+        if updated_fields:
+            for field_name, updated_content in updated_fields.items():
+                if hasattr(context.structured_data, field_name):
+                    setattr(context.structured_data, field_name, updated_content)
+                elif isinstance(context.structured_data, dict):
+                    context.structured_data[field_name] = updated_content
+            
+            logger.info(f"   ✅ Embedded links in {updated_count} section(s)")
+        else:
+            logger.info("   No content updates needed")
+        
+        return context
 
     @staticmethod
     def _calculate_relevance(text: str, topics: List[str]) -> int:

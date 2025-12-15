@@ -164,6 +164,12 @@ class QualityRefinementStage(Stage):
         logger.info("🚀 Step 4: AEO optimization (target: score 95+)...")
         context = await self._optimize_aeo_components(context)
         
+        # ============================================================
+        # STEP 5: ENHANCE DOMAIN-ONLY URLs IN SOURCES
+        # ============================================================
+        logger.info("📎 Step 5: Enhancing domain-only URLs in Sources field...")
+        context = await self._enhance_domain_only_urls(context)
+        
         # Log completion (Gemini has already fixed all issues)
         logger.info("✅ Quality refinement complete - all fixes applied by Gemini AI")
         
@@ -981,4 +987,192 @@ Now optimize the Direct Answer above to meet ALL requirements. Ensure it's 30-80
         
         # Return unique variations (max 5)
         return list(dict.fromkeys(variations))[:5]
+    
+    async def _enhance_domain_only_urls(self, context: ExecutionContext) -> ExecutionContext:
+        """
+        Enhance domain-only URLs in Sources field using grounding URLs from Stage 2.
+        
+        Converts URLs like 'gartner.com' to full URLs like 'gartner.com/articles/specific-report'
+        by matching domains to grounding URLs from Google Search.
+        
+        Args:
+            context: ExecutionContext with structured_data and grounding_urls
+            
+        Returns:
+            Updated context with enhanced Sources field
+        """
+        # Check if Sources field exists
+        if not context.structured_data or not hasattr(context.structured_data, 'Sources'):
+            logger.debug("No Sources field available for enhancement")
+            return context
+        
+        sources_text = context.structured_data.Sources or ""
+        if not sources_text.strip():
+            logger.debug("Sources field is empty")
+            return context
+        
+        # Check if grounding URLs are available
+        grounding_urls = getattr(context, 'grounding_urls', [])
+        if not grounding_urls:
+            logger.debug("No grounding URLs available for enhancement")
+            return context
+        
+        logger.info(f"📎 Enhancing domain-only URLs using {len(grounding_urls)} grounding URLs (AI-only parsing)")
+        
+        # Build domain -> full URL map from grounding URLs
+        domain_to_urls = {}
+        for grounding in grounding_urls:
+            url = grounding.get('url', '')
+            title = grounding.get('title', '')
+            if not url or not title:
+                continue
+            # Title IS the domain (e.g., "gartner.com", "ibm.com")
+            domain = title.lower().replace('www.', '').strip()
+            if domain and domain not in domain_to_urls:
+                domain_to_urls[domain] = url
+        
+        logger.debug(f"   Domain map: {list(domain_to_urls.keys())[:5]}...")
+        
+        # Use AI to parse citations and identify domain-only URLs
+        if not hasattr(self, 'gemini_client') or not self.gemini_client:
+            from pipeline.models.gemini_client import GeminiClient
+            self.gemini_client = GeminiClient()
+        
+        prompt = f"""Parse citations from the Sources field and identify domain-only URLs that need enhancement.
+
+Sources field format: [number]: URL – Title
+Example: [1]: https://gartner.com – Gartner Report 2024
+
+CRITICAL REQUIREMENTS:
+1. Parse ALL citations from the text
+2. For each citation, identify if the URL is domain-only (path has <= 1 part)
+   - Domain-only examples: https://gartner.com, https://ibm.com/reports
+   - Full URL examples: https://gartner.com/articles/specific-report, https://ibm.com/reports/data-breach-2024
+3. For domain-only URLs, extract the domain (without www.)
+4. Return structured JSON with citations and enhancement suggestions
+
+Available grounding URLs (domain -> full URL):
+{chr(10).join([f"- {domain}: {url}" for domain, url in list(domain_to_urls.items())[:10]])}
+
+Sources field text:
+{sources_text}
+
+Return a JSON object with:
+- citations: array of parsed citations
+- enhancements: array of enhancements to apply (citation_number, original_url, enhanced_url)
+"""
+        
+        try:
+            from google.genai import types
+            
+            response_schema = types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "citations": types.Schema(
+                        type=types.Type.ARRAY,
+                        items=types.Schema(
+                            type=types.Type.OBJECT,
+                            properties={
+                                "number": types.Schema(type=types.Type.INTEGER),
+                                "url": types.Schema(type=types.Type.STRING),
+                                "title": types.Schema(type=types.Type.STRING)
+                            }
+                        )
+                    ),
+                    "enhancements": types.Schema(
+                        type=types.Type.ARRAY,
+                        items=types.Schema(
+                            type=types.Type.OBJECT,
+                            properties={
+                                "citation_number": types.Schema(type=types.Type.INTEGER),
+                                "original_url": types.Schema(type=types.Type.STRING),
+                                "enhanced_url": types.Schema(type=types.Type.STRING)
+                            }
+                        )
+                    )
+                },
+                required=["citations", "enhancements"]
+            )
+            
+            response = await self.gemini_client.generate_content(
+                prompt=prompt,
+                response_schema=response_schema,
+                enable_tools=False
+            )
+            
+            if not response:
+                logger.warning("⚠️ AI parsing returned no response for domain-only enhancement")
+                return context
+            
+            import json
+            parsed = json.loads(response)
+            enhancements = parsed.get('enhancements', [])
+            
+            if not enhancements:
+                logger.debug("   No domain-only URLs found or no matching grounding URLs")
+                return context
+            
+            # Use AI to apply all enhancements at once (no regex, no string manipulation)
+            enhancement_list = []
+            for enhancement in enhancements:
+                citation_num = enhancement.get('citation_number')
+                original_url = enhancement.get('original_url', '').strip()
+                enhanced_url = enhancement.get('enhanced_url', '').strip()
+                
+                if citation_num and original_url and enhanced_url:
+                    enhancement_list.append({
+                        'citation_number': citation_num,
+                        'original_url': original_url,
+                        'enhanced_url': enhanced_url
+                    })
+            
+            if not enhancement_list:
+                logger.debug("   No valid enhancements to apply")
+                return context
+            
+            # Ask AI to apply all enhancements and return updated Sources field
+            apply_prompt = f"""Update the Sources field by replacing domain-only URLs with full URLs.
+
+Apply these enhancements:
+{chr(10).join([f"- Citation [{e['citation_number']}]: Replace {e['original_url']} with {e['enhanced_url']}" for e in enhancement_list])}
+
+Current Sources field:
+{sources_text}
+
+CRITICAL REQUIREMENTS:
+1. Apply ALL enhancements listed above
+2. Keep the exact same format: [number]: URL – Title
+3. Keep all other citations unchanged
+4. Return ONLY the updated Sources field text (no explanations, no markdown)
+
+Return the complete updated Sources field with all enhancements applied.
+"""
+            
+            try:
+                apply_response = await self.gemini_client.generate_content(
+                    prompt=apply_prompt,
+                    enable_tools=False
+                )
+                
+                if apply_response and apply_response.strip():
+                    enhanced_sources = apply_response.strip()
+                    enhanced_count = len(enhancement_list)
+                    logger.info(f"✅ Enhanced {enhanced_count} domain-only URLs in Sources field (AI-only)")
+                    
+                    # Update structured_data Sources field
+                    article_dict = context.structured_data.model_dump()
+                    article_dict['Sources'] = enhanced_sources
+                    context.structured_data = ArticleOutput(**article_dict)
+                else:
+                    logger.warning("⚠️ AI enhancement application returned no response")
+            except Exception as e:
+                logger.error(f"❌ AI enhancement application failed: {e}")
+                logger.warning("   Continuing without enhancement")
+                
+        except Exception as e:
+            logger.error(f"❌ AI domain-only enhancement failed: {e}")
+            logger.warning("   Continuing without enhancement")
+            return context
+        
+        return context
 
