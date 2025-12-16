@@ -293,22 +293,19 @@ def get_engine() -> WorkflowEngine:
         from pipeline.blog_generation.stage_12_review_iteration import ReviewIterationStage
         
         _engine = WorkflowEngine()
-        # Register all stages for full pipeline
+        # Register consolidated pipeline stages (ToC/Metadata in Stage 2, FAQ/PAA in Stage 3)
         _engine.register_stages([
             DataFetchStage(),
             PromptBuildStage(),
-            GeminiCallStage(),
-            QualityRefinementStage(),
+            GeminiCallStage(),  # Includes ToC + Metadata (formerly Stages 6 & 8)
+            QualityRefinementStage(),  # Includes FAQ/PAA validation (formerly Stage 10)
             CitationsStage(),
             InternalLinksStage(),
-            TableOfContentsStage(),
-            ImageStage(),
-            MetadataStage(),
-            HybridSimilarityCheckStage(),
-            FAQPAAStage(),
-            CleanupStage(),
-            StorageStage(),
-            ReviewIterationStage(),
+            ImageStage(),  # Renumbered from 7 to 6
+            HybridSimilarityCheckStage(),  # Renumbered from 9 to 7
+            CleanupStage(),  # Renumbered from 11 to 8
+            StorageStage(),  # Renumbered from 12 to 9
+            ReviewIterationStage(),  # Renumbered from 13 to 10
         ])
     return _engine
 

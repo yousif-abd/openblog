@@ -32,11 +32,10 @@ try:
     from ..blog_generation.stage_03_quality_refinement import QualityRefinementStage
     from ..blog_generation.stage_04_citations import CitationsStage
     from ..blog_generation.stage_05_internal_links import InternalLinksStage
-    from ..blog_generation.stage_06_toc import TableOfContentsStage
+    # Stage 6 (ToC) and Stage 8 (Metadata) consolidated into Stage 2
+    # Stage 10 (FAQ/PAA) consolidated into Stage 3
     from ..blog_generation.stage_06_image import ImageStage
-    from ..blog_generation.stage_07_metadata import MetadataStage
     from ..blog_generation.stage_07_similarity_check import HybridSimilarityCheckStage
-    from ..blog_generation.stage_08_faq_paa import FAQPAAStage
     from ..blog_generation.stage_08_cleanup import CleanupStage
     from ..blog_generation.stage_12_review_iteration import ReviewIterationStage
     # #region agent log
@@ -146,22 +145,21 @@ class ProductionStageFactory(IStageFactory):
         """
         registry = {}
         
-        # Standard pipeline stages (0-13) - Updated to match actual stage numbers
+        # Standard pipeline stages (0-10) - CONSOLIDATED VERSION
+        # Stages 6 (ToC) and 8 (Metadata) consolidated into Stage 2
+        # Stage 10 (FAQ/PAA) consolidated into Stage 3
         stage_classes = [
             (0, DataFetchStage),
             (1, PromptBuildStage),
-            (2, GeminiCallStage),
-            (3, QualityRefinementStage),  # Always runs - AI-based quality refinement
+            (2, GeminiCallStage),  # Includes ToC + Metadata (formerly Stages 6 & 8)
+            (3, QualityRefinementStage),  # Includes FAQ/PAA validation (formerly Stage 10)
             (4, CitationsStage),
             (5, InternalLinksStage),
-            (6, TableOfContentsStage),
-            (7, ImageStage),
-            (8, MetadataStage),
-            (9, HybridSimilarityCheckStage),
-            (10, FAQPAAStage),
-            (11, CleanupStage),
-            (12, StorageStage),
-            (13, ReviewIterationStage),
+            (6, ImageStage),  # Renumbered from 7
+            (7, HybridSimilarityCheckStage),  # Renumbered from 9
+            (8, CleanupStage),  # Renumbered from 11
+            (9, StorageStage),  # Renumbered from 12
+            (10, ReviewIterationStage),  # Renumbered from 13
         ]
         
         for stage_num, stage_class in stage_classes:
@@ -197,7 +195,7 @@ class ProductionStageFactory(IStageFactory):
         stages = []
         failed_stages = []
         
-        # Create stages in order (0-13)
+        # Create stages in order (0-10) - Consolidated pipeline
         for stage_num in sorted(self._stage_registry.keys()):
             try:
                 stage_instance = self._create_stage_instance(stage_num)
@@ -208,8 +206,8 @@ class ProductionStageFactory(IStageFactory):
                 self.logger.error(f"Failed to create stage {stage_num}: {e}")
                 failed_stages.append(stage_num)
                 
-                # Critical stages - fail fast (updated for full 14-stage pipeline)
-                if stage_num in [0, 1, 2, 3, 11, 12]:
+                # Critical stages - fail fast (consolidated 11-stage pipeline)
+                if stage_num in [0, 1, 2, 3, 8, 9]:
                     raise StageRegistrationError(
                         f"Critical stage {stage_num} creation failed: {e}"
                     )
@@ -313,8 +311,8 @@ class ProductionStageFactory(IStageFactory):
             duplicates = [num for num in stage_numbers if stage_numbers.count(num) > 1]
             raise StageValidationError(f"Duplicate stages found: {duplicates}")
         
-        # Validate critical stages are present (updated for 14-stage pipeline)
-        critical_stages = [0, 1, 2, 3, 11, 12]
+        # Validate critical stages are present (consolidated 11-stage pipeline)
+        critical_stages = [0, 1, 2, 3, 8, 9]
         missing_critical = [num for num in critical_stages if num not in stage_numbers]
         if missing_critical:
             raise StageValidationError(f"Missing critical stages: {missing_critical}")

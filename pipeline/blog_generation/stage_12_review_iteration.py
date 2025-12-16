@@ -40,7 +40,7 @@ class ReviewIterationStage(Stage):
     During regeneration with feedback, it applies revisions.
     """
 
-    stage_num = 13
+    stage_num = 10
     stage_name = "Review Iteration"
 
     async def execute(self, context: ExecutionContext) -> ExecutionContext:
