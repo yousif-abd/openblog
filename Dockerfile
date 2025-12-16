@@ -20,10 +20,12 @@ RUN pip install playwright && playwright install chromium --with-deps || true
 # Copy application code
 COPY . .
 
+# Copy and make entrypoint executable
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 # Expose port (Railway sets PORT env var)
 EXPOSE 3000
 
-# Railway auto-detects FastAPI and generates: uvicorn service.api:app --port $PORT
-# But $PORT doesn't expand. Solution: Use shell form CMD that Railway will respect
-# This ensures PORT env var is properly expanded
-CMD python3 -m uvicorn service.api:app --host 0.0.0.0 --port ${PORT:-3000}
+# Use entrypoint script - Railway may override with this, so ensure it exists
+ENTRYPOINT ["/bin/bash", "/entrypoint.sh"]
