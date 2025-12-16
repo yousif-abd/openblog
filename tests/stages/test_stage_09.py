@@ -15,7 +15,7 @@ from pipeline.core import ExecutionContext
 from pipeline.models.image_generator import ImageGenerator
 from pipeline.models.output_schema import ArticleOutput
 from pipeline.prompts.image_prompt import generate_image_prompt
-from pipeline.blog_generation.stage_09_image import ImageStage
+from pipeline.blog_generation.stage_06_image import ImageStage
 
 
 @pytest.fixture
