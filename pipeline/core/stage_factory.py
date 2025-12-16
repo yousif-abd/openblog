@@ -142,7 +142,7 @@ class ProductionStageFactory(IStageFactory):
         """
         registry = {}
         
-        # Standard pipeline stages (0-13)
+        # Standard pipeline stages (0-13) - Updated to match actual stage numbers
         stage_classes = [
             (0, DataFetchStage),
             (1, PromptBuildStage),
@@ -150,10 +150,14 @@ class ProductionStageFactory(IStageFactory):
             (3, QualityRefinementStage),  # Always runs - AI-based quality refinement
             (4, CitationsStage),
             (5, InternalLinksStage),
-            (6, ImageStage),
-            (7, HybridSimilarityCheckStage),
-            (8, CleanupStage),
-            (9, StorageStage),
+            (6, TableOfContentsStage),
+            (7, ImageStage),
+            (8, MetadataStage),
+            (9, HybridSimilarityCheckStage),
+            (10, FAQPAAStage),
+            (11, CleanupStage),
+            (12, StorageStage),
+            (13, ReviewIterationStage),
         ]
         
         for stage_num, stage_class in stage_classes:
