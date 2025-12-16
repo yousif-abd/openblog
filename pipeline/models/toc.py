@@ -76,7 +76,7 @@ class TableOfContents(BaseModel):
         Convert to dictionary format {01: label, 02: label, ...}.
 
         NOTE: Uses simple numeric keys (01, 02) not toc_01, toc_02
-        because stage_10_cleanup flattens nested dicts with prefix.
+        because stage_08_cleanup flattens nested dicts with prefix.
         So toc["01"] becomes toc_01 after flattening.
         
         FIXED: Now uses full_title (truncated to ~50 chars) instead of short_label

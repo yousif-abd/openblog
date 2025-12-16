@@ -1,5 +1,5 @@
 """
-Stage 9: Image/Graphics Generation
+Stage 6: Image/Graphics Generation
 
 Maps to v4.1 Phase 8, Steps 25-28: get-insights → image_empty? → execute_image_generation → store_image_in_blog
 
@@ -51,7 +51,7 @@ logger = logging.getLogger(__name__)
 
 class ImageStage(Stage):
     """
-    Stage 9: Image/Graphics Generation.
+    Stage 6: Image/Graphics Generation.
 
     Handles:
     - Conditional skip (if images already exist)
@@ -64,7 +64,7 @@ class ImageStage(Stage):
     - Error handling and retry logic
     """
 
-    stage_num = 9
+    stage_num = 6
     stage_name = "Image/Graphics Generation"
 
     def __init__(self) -> None:
@@ -93,7 +93,7 @@ class ImageStage(Stage):
 
     async def execute(self, context: ExecutionContext) -> ExecutionContext:
         """
-        Execute Stage 9: Generate 3 article images or graphics.
+        Execute Stage 6: Generate 3 article images or graphics.
 
         Input from context:
         - structured_data: ArticleOutput with headline + section titles
@@ -118,7 +118,7 @@ class ImageStage(Stage):
         use_graphics = context.job_config.get("use_graphics", False)
         mode_name = "graphics" if use_graphics else "images"
         
-        logger.info(f"Stage 9: {self.stage_name} (3 {mode_name})")
+        logger.info(f"Stage 6: {self.stage_name} (3 {mode_name})")
 
         # Validate input
         if not context.structured_data:

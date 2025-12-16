@@ -31,7 +31,7 @@ from enum import Enum
 
 from .execution_context import ExecutionContext
 from .workflow_engine import WorkflowEngine
-from ..blog_generation.stage_12_hybrid_similarity_check import (
+from ..blog_generation.stage_07_similarity_check import (
     HybridBatchSimilarityManager, 
     RegenerationResult
 )

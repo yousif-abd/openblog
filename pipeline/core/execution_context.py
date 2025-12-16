@@ -1,7 +1,7 @@
 """
 ExecutionContext - Shared data model for all workflow stages.
 
-This is the data structure passed between all 13 stages (0-12) plus conditional Stage 3.
+This is the data structure passed between all 10 stages (0-9).
 Each stage receives it, modifies it, and passes to the next stage.
 
 Clean design: no side effects, immutable chain of transformations.
@@ -20,15 +20,15 @@ class ExecutionContext:
     """
     Central data model for Python Blog Writing System.
 
-    Flows through all 13 stages (0-12) plus conditional Stage 3 in sequence:
+    Flows through all 10 stages (0-9) in sequence:
     Preliminary → fetches and labels: sitemap_pages
     Stage 0 → populates: job_id, job_config, company_data, language
     Stage 1 → adds: prompt
     Stage 2 → adds: raw_article
     Stage 3 → adds: structured_data
-    Stages 4-9 → populate: parallel_results (dict with 6 keys)
-    Stage 10 → adds: validated_article, quality_report
-    Stage 11 → adds: final_article, storage_result
+    Stages 6-7 → populate: parallel_results (dict with image and similarity data)
+    Stage 8 → adds: validated_article, quality_report
+    Stage 9 → adds: final_article, storage_result
 
     No mutations - each stage works with full context and returns modified copy.
     """
@@ -95,10 +95,10 @@ class ExecutionContext:
     """
     Flag indicating if Stage 3 (Quality Refinement) has optimized AEO components.
     
-    When True, Stage 10 should skip AEO enforcement to avoid conflicts:
+    When True, Stage 8 should skip AEO enforcement to avoid conflicts:
     - Stage 3 uses Gemini to add natural language citations, conversational phrases, question patterns
-    - Stage 10 uses regex to add academic citations [N] and inject phrases
-    - Stage 10's academic citations get stripped by HTML renderer anyway
+    - Stage 8 uses regex to add academic citations [N] and inject phrases
+    - Stage 8's academic citations get stripped by HTML renderer anyway
     
     Set to True in Stage 3 when _optimize_aeo_components() successfully optimizes content.
     """
@@ -117,10 +117,10 @@ class ExecutionContext:
     - sources, search_queries
     """
 
-    # ========== STAGES 4-9: Parallel Results ==========
+    # ========== STAGES 6-7: Parallel Results ==========
     parallel_results: Dict[str, Any] = field(default_factory=dict)
     """
-    Results from parallel stages 4-9.
+    Results from parallel stages 6-7.
 
     Keys:
     - 'citations': citations_html (HTML formatted citations)
@@ -131,7 +131,7 @@ class ExecutionContext:
     - 'image': {image_url, image_alt_text}
     """
 
-    # ========== STAGE 10: Validated Article ==========
+    # ========== STAGE 8: Validated Article ==========
     validated_article: Optional[Dict[str, Any]] = None
     """
     Merged, cleaned, validated article.
@@ -141,7 +141,7 @@ class ExecutionContext:
 
     quality_report: Dict[str, Any] = field(default_factory=dict)
     """
-    Quality validation report from Stage 10.
+    Quality validation report from Stage 8.
 
     Structure:
     {
@@ -155,10 +155,10 @@ class ExecutionContext:
     }
     """
 
-    # ========== STAGE 12: Similarity Check ==========
+    # ========== STAGE 7: Similarity Check ==========
     similarity_report: Optional[Any] = None
     """
-    Similarity check report from Stage 12.
+    Similarity check report from Stage 7.
     
     Contains SimilarityResult object with:
     - is_too_similar: bool
@@ -179,7 +179,7 @@ class ExecutionContext:
     regeneration_needed: bool = False
     """Flag indicating if regeneration is needed due to high similarity"""
 
-    # ========== STAGE 10-11: ArticleOutput ==========
+    # ========== STAGE 8-9: ArticleOutput ==========
     article_output: Optional[Any] = None
     """
     ArticleOutput instance (Pydantic model) converted from validated_article.
@@ -187,7 +187,7 @@ class ExecutionContext:
     None if conversion failed or not yet converted.
     """
 
-    # ========== STAGE 11: Final Output ==========
+    # ========== STAGE 9: Final Output ==========
     final_article: Optional[Dict[str, Any]] = None
     """
     Final article data (all fields) ready for HTML generation and storage.
@@ -196,7 +196,7 @@ class ExecutionContext:
 
     storage_result: Dict[str, Any] = field(default_factory=dict)
     """
-    Result of Stage 11 storage operation.
+    Result of Stage 9 storage operation.
 
     Structure:
     {

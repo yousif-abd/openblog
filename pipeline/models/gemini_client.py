@@ -247,7 +247,7 @@ class GeminiClient:
     async def generate_content(
         self,
         prompt: str,
-        enable_tools: bool = True,
+        enable_tools: bool = True,  # Default: True (tools available when needed)
         response_schema: Any = None,
         system_instruction: str = None,
     ) -> str:

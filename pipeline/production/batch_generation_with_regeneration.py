@@ -45,12 +45,11 @@ from pipeline.blog_generation.stage_02_gemini_call import GeminiCallStage
 # Stage 3 (Extraction) is now part of Stage 2 (Generation + Extraction)
 from pipeline.blog_generation.stage_04_citations import CitationsStage
 from pipeline.blog_generation.stage_05_internal_links import InternalLinksStage
-from pipeline.blog_generation.stage_06_toc import TableOfContentsStage
-from pipeline.blog_generation.stage_07_metadata import MetadataStage
-from pipeline.blog_generation.stage_08_faq_paa import FAQPAAStage
-from pipeline.blog_generation.stage_09_image import ImageStage
-from pipeline.blog_generation.stage_10_cleanup import CleanupStage
-from pipeline.blog_generation.stage_11_storage import StorageStage
+# Stages 6-8 consolidated: ToC and Metadata into Stage 2, FAQ/PAA validation into Stage 3
+from pipeline.blog_generation.stage_06_image import ImageStage
+from pipeline.blog_generation.stage_07_similarity_check import HybridSimilarityCheckStage
+from pipeline.blog_generation.stage_08_cleanup import CleanupStage
+from pipeline.blog_generation.stage_09_storage import StorageStage
 
 # Configure logging for production
 logging.basicConfig(
@@ -116,7 +115,7 @@ class ProductionBatchRunner:
         """Initialize workflow engine with all pipeline stages."""
         engine = WorkflowEngine()
         
-        # Register all 13 stages (0-12) in order (Stage 2b is conditional, not registered)
+        # Register all 10 stages (0-9) in order
         stages = [
             DataFetchStage(),           # Stage 0: Data fetch
             PromptBuildStage(),         # Stage 1: Prompt build  

@@ -1,7 +1,7 @@
 """
-WorkflowEngine - Orchestrates 13 stages (0-12) plus conditional Stage 3 of the blog writing pipeline.
+WorkflowEngine - Orchestrates 10 stages (0-9) of the blog writing pipeline.
 
-Total stages: 14 numbered stages (0-13) + 1 conditional stage (2b) = 15 stages total
+Total stages: 10 numbered stages (0-9)
 
 Clean separation of concerns:
 - Initialization: Load all stages
@@ -9,7 +9,7 @@ Clean separation of concerns:
 - Error handling: Graceful fallback and logging
 - Monitoring: Track execution times and quality metrics
 
-Sequential flow with parallel execution in middle (stages 4-9).
+Sequential flow with parallel execution in middle (stages 6-7).
 """
 
 import asyncio
@@ -37,7 +37,7 @@ class Stage(ABC):
     """
 
     stage_num: int
-    """Stage number (0-12, with conditional Stage 3)"""
+    """Stage number (0-9)"""
 
     stage_name: str
     """Human-readable stage name"""
@@ -68,8 +68,8 @@ class WorkflowEngine:
 
     Manages:
     - Stage loading and initialization
-    - Sequential execution (stages 0-3, 10-11)
-    - Parallel execution (stages 4-9 via asyncio.gather)
+    - Sequential execution (stages 0-5, 8-9)
+    - Parallel execution (stages 6-7 via asyncio.gather)
     - Error handling and fallback
     - Metrics collection
     """
@@ -115,19 +115,16 @@ class WorkflowEngine:
         Execute complete workflow.
 
         Flow:
-        1. Stage 0: Data fetch → loads job config, company data
-        2. Stage 1: Prompt build → creates prompt with variables
-        3. Stage 2: Gemini call → generates raw article with tools
-        4. Stage 3: Quality Refinement (conditional) → fixes quality issues
-        5. Stage 4: Citations → validate sources and update body citations (sequential)
-        6. Stage 5: Internal links → generate "More Reading" and embed links in body (sequential)
-        7. Stages 6-9: Parallel execution (don't modify body content)
-           - Stage 6: ToC → create table of contents labels
-           - Stage 7: Metadata → calculate read time + date
-           - Stage 8: FAQ/PAA → validate/generate Q&A
-           - Stage 9: Image → generate article image
-        8. Stage 10: Cleanup → merge parallel results, validate
-        9. Stage 11: Storage → HTML generation and Supabase storage
+        1. Stage 0: Data Fetch → loads job config, company data, sitemap URLs
+        2. Stage 1: Prompt Build → creates prompt with variables
+        3. Stage 2: Content Generation with ToC & Metadata → generates article, extracts structured data, generates ToC labels
+        4. Stage 3: Quality Refinement & Validation → AI-based quality refinement, validates FAQ/PAA
+        5. Stage 4: Citations Validation & Formatting → validate sources and update body citations
+        6. Stage 5: Internal Links Generation → generate and embed links in body
+        7. Stage 6: Image/Graphics Generation → generate article image (parallel)
+        8. Stage 7: Content Similarity Check → check for cannibalization (parallel)
+        9. Stage 8: Merge & Link → merge parallel results, link citations
+        10. Stage 9: HTML Generation & Storage → generate HTML and store to Supabase
 
         Args:
             job_id: Unique job identifier
@@ -146,10 +143,8 @@ class WorkflowEngine:
         self.logger.info(f"Total execution time target: < 105 seconds")
 
         try:
-            # Sequential: Stages 0-2 (Generation + Extraction)
-            context = await self._execute_sequential(context, [0, 1, 2])
-            # Stage 3: Quality Refinement (conditional)
-            context = await self._execute_stage_3_conditional(context)
+            # Sequential: Stages 0-3 (Data Fetch → Prompt Build → Gemini Call → Quality Refinement)
+            context = await self._execute_sequential(context, [0, 1, 2, 3])
 
             # Sequential: Stage 4 (Citations) - modifies body content
             context = await self._execute_sequential(context, [4])
@@ -157,13 +152,14 @@ class WorkflowEngine:
             # Sequential: Stage 5 (Internal Links) - modifies body content, must run after Stage 4
             context = await self._execute_sequential(context, [5])
 
-            # Parallel: Stages 6-9 (ToC, Metadata, FAQ/PAA, Image) - don't modify body content
-            context = await self._execute_parallel(context, [6, 7, 8, 9])
+            # Parallel: Stages 6 and 7 (Image + Similarity Check)
+            # Run in parallel to save time (check similarity while image generates)
+            context = await self._execute_parallel(context, [6, 7])
 
-            # OPTIMIZED: Stage 10 and Stage 11 can overlap
-            # Stage 11 can start HTML generation as soon as validated_article is ready
+            # OPTIMIZED: Stage 8 and Stage 9 can overlap
+            # Stage 9 can start HTML generation as soon as validated_article is ready
             # (doesn't need to wait for quality_report to finish)
-            context = await self._execute_stage_10_with_overlap(context)
+            context = await self._execute_stage_8_with_overlap(context)
 
             # Calculate metrics
             total_time = context.get_total_execution_time()
@@ -263,62 +259,12 @@ class WorkflowEngine:
                     }
                 )
 
-                # Stage 0, 2, 10, 11 are critical - don't continue
-                if stage_num in [0, 2, 10, 11]:
+                # Stage 0, 2, 8, 9 are critical - don't continue
+                if stage_num in [0, 2, 8, 9]:
                     raise
 
         return context
 
-    async def _execute_stage_3_conditional(
-        self, context: ExecutionContext
-    ) -> ExecutionContext:
-        """
-        Conditionally execute Stage 3 (Quality Refinement).
-        
-        Only runs if quality issues are detected in Gemini output.
-        This is inserted AFTER Stage 2 (Generation + Extraction) and BEFORE Stage 4-9 (Parallel).
-        
-        Args:
-            context: Current execution context (with structured_data from Stage 2)
-        
-        Returns:
-            Updated execution context (potentially with refined structured_data)
-        """
-        from ..blog_generation.stage_03_quality_refinement import QualityRefinementStage
-        
-        stage_3 = QualityRefinementStage()
-        self.logger.info(f"Executing conditional {stage_3}")
-        
-        try:
-            # Notify progress start
-            if self.progress_callback:
-                self.progress_callback("stage_03", "3", False)
-            
-            start_time = time.time()
-            context = await stage_3.execute(context)
-            duration = time.time() - start_time
-            
-            context.add_execution_time("stage_03", duration)
-            self.logger.info(f"✅ {stage_3} completed in {duration:.2f}s")
-            
-            # Notify progress completion
-            if self.progress_callback:
-                self.progress_callback("stage_03", "3", True)
-        
-        except Exception as e:
-            self.logger.warning(f"⚠️  {stage_3} failed: {e}", exc_info=True)
-            context.add_error(
-                "stage_03", 
-                e,
-                context={
-                    "job_id": context.job_id,
-                    "stage_name": "Quality Refinement"
-                }
-            )
-            # Non-critical - continue with original content
-            self.logger.info("Continuing with original Gemini output (no refinement)")
-
-        return context
 
     async def _execute_parallel(
         self, context: ExecutionContext, stage_nums: List[int]
@@ -338,12 +284,12 @@ class WorkflowEngine:
             Updated execution context with parallel_results populated
 
         Note:
-            Stages 6-9 each take varying times:
+            Stages 6-7 each take varying times:
             - Stage 6 (ToC): ~30 sec (fast)
             - Stage 7 (Metadata): <1 sec (instant)
             - Stage 8 (FAQ/PAA): ~2-3 min
-            - Stage 9 (Image): ~2-4 min
-            Total parallel time: ~4-5 min (limited by slowest = Stage 9)
+            - Stage 6 (Image): ~2-4 min
+            Total parallel time: ~4-5 min (limited by slowest = Stage 6)
             
             Note: Stages 4-5 run sequentially before this (both modify body content)
         """
@@ -418,103 +364,72 @@ class WorkflowEngine:
                 e,
                 context={
                     "job_id": context.job_id,
-                    "stages": [4, 5, 6, 7, 8, 9]
+                    "stages": [4, 5, 6]  # Old Stages 6-8 consolidated into Stages 2-3
                 }
             )
 
         return context
 
-    async def _execute_stage_10_with_overlap(
+    async def _execute_stage_8_with_overlap(
         self, context: ExecutionContext
     ) -> ExecutionContext:
         """
-        Execute Stage 10 and Stage 11 with overlap optimization.
+        Execute Stage 8 and Stage 9 with overlap optimization.
         
-        Stage 11 can start HTML generation as soon as validated_article is ready,
+        Stage 9 can start HTML generation as soon as validated_article is ready,
         before quality_report finishes. This saves ~0.5-1 second.
         
         Args:
-            context: Execution context after stages 4-9
+            context: Execution context after stages 6-7
             
         Returns:
             Updated context with both stages complete
         """
-        # Start Stage 10
-        stage_10 = self.stages.get(10)
-        if not stage_10:
-            self.logger.warning("Stage 10 not registered")
+        # Start Stage 8
+        stage_8 = self.stages.get(8)
+        if not stage_8:
+            self.logger.warning("Stage 8 not registered")
             return context
-        
-        self.logger.info("Executing Stage 10 (cleanup) and Stage 11 (storage) with overlap")
-        
-        # Execute Stage 10
+
+        self.logger.info("Executing Stage 8 (cleanup) and Stage 9 (storage) with overlap")
+
+        # Execute Stage 8
         start_time = time.time()
-        context = await stage_10.execute(context)
-        stage_10_duration = time.time() - start_time
-        context.add_execution_time("stage_10", stage_10_duration)
-        self.logger.info(f"✅ Stage 10 completed in {stage_10_duration:.2f}s")
+        context = await stage_8.execute(context)
+        stage_8_duration = time.time() - start_time
+        context.add_execution_time("stage_8", stage_8_duration)
+        self.logger.info(f"✅ Stage 8 completed in {stage_8_duration:.2f}s")
         
         # QUALITY GATE: Check if regeneration is needed
         context = await self._check_quality_gate_and_regenerate(context)
         
-        # Stage 12: Hybrid Similarity Check (runs after Stage 10)
-        stage_12 = self.stages.get(12)
-        if stage_12:
-            start_time = time.time()
-            context = await stage_12.execute(context)
-            stage_12_duration = time.time() - start_time
-            context.add_execution_time("stage_12", stage_12_duration)
+        # Stage 7 now runs in parallel with Stage 6 (after Stage 5)
+        # Similarity check and section regeneration happen earlier to save time
+        # Results are already in context from parallel execution
+        if hasattr(context, 'similarity_report') and context.similarity_report:
+            similarity_score = getattr(context.similarity_report, 'similarity_score', 0)
+            is_too_similar = getattr(context.similarity_report, 'is_too_similar', False)
             
-            # Log similarity results
-            if hasattr(context, 'similarity_report') and context.similarity_report:
-                similarity_score = getattr(context.similarity_report, 'similarity_score', 0)
-                semantic_score = getattr(context.similarity_report, 'semantic_score', None)
-                is_too_similar = getattr(context.similarity_report, 'is_too_similar', False)
-                
-                if semantic_score is not None:
-                    self.logger.info(
-                        f"✅ Stage 12 completed in {stage_12_duration:.2f}s "
-                        f"(similarity: {similarity_score:.1f}%, semantic: {semantic_score:.1%})"
-                    )
-                else:
-                    self.logger.info(
-                        f"✅ Stage 12 completed in {stage_12_duration:.2f}s "
-                        f"(similarity: {similarity_score:.1f}%, character-only mode)"
-                    )
-                
-                if is_too_similar:
-                    self.logger.warning(
-                        f"⚠️  High similarity detected ({similarity_score:.1f}%) - "
-                        f"similar to: {getattr(context.similarity_report, 'similar_article', 'unknown')}"
-                    )
-            else:
-                self.logger.info(f"✅ Stage 12 completed in {stage_12_duration:.2f}s")
+            if is_too_similar:
+                self.logger.warning(
+                    f"⚠️  High similarity detected ({similarity_score:.1f}%) - "
+                    f"similar sections regenerated"
+                )
         
-        # Stage 13: Review Iteration (CONDITIONAL - only runs if review_prompts present)
-        stage_13 = self.stages.get(13)
-        if stage_13:
-            start_time = time.time()
-            context = await stage_13.execute(context)
-            stage_13_duration = time.time() - start_time
-            context.add_execution_time("stage_13", stage_13_duration)
-            if context.parallel_results.get("revision_applied"):
-                self.logger.info(f"✅ Stage 13 completed in {stage_13_duration:.2f}s (revisions applied)")
-            else:
-                self.logger.info(f"✅ Stage 13 skipped (no review_prompts)")
+        # Stage 13 (Review Iteration) removed - use /refresh endpoint instead
+        # The /refresh endpoint provides better AI-based content refresh with adjustment prompts
         
-        # Stage 11: Storage (runs AFTER Stage 12 and Stage 13 complete)
-        # Stage 13 may modify validated_article, so Stage 11 must wait for it
-        # No overlap optimization here - Stage 13 must complete first
-        stage_11 = self.stages.get(11)
-        if not stage_11:
-            self.logger.warning("Stage 11 not registered")
+        # Stage 9: Storage (runs AFTER Stage 7 completes)
+        stage_9 = self.stages.get(9)
+        if not stage_9:
+            self.logger.warning("Stage 9 not registered")
             return context
         
         start_time = time.time()
-        context = await stage_11.execute(context)
-        stage_11_duration = time.time() - start_time
-        context.add_execution_time("stage_11", stage_11_duration)
-        self.logger.info(f"✅ Stage 11 completed in {stage_11_duration:.2f}s")
+        context = await stage_9.execute(context)
+        stage_9_duration = time.time() - start_time
+        context.add_execution_time("stage_9", stage_9_duration)
+        self.logger.info(f"✅ Stage 9 completed in {stage_9_duration:.2f}s")
         
         return context
 
@@ -530,7 +445,7 @@ class WorkflowEngine:
         Also handles language validation failures with automatic retry.
         
         Args:
-            context: Execution context after Stage 10
+            context: Execution context after Stage 8
             
         Returns:
             Updated context (potentially regenerated)
@@ -624,17 +539,20 @@ class WorkflowEngine:
             # Sequential: Stage 5 (Internal Links) - modifies body content, must run after Stage 4
             context = await self._execute_sequential(context, [5])
             
-            # Parallel: Stages 6-9 (ToC, Metadata, FAQ/PAA, Image) - don't modify body content
-            context = await self._execute_parallel(context, [6, 7, 8, 9])
+            # Parallel: Stages 6 and 7 (Image + Similarity Check) - don't modify body content
+            # Note: Old Stages 6-8 (ToC, Metadata, FAQ/PAA) are now consolidated into Stages 2-3
+            # Stage 7 runs in parallel to save time (can check similarity while image generates)
+            # Stage 7 regenerates similar sections automatically if needed
+            context = await self._execute_parallel(context, [9, 12])
             
-            # Stage 10 cleanup (this will trigger recursive quality check)
-            stage_10 = self.stages.get(10)
-            if stage_10:
+            # Stage 8 cleanup (this will trigger recursive quality check)
+            stage_8 = self.stages.get(8)
+            if stage_8:
                 start_time = time.time()
-                context = await stage_10.execute(context)
-                stage_10_duration = time.time() - start_time
-                context.add_execution_time(f"stage_10_regen_{reason}", stage_10_duration)
-                self.logger.info(f"✅ Regeneration Stage 10 completed in {stage_10_duration:.2f}s")
+                context = await stage_8.execute(context)
+                stage_8_duration = time.time() - start_time
+                context.add_execution_time(f"stage_8_regen_{reason}", stage_8_duration)
+                self.logger.info(f"✅ Regeneration Stage 8 completed in {stage_8_duration:.2f}s")
             
             # Recursive quality check (will handle next failure if needed)
             return await self._check_quality_gate_and_regenerate(context)
@@ -731,7 +649,7 @@ class WorkflowEngine:
         Get a registered stage by number.
 
         Args:
-            stage_num: Stage number (0-11)
+            stage_num: Stage number (0-9)
 
         Returns:
             Stage instance or None if not registered

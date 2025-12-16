@@ -24,14 +24,12 @@ try:
     from ..blog_generation.stage_03_quality_refinement import QualityRefinementStage
     from ..blog_generation.stage_04_citations import CitationsStage
     from ..blog_generation.stage_05_internal_links import InternalLinksStage
-    from ..blog_generation.stage_06_toc import TableOfContentsStage
-    from ..blog_generation.stage_07_metadata import MetadataStage
-    from ..blog_generation.stage_08_faq_paa import FAQPAAStage
-    from ..blog_generation.stage_09_image import ImageStage
-    from ..blog_generation.stage_10_cleanup import CleanupStage
-    from ..blog_generation.stage_11_storage import StorageStage
-    from ..blog_generation.stage_12_hybrid_similarity_check import HybridSimilarityCheckStage
-    from ..blog_generation.stage_12_review_iteration import ReviewIterationStage
+    # Stages 6-8 consolidated: ToC and Metadata into Stage 2, FAQ/PAA validation into Stage 3
+    from ..blog_generation.stage_06_image import ImageStage
+    from ..blog_generation.stage_07_similarity_check import HybridSimilarityCheckStage
+    from ..blog_generation.stage_08_cleanup import CleanupStage
+    from ..blog_generation.stage_09_storage import StorageStage
+    # Stage 13 (Review Iteration) removed - use /refresh endpoint instead
 except ImportError as e:
     logging.error(f"Failed to import stage modules: {e}")
     # For graceful degradation, we'll still provide the factory interface
@@ -62,7 +60,7 @@ class IStageFactory(ABC):
         Create all pipeline stages.
         
         Returns:
-            List of Stage instances in execution order (0-12)
+            List of Stage instances in execution order (0-9)
             
         Raises:
             StageRegistrationError: If any stage creation fails
@@ -125,23 +123,18 @@ class ProductionStageFactory(IStageFactory):
         """
         registry = {}
         
-        # Standard pipeline stages (0-13)
-        # NOTE: Stage 3 (QualityRefinementStage) is NOT registered here.
-        # It's executed conditionally via _execute_stage_3_conditional() after Stage 2.
+        # Standard pipeline stages (0-9)
         stage_classes = [
             (0, DataFetchStage),
             (1, PromptBuildStage),
             (2, GeminiCallStage),
+            (3, QualityRefinementStage),  # Always runs - AI-based quality refinement
             (4, CitationsStage),
             (5, InternalLinksStage),
-            (6, TableOfContentsStage),
-            (7, MetadataStage),
-            (8, FAQPAAStage),
-            (9, ImageStage),
-            (10, CleanupStage),
-            (11, StorageStage),
-            (12, HybridSimilarityCheckStage),
-            (13, ReviewIterationStage),
+            (6, ImageStage),
+            (7, HybridSimilarityCheckStage),
+            (8, CleanupStage),
+            (9, StorageStage),
         ]
         
         for stage_num, stage_class in stage_classes:
@@ -177,7 +170,7 @@ class ProductionStageFactory(IStageFactory):
         stages = []
         failed_stages = []
         
-        # Create stages in order (0-12)
+        # Create stages in order (0-9)
         for stage_num in sorted(self._stage_registry.keys()):
             try:
                 stage_instance = self._create_stage_instance(stage_num)
@@ -189,7 +182,7 @@ class ProductionStageFactory(IStageFactory):
                 failed_stages.append(stage_num)
                 
                 # Critical stages - fail fast
-                if stage_num in [0, 1, 2, 3, 10, 11]:
+                if stage_num in [0, 1, 2, 3, 8, 9]:
                     raise StageRegistrationError(
                         f"Critical stage {stage_num} creation failed: {e}"
                     )
@@ -294,7 +287,7 @@ class ProductionStageFactory(IStageFactory):
             raise StageValidationError(f"Duplicate stages found: {duplicates}")
         
         # Validate critical stages are present
-        critical_stages = [0, 1, 2, 3, 10, 11]
+        critical_stages = [0, 1, 2, 3, 8, 9]
         missing_critical = [num for num in critical_stages if num not in stage_numbers]
         if missing_critical:
             raise StageValidationError(f"Missing critical stages: {missing_critical}")
@@ -387,8 +380,8 @@ def create_benchmark_pipeline_stages() -> List[Stage]:
     Create stages specifically for benchmark testing.
     
     Optimized subset for fast benchmark execution:
-    - Includes all critical stages (0-3, 10-11)
-    - Includes essential parallel stages (4-9)
+    - Includes all critical stages (0-3, 8-9)
+    - Includes essential parallel stages (6-7)
     - Excludes optional stages that might cause timeouts
     
     Returns:
@@ -400,7 +393,8 @@ def create_benchmark_pipeline_stages() -> List[Stage]:
     factory = get_stage_factory()
     
     # Core stages needed for content generation and quality assessment
-    benchmark_stages = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+    # Stages 6-8 consolidated: ToC and Metadata into Stage 2, FAQ/PAA validation into Stage 3
+    benchmark_stages = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
     
     stages = factory.create_stages_subset(benchmark_stages)
     factory.validate_stages(stages)

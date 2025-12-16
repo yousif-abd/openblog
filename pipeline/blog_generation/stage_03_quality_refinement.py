@@ -1,5 +1,5 @@
 """
-Stage 3: Quality Refinement
+Stage 3: Quality Refinement & Validation
 
 🛡️ AI-ONLY QUALITY REFINEMENT (Zero Regex/String Manipulation)
 
@@ -12,6 +12,8 @@ Uses Gemini AI to detect and fix quality issues:
 2. AI language markers (em/en dashes, robotic phrases, academic citations)
 3. Content quality (incomplete sentences, grammar issues)
 4. AEO optimization (citations, conversational phrases, question patterns)
+5. Domain-only URL enhancement in Sources field
+6. FAQ/PAA validation and deduplication (consolidated from Stage 8)
 
 All fixes are performed by Gemini AI - no regex or string manipulation.
 Runs AFTER Stage 2 (Generation + Extraction) but BEFORE Stage 4-9 (Parallel stages).
@@ -29,19 +31,21 @@ logger = logging.getLogger(__name__)
 
 class QualityRefinementStage(Stage):
     """
-    Stage 3: Quality Refinement.
+    Stage 3: Quality Refinement & Validation.
     
-    Executed conditionally after Stage 2 (Generation + Extraction).
+    Executed after Stage 2 (Generation + Extraction).
     
     Uses Gemini AI to detect and fix quality issues in content:
     - Structural issues (truncated lists, malformed HTML, orphaned paragraphs)
     - AI language markers (em/en dashes, robotic phrases, academic citations)
     - Content quality (incomplete sentences, grammar issues)
     - AEO optimization (citations, conversational phrases, question patterns)
+    - Domain-only URL enhancement in Sources field
+    - FAQ/PAA validation and deduplication (consolidated from Stage 8)
     """
     
     stage_num = 3  # Quality refinement after generation + extraction
-    stage_name = "Quality Refinement"
+    stage_name = "Quality Refinement & Validation"
     
     # Quality thresholds
     KEYWORD_TARGET_MIN = 5
@@ -169,10 +173,16 @@ class QualityRefinementStage(Stage):
         # ============================================================
         logger.info("📎 Step 5: Enhancing domain-only URLs in Sources field...")
         context = await self._enhance_domain_only_urls(context)
-        
+
+        # ============================================================
+        # STEP 6: VALIDATE FAQ/PAA (previously Stage 8)
+        # ============================================================
+        logger.info("❓ Step 6: Validating FAQ/PAA items...")
+        context = self._validate_faq_paa(context)
+
         # Log completion (Gemini has already fixed all issues)
         logger.info("✅ Quality refinement complete - all fixes applied by Gemini AI")
-        
+
         return context
     async def _gemini_full_review(self, context: ExecutionContext) -> ExecutionContext:
         """
@@ -1172,7 +1182,95 @@ Return the complete updated Sources field with all enhancements applied.
         except Exception as e:
             logger.error(f"❌ AI domain-only enhancement failed: {e}")
             logger.warning("   Continuing without enhancement")
+        
+        return context
+
+    def _validate_faq_paa(self, context: ExecutionContext) -> ExecutionContext:
+        """
+        Validate and clean FAQ/PAA items (previously Stage 8).
+        
+        Args:
+            context: ExecutionContext with structured_data
+            
+        Returns:
+            Updated context with validated FAQ/PAA in parallel_results
+        """
+        if not context.structured_data:
+            from ..models.faq_paa import FAQList, PAAList
+            context.parallel_results["faq_items"] = FAQList()
+            context.parallel_results["paa_items"] = PAAList()
             return context
+        
+        from ..models.faq_paa import FAQItem, FAQList, PAAItem, PAAList
+        
+        # Extract FAQ items
+        faq_list = FAQList()
+        faq_fields = [
+            (1, getattr(context.structured_data, 'faq_01_question', '') or '', getattr(context.structured_data, 'faq_01_answer', '') or ''),
+            (2, getattr(context.structured_data, 'faq_02_question', '') or '', getattr(context.structured_data, 'faq_02_answer', '') or ''),
+            (3, getattr(context.structured_data, 'faq_03_question', '') or '', getattr(context.structured_data, 'faq_03_answer', '') or ''),
+            (4, getattr(context.structured_data, 'faq_04_question', '') or '', getattr(context.structured_data, 'faq_04_answer', '') or ''),
+            (5, getattr(context.structured_data, 'faq_05_question', '') or '', getattr(context.structured_data, 'faq_05_answer', '') or ''),
+            (6, getattr(context.structured_data, 'faq_06_question', '') or '', getattr(context.structured_data, 'faq_06_answer', '') or ''),
+        ]
+        
+        for num, question, answer in faq_fields:
+            if question and question.strip() and answer and answer.strip():
+                faq_list.add_item(num, question.strip(), answer.strip())
+        
+        # Extract PAA items
+        paa_list = PAAList()
+        paa_fields = [
+            (1, getattr(context.structured_data, 'paa_01_question', '') or '', getattr(context.structured_data, 'paa_01_answer', '') or ''),
+            (2, getattr(context.structured_data, 'paa_02_question', '') or '', getattr(context.structured_data, 'paa_02_answer', '') or ''),
+            (3, getattr(context.structured_data, 'paa_03_question', '') or '', getattr(context.structured_data, 'paa_03_answer', '') or ''),
+            (4, getattr(context.structured_data, 'paa_04_question', '') or '', getattr(context.structured_data, 'paa_04_answer', '') or ''),
+        ]
+        
+        for num, question, answer in paa_fields:
+            if question and question.strip() and answer and answer.strip():
+                paa_list.add_item(num, question.strip(), answer.strip())
+        
+        logger.info(f"Extracted {faq_list.count()} FAQ items, {paa_list.count()} PAA items")
+        
+        # Validate and clean (remove duplicates, invalid items)
+        seen_faq_questions = set()
+        unique_faq_items = []
+        for item in faq_list.items:
+            q_lower = item.question.lower().strip()
+            if q_lower not in seen_faq_questions and item.is_valid():
+                unique_faq_items.append(item)
+                seen_faq_questions.add(q_lower)
+        
+        seen_paa_questions = set()
+        unique_paa_items = []
+        for item in paa_list.items:
+            q_lower = item.question.lower().strip()
+            if q_lower not in seen_paa_questions and item.is_valid():
+                unique_paa_items.append(item)
+                seen_paa_questions.add(q_lower)
+        
+        # Create cleaned lists
+        cleaned_faq = FAQList(items=unique_faq_items)
+        cleaned_paa = PAAList(items=unique_paa_items)
+        
+        # Renumber
+        cleaned_faq.renumber()
+        cleaned_paa.renumber()
+        
+        logger.info(f"✅ Validated: {cleaned_faq.count_valid()} FAQ, {cleaned_paa.count_valid()} PAA")
+        
+        # Check minimum requirements
+        if not cleaned_faq.is_minimum_met():
+            logger.warning(f"⚠️  FAQ count below minimum: {cleaned_faq.count()} < {cleaned_faq.min_items}")
+        if not cleaned_paa.is_minimum_met():
+            logger.warning(f"⚠️  PAA count below minimum: {cleaned_paa.count()} < {cleaned_paa.min_items}")
+        
+        # Store in context
+        context.parallel_results["faq_items"] = cleaned_faq
+        context.parallel_results["paa_items"] = cleaned_paa
+        context.parallel_results["faq_count"] = cleaned_faq.count()
+        context.parallel_results["paa_count"] = cleaned_paa.count()
         
         return context
 

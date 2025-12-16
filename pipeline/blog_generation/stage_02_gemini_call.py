@@ -1,5 +1,5 @@
 """
-Stage 2: Gemini Content Generation with Tools
+Stage 2: Content Generation with ToC & Metadata
 
 Maps to v4.1 Phase 2, Step 5: gemini-research
 
@@ -11,11 +11,15 @@ CRITICAL STAGE for deep research:
 - Response parsing: extracts JSON from plain text
 - Model configurable via GEMINI_MODEL env var (defaults to gemini-3-pro-preview)
 
+CONSOLIDATED FUNCTIONALITY (formerly Stages 6-7):
+- Generates Table of Contents labels from section titles
+- Calculates article metadata: word count, read time, publication date
+
 Input:
   - ExecutionContext.prompt (from Stage 1)
 
 Output:
-  - ExecutionContext.raw_article (raw Gemini response: text/plain with JSON)
+  - ExecutionContext.structured_data (parsed ArticleOutput with ToC & Metadata)
 
 The prompt rules force research:
 - "every paragraph must contain number, KPI or real example" → forces web search
@@ -43,18 +47,21 @@ logger = logging.getLogger(__name__)
 class GeminiCallStage(Stage):
     """
     Stage 2: Generate content using Gemini API with tools + JSON schema.
+    Also generates ToC labels and calculates metadata (consolidated from Stages 6-7).
 
     Handles:
     - Initializing Gemini client
     - Building response_schema from ArticleOutput (forces structured output)
     - Calling API with tools enabled + schema
+    - Generating Table of Contents labels from section titles
+    - Calculating metadata: word count, read time, publication date
     - Parsing response (now direct JSON from Gemini)
     - Error handling and retry logic
     - Storing raw article in context
     """
 
     stage_num = 2
-    stage_name = "Gemini Content Generation (Structured JSON)"
+    stage_name = "Content Generation with ToC & Metadata"
 
     def __init__(self) -> None:
         """Initialize stage with Gemini client."""
@@ -148,6 +155,14 @@ class GeminiCallStage(Stage):
         except Exception as e:
             logger.error(f"❌ Structured data extraction failed: {e}")
             raise ValueError(f"Failed to extract structured data: {e}")
+
+        # Generate ToC labels (previously Stage 6) - immediate after parsing
+        logger.info("📑 Generating ToC labels...")
+        context = self._generate_toc_labels(context)
+        
+        # Calculate metadata (previously Stage 7) - immediate after parsing
+        logger.info("📊 Calculating metadata...")
+        context = self._calculate_metadata(context)
 
         # Save raw output for debugging/analysis
         try:
@@ -1111,3 +1126,140 @@ EXAMPLE OF CORRECT FORMATTING:
             
             # Let the error handling decorator manage retries and reporting
             raise e
+
+    def _generate_toc_labels(self, context: ExecutionContext) -> ExecutionContext:
+        """
+        Generate ToC labels from section titles (previously Stage 6).
+        
+        Args:
+            context: ExecutionContext with structured_data
+            
+        Returns:
+            Updated context with toc_dict in parallel_results
+        """
+        if not context.structured_data:
+            context.parallel_results["toc_dict"] = {}
+            return context
+        
+        from ..models.toc import TableOfContents, TOCEntry
+        
+        toc = TableOfContents()
+        
+        # Extract section titles
+        sections = [
+            (1, getattr(context.structured_data, 'section_01_title', '') or ''),
+            (2, getattr(context.structured_data, 'section_02_title', '') or ''),
+            (3, getattr(context.structured_data, 'section_03_title', '') or ''),
+            (4, getattr(context.structured_data, 'section_04_title', '') or ''),
+            (5, getattr(context.structured_data, 'section_05_title', '') or ''),
+            (6, getattr(context.structured_data, 'section_06_title', '') or ''),
+            (7, getattr(context.structured_data, 'section_07_title', '') or ''),
+            (8, getattr(context.structured_data, 'section_08_title', '') or ''),
+            (9, getattr(context.structured_data, 'section_09_title', '') or ''),
+        ]
+        
+        # Common words to skip
+        stop_words = {
+            "a", "an", "and", "as", "at", "be", "by", "for", "from", "if",
+            "in", "is", "it", "no", "of", "on", "or", "the", "to", "up",
+            "we", "your", "you", "with", "that", "this", "when", "where",
+            "which", "who", "how", "what", "why", "can", "will", "should",
+            "must", "may", "might", "could"
+        }
+        
+        for num, title in sections:
+            if title and title.strip():
+                # Generate short label (1-2 words)
+                words = title.strip().split()
+                meaningful_words = [
+                    w for w in words
+                    if w.lower() not in stop_words and len(w) > 2
+                ]
+                
+                if meaningful_words:
+                    short_label = " ".join(meaningful_words[:2])
+                else:
+                    short_label = " ".join(words[:2]) if words else "Section"
+                
+                # Truncate if too long
+                if len(short_label) > 50:
+                    short_label = short_label[:47] + "..."
+                
+                toc.add_entry(num, title.strip(), short_label)
+        
+        toc_dict = toc.to_dict()
+        logger.info(f"✅ Generated {len(toc_dict)} ToC labels")
+        
+        context.parallel_results["toc_dict"] = toc_dict
+        context.parallel_results["toc_entries"] = toc
+        
+        return context
+
+    def _calculate_metadata(self, context: ExecutionContext) -> ExecutionContext:
+        """
+        Calculate article metadata (previously Stage 7).
+        
+        Args:
+            context: ExecutionContext with structured_data
+            
+        Returns:
+            Updated context with metadata in parallel_results
+        """
+        if not context.structured_data:
+            from ..models.metadata import ArticleMetadata
+            context.parallel_results["metadata"] = ArticleMetadata()
+            return context
+        
+        from ..models.metadata import ArticleMetadata, MetadataCalculator
+        
+        # Count words
+        word_count = 0
+        article = context.structured_data
+        
+        if article.Headline:
+            word_count += MetadataCalculator.count_words(article.Headline)
+        if article.Teaser:
+            word_count += MetadataCalculator.count_words(article.Teaser)
+        if article.Direct_Answer:
+            word_count += MetadataCalculator.count_words(article.Direct_Answer)
+        if article.Intro:
+            word_count += MetadataCalculator.count_words(article.Intro)
+        
+        # Count section content (HTML-aware)
+        section_contents = [
+            getattr(article, 'section_01_content', '') or '',
+            getattr(article, 'section_02_content', '') or '',
+            getattr(article, 'section_03_content', '') or '',
+            getattr(article, 'section_04_content', '') or '',
+            getattr(article, 'section_05_content', '') or '',
+            getattr(article, 'section_06_content', '') or '',
+            getattr(article, 'section_07_content', '') or '',
+            getattr(article, 'section_08_content', '') or '',
+            getattr(article, 'section_09_content', '') or '',
+        ]
+        
+        for content in section_contents:
+            if content:
+                word_count += MetadataCalculator.count_words_from_html(content)
+        
+        # Calculate read time
+        read_time = MetadataCalculator.calculate_read_time(word_count)
+        
+        # Generate publication date
+        publication_date = MetadataCalculator.generate_publication_date(days_back=90)
+        
+        # Create metadata
+        metadata = ArticleMetadata(
+            word_count=word_count,
+            read_time=read_time,
+            publication_date=publication_date,
+        )
+        
+        logger.info(f"✅ Metadata: {word_count} words, {read_time} min read time, {publication_date}")
+        
+        context.parallel_results["metadata"] = metadata
+        context.parallel_results["word_count"] = word_count
+        context.parallel_results["read_time"] = read_time
+        context.parallel_results["publication_date"] = publication_date
+        
+        return context

@@ -182,7 +182,7 @@ class ErrorClassifier:
         
         # Adjust severity based on stage criticality
         if stage:
-            critical_stages = ["stage_00", "stage_02", "stage_10", "stage_11"]
+            critical_stages = ["stage_00", "stage_02", "stage_08", "stage_09"]
             if stage in critical_stages and category not in [ErrorCategory.AUTHENTICATION, ErrorCategory.VALIDATION]:
                 severity = ErrorSeverity.HIGH
         

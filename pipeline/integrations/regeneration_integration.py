@@ -86,12 +86,11 @@ class BatchGeneratorWithRegeneration:
         # Stage 3 (Extraction) is now part of Stage 2 (Generation + Extraction)
         from ..blog_generation.stage_04_citations import CitationsStage
         from ..blog_generation.stage_05_internal_links import InternalLinksStage
-        from ..blog_generation.stage_06_toc import TableOfContentsStage
-        from ..blog_generation.stage_07_metadata import MetadataStage
-        from ..blog_generation.stage_08_faq_paa import FAQPAAStage
-        from ..blog_generation.stage_09_image import ImageStage
-        from ..blog_generation.stage_10_cleanup import CleanupStage
-        from ..blog_generation.stage_11_storage import StorageStage
+        # Stages 6-8 consolidated: ToC and Metadata into Stage 2, FAQ/PAA validation into Stage 3
+        from ..blog_generation.stage_06_image import ImageStage
+        from ..blog_generation.stage_07_similarity_check import HybridSimilarityCheckStage
+        from ..blog_generation.stage_08_cleanup import CleanupStage
+        from ..blog_generation.stage_09_storage import StorageStage
         
         engine = WorkflowEngine()
         stages = [

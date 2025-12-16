@@ -1,4 +1,4 @@
-"""All 13 workflow stages (0-12) including conditional Stage 3."""
+"""All 10 workflow stages (0-9)."""
 
 from .stage_00_data_fetch import DataFetchStage
 from .stage_01_prompt_build import PromptBuildStage
@@ -6,14 +6,12 @@ from .stage_02_gemini_call import GeminiCallStage
 from .stage_03_quality_refinement import QualityRefinementStage
 from .stage_04_citations import CitationsStage
 from .stage_05_internal_links import InternalLinksStage
-from .stage_06_toc import TableOfContentsStage
-from .stage_07_metadata import MetadataStage
-from .stage_08_faq_paa import FAQPAAStage
-from .stage_09_image import ImageStage
-from .stage_10_cleanup import CleanupStage
-from .stage_11_storage import StorageStage
-from .stage_12_hybrid_similarity_check import HybridSimilarityCheckStage
-from .stage_12_review_iteration import ReviewIterationStage
+# Stages 6-8 consolidated: ToC and Metadata into Stage 2, FAQ/PAA validation into Stage 3
+from .stage_06_image import ImageStage
+from .stage_07_similarity_check import HybridSimilarityCheckStage
+from .stage_08_cleanup import CleanupStage
+from .stage_09_storage import StorageStage
+# Stage 13 (Review Iteration) removed - use /refresh endpoint instead
 
 __all__ = [
     "DataFetchStage",
@@ -22,13 +20,11 @@ __all__ = [
     "QualityRefinementStage",
     "CitationsStage",
     "InternalLinksStage",
-    "TableOfContentsStage",
-    "MetadataStage",
-    "FAQPAAStage",
+    # Stages 6-8 consolidated: ToC and Metadata into Stage 2, FAQ/PAA validation into Stage 3
     "ImageStage",
     "CleanupStage",
     "StorageStage",
     "HybridSimilarityCheckStage",
-    "ReviewIterationStage",
+    # Stage 13 (Review Iteration) removed - use /refresh endpoint instead
 ]
 

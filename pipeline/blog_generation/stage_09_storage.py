@@ -1,25 +1,35 @@
 """
-Stage 11: HTML Generation & Storage
+Stage 9: HTML Generation & Export
 
 Maps to v4.1 Phase 9, Step 34: publish-to-wordpress + storage
 
-Final stage: Convert validated article to HTML and persist.
+Final stage: Convert validated article to HTML and export in multiple formats.
 
 Handles:
-1. HTML rendering from validated article
+1. HTML rendering from validated article (HTML is generated here, not earlier)
 2. Metadata extraction and indexing
 3. Storage (Supabase or file system)
-4. Final validation and reporting
+4. Multi-format export: HTML, Markdown, PDF, JSON, CSV, XLSX
+5. Final validation and reporting
 
 Input:
-  - ExecutionContext.validated_article (from Stage 10)
-  - ExecutionContext.quality_report (from Stage 10)
+  - ExecutionContext.validated_article (from Stage 8)
+  - ExecutionContext.quality_report (from Stage 8)
   - ExecutionContext.job_id
   - ExecutionContext.company_data
+  - ExecutionContext.job_config.export_formats (optional: list of formats to export)
 
 Output:
   - ExecutionContext.final_article (validated_article confirmed for delivery)
-  - ExecutionContext.storage_result (storage operation result)
+  - ExecutionContext.storage_result (storage operation result + exported_files)
+  
+Export Formats:
+  - HTML: Rendered article (always generated)
+  - Markdown: Converted from HTML
+  - PDF: Converted from HTML via PDF service
+  - JSON: Structured article data
+  - CSV: Flat table format
+  - XLSX: Excel format with multiple sheets (Overview, Sections, FAQ, PAA)
 """
 
 import logging
@@ -35,25 +45,29 @@ logger = logging.getLogger(__name__)
 
 class StorageStage(Stage):
     """
-    Stage 11: HTML Generation & Storage.
+    Stage 9: HTML Generation & Export.
 
     Handles:
-    - HTML rendering
+    - HTML rendering (HTML is generated here, not earlier in pipeline)
     - Metadata extraction
-    - Article storage
+    - Article storage (Supabase or file system)
+    - Multi-format export (HTML, Markdown, PDF, JSON, CSV, XLSX)
     - Final validation
+    
+    Note: HTML is generated in this stage from validated_article.
+    Previous stages work with structured data, not HTML.
     """
 
-    stage_num = 11
+    stage_num = 9
     stage_name = "HTML Generation & Storage"
 
     async def execute(self, context: ExecutionContext) -> ExecutionContext:
         """
-        Execute Stage 11: Generate HTML and store article.
+        Execute Stage 9: Generate HTML and store article.
 
         Input from context:
-        - validated_article: Cleaned, merged article from Stage 10
-        - quality_report: Validation report from Stage 10
+        - validated_article: Cleaned, merged article from Stage 8
+        - quality_report: Validation report from Stage 8
         - job_id: Unique job identifier
         - company_data: Company information
 
@@ -62,7 +76,7 @@ class StorageStage(Stage):
         - storage_result: Storage operation result
 
         Args:
-            context: ExecutionContext from Stage 10
+            context: ExecutionContext from Stage 8
 
         Returns:
             Updated context with final_article and storage_result
@@ -70,7 +84,7 @@ class StorageStage(Stage):
         Raises:
             ValueError: If validated_article missing
         """
-        logger.info(f"Stage 11: {self.stage_name}")
+        logger.info(f"Stage 9: {self.stage_name}")
 
         # Step 1: Validate input
         if not context.validated_article:
@@ -78,7 +92,7 @@ class StorageStage(Stage):
             context.final_article = {}
             context.storage_result = {
                 "success": False,
-                "error": "No validated article from Stage 10",
+                "error": "No validated article from Stage 8",
             }
             return context
 
@@ -205,12 +219,30 @@ class StorageStage(Stage):
             storage_type="supabase",
         )
 
-        # Step 7: Set final article and storage result
+        # Step 7: Export in multiple formats (if requested)
+        export_formats = context.job_config.get("export_formats", ["html", "json"])
+        exported_files = {}
+        
+        try:
+            from ..processors.article_exporter import ArticleExporter
+            output_dir = Path("output") / context.job_id
+            exported_files = ArticleExporter.export_all(
+                article=context.validated_article,
+                html_content=html_content,
+                output_dir=output_dir,
+                formats=export_formats,
+            )
+            logger.info(f"✅ Exported {len(exported_files)} format(s): {', '.join(exported_files.keys())}")
+        except Exception as e:
+            logger.warning(f"Export failed: {e}")
+
+        # Step 8: Set final article and storage result
         context.final_article = context.validated_article
         context.final_article["html_content"] = html_content
         context.storage_result = {
             "success": success,
             **storage_result,
+            "exported_files": exported_files,
         }
 
         # Log completion

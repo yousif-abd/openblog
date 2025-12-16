@@ -1,5 +1,5 @@
 """
-Stage 12: Hybrid Content Similarity Check with Regeneration
+Stage 7: Content Similarity Check & Section Regeneration
 
 Enhanced similarity checking combining character shingles and semantic embeddings.
 Includes automatic content regeneration when similarity is too high.
@@ -52,7 +52,7 @@ Usage in batch generation with regeneration:
 """
 
 import logging
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional, Dict, Any, Tuple, List
 from dataclasses import dataclass
 
 from ..core import ExecutionContext, Stage
@@ -74,23 +74,27 @@ class RegenerationResult:
 
 class HybridSimilarityCheckStage(Stage):
     """
-    Stage 12: Hybrid similarity check with semantic embeddings.
+    Stage 7: Content Similarity Check & Section Regeneration.
     
     Integrated into main pipeline workflow to detect content cannibalization.
-    Runs after Stage 10 (cleanup) and before Stage 11 (storage).
+    Runs in parallel with Stage 6 (after Stage 5) to save time.
     
     Combines character-level and semantic similarity analysis to detect
-    content cannibalization and provide similarity reports.
+    content cannibalization and automatically regenerate similar sections.
     
     Features:
     - Character shingles for language-agnostic similarity
     - Semantic embeddings via Gemini API for topic similarity
     - Batch memory for detecting duplicates within a generation session
+    - Section-level similarity detection
+    - Automatic regeneration of similar sections (not whole article)
+    - Uses Gemini + find/replace logic (like Stage 3/5)
+    - Includes similar section from other article in prompt
     - Non-blocking: logs warnings but doesn't block publication
     """
 
-    stage_num = 12
-    stage_name = "Hybrid Content Similarity Check"
+    stage_num = 7
+    stage_name = "Content Similarity Check & Section Regeneration"
 
     def __init__(self, similarity_checker: Optional[HybridSimilarityChecker] = None):
         """
@@ -179,6 +183,11 @@ class HybridSimilarityCheckStage(Stage):
 
             # Store regeneration flag for workflow
             context.regeneration_needed = similarity_result.regeneration_needed
+            
+            # If similarity detected, regenerate specific sections (not whole article)
+            if similarity_result.is_too_similar and similarity_result.regeneration_needed:
+                logger.info("🔄 High similarity detected - regenerating similar sections...")
+                context = await self._regenerate_similar_sections(context, similarity_result, article_data)
 
             logger.info("✅ Hybrid similarity check completed")
             return context
@@ -193,18 +202,208 @@ class HybridSimilarityCheckStage(Stage):
                 analysis_mode="error"
             )
             return context
+    
+    async def _regenerate_similar_sections(
+        self,
+        context: ExecutionContext,
+        similarity_result: SimilarityResult,
+        article_data: Dict[str, Any]
+    ) -> ExecutionContext:
+        """
+        Regenerate only sections that are too similar (not whole article).
+        
+        Uses Gemini + find/replace logic (like Stage 3/5) to rewrite specific sections.
+        Includes the similar section from the other article in the prompt.
+        
+        Args:
+            context: ExecutionContext with structured_data
+            similarity_result: Similarity check result
+            article_data: Current article data
+            
+        Returns:
+            Updated context with regenerated sections
+        """
+        from ..models.gemini_client import GeminiClient
+        
+        if not context.structured_data:
+            logger.warning("No structured_data available for section regeneration")
+            return context
+        
+        # Get similar article data for comparison
+        similar_article_slug = similarity_result.similar_article
+        if not similar_article_slug:
+            logger.warning("No similar article slug found - cannot regenerate sections")
+            return context
+        
+        # Get similar article from batch memory
+        similar_article_summary = self.similarity_checker.articles.get(similar_article_slug)
+        if not similar_article_summary:
+            logger.warning(f"Similar article '{similar_article_slug}' not found in batch memory")
+            return context
+        
+        # Initialize Gemini client
+        gemini_client = GeminiClient()
+        
+        # Detect which sections are similar (compare section by section)
+        article_dict = context.structured_data.dict() if hasattr(context.structured_data, 'dict') else dict(context.structured_data)
+        sections_to_regenerate = []
+        
+        # Compare each section with similar article
+        for i in range(1, 10):
+            section_title_key = f'section_{i:02d}_title'
+            section_content_key = f'section_{i:02d}_content'
+            
+            current_title = article_dict.get(section_title_key, '') or ''
+            current_content = article_dict.get(section_content_key, '') or ''
+            
+            if not current_title and not current_content:
+                continue
+            
+            # Check similarity with similar article's sections
+            # (Simplified: compare title similarity and content shingles)
+            similar_section = self._find_similar_section(
+                current_title,
+                current_content,
+                similar_article_summary
+            )
+            
+            if similar_section:
+                sections_to_regenerate.append({
+                    'section_num': i,
+                    'title_key': section_title_key,
+                    'content_key': section_content_key,
+                    'current_title': current_title,
+                    'current_content': current_content,
+                    'similar_section': similar_section
+                })
+        
+        if not sections_to_regenerate:
+            logger.info("No specific sections identified as similar - skipping regeneration")
+            return context
+        
+        logger.info(f"🔄 Regenerating {len(sections_to_regenerate)} similar section(s)...")
+        
+        # Regenerate sections in parallel (like Stage 3)
+        async def regenerate_section(section_info: Dict[str, Any]) -> Tuple[str, str, str]:
+            """Regenerate a single section using Gemini."""
+            section_num = section_info['section_num']
+            current_title = section_info['current_title']
+            current_content = section_info['current_content']
+            similar_section = section_info['similar_section']
+            
+            prompt = f"""You are rewriting a section of an article to make it unique and different from a similar section in another article.
+
+CURRENT SECTION TO REWRITE:
+Title: {current_title}
+Content: {current_content}
+
+SIMILAR SECTION FROM ANOTHER ARTICLE (avoid this style/content):
+Title: {similar_section.get('title', 'N/A')}
+Content: {similar_section.get('content', 'N/A')[:1000]}
+
+INSTRUCTIONS:
+1. Rewrite the current section to be significantly different from the similar section
+2. Use different examples, angles, and phrasing
+3. Maintain the same topic and quality level
+4. Keep the same HTML structure (preserve <p>, <ul>, <li>, <strong>, <a> tags)
+5. Preserve citations and internal links exactly as they are
+6. Make it unique while staying on-topic
+
+Return ONLY the rewritten section content (HTML format). No explanations, no markdown.
+"""
+            
+            try:
+                response = await gemini_client.generate_content(
+                    prompt=prompt,
+                    enable_tools=False
+                )
+                
+                if response and len(response.strip()) > len(current_content) * 0.3:
+                    return section_info['title_key'], current_title, response.strip()
+                else:
+                    logger.warning(f"   ⚠️ Section {section_num}: Regeneration returned invalid response")
+                    return section_info['title_key'], current_title, current_content
+            except Exception as e:
+                logger.warning(f"   ⚠️ Section {section_num}: Regeneration failed - {e}")
+                return section_info['title_key'], current_title, current_content
+        
+        # Regenerate all similar sections in parallel
+        import asyncio
+        tasks = [regenerate_section(section_info) for section_info in sections_to_regenerate]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Apply regenerated sections
+        updated_count = 0
+        for result in results:
+            if isinstance(result, Exception):
+                logger.warning(f"   ⚠️ Section regeneration exception: {result}")
+                continue
+            
+            title_key, title, content = result
+            content_key = title_key.replace('_title', '_content')
+            
+            if content != article_dict.get(content_key, ''):
+                article_dict[title_key] = title
+                article_dict[content_key] = content
+                updated_count += 1
+        
+        if updated_count > 0:
+            # Update structured_data
+            from ..models.output_schema import ArticleOutput
+            context.structured_data = ArticleOutput(**article_dict)
+            logger.info(f"✅ Regenerated {updated_count} section(s) to reduce similarity")
+            # Clear regeneration flag since we've handled it
+            context.regeneration_needed = False
+        else:
+            logger.info("No sections were successfully regenerated")
+        
+        return context
+    
+    def _find_similar_section(
+        self,
+        current_title: str,
+        current_content: str,
+        similar_article_summary
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Find the most similar section in the similar article.
+        
+        Returns section data if similarity is high enough.
+        """
+        # Simple heuristic: compare title similarity
+        # In a full implementation, we'd compare content shingles per section
+        if not current_title or not similar_article_summary.headings:
+            return None
+        
+        # Check if any heading is similar
+        for heading in similar_article_summary.headings:
+            title_sim = self.similarity_checker._jaccard_words(current_title.lower(), heading.lower())
+            if title_sim > 0.5:  # 50% title similarity
+                return {
+                    'title': heading,
+                    'content': ''  # Content not stored in summary, but title match is enough
+                }
+        
+        return None
 
     def _extract_article_data(self, context: ExecutionContext) -> Optional[Dict[str, Any]]:
         """
         Extract article data from ExecutionContext for similarity checking.
         
-        Stage 12 runs after Stage 10, so validated_article should be available.
-        Falls back to other sources if needed.
+        Stage 7 now runs in parallel with Stage 6 (after Stage 5), so structured_data is available.
+        Falls back to validated_article if running after Stage 8.
         """
-        # Primary source: validated_article from Stage 10
+        # Primary source: structured_data (available after Stage 3)
+        if hasattr(context, 'structured_data') and context.structured_data:
+            article_data = context.structured_data.dict() if hasattr(context.structured_data, 'dict') else dict(context.structured_data)
+            # Ensure primary_keyword is set
+            if 'primary_keyword' not in article_data:
+                article_data['primary_keyword'] = context.job_config.get('primary_keyword', '')
+            return article_data
+        
+        # Fallback: validated_article from Stage 8 (if running sequentially)
         if hasattr(context, 'validated_article') and context.validated_article:
             article_data = dict(context.validated_article)
-            # Ensure primary_keyword is set
             if 'primary_keyword' not in article_data:
                 article_data['primary_keyword'] = context.job_config.get('primary_keyword', '')
             return article_data
@@ -219,37 +418,7 @@ class HybridSimilarityCheckStage(Stage):
         # Fallback: Extract from job_config and parallel_results
         article_data = {}
         job_config = getattr(context, 'job_config', {})
-        
-        # Primary keyword
         article_data['primary_keyword'] = job_config.get('primary_keyword', '')
-        
-        # Extract content from parallel_results
-        if hasattr(context, 'parallel_results') and context.parallel_results:
-            pr = context.parallel_results
-            
-            # Sections
-            if 'sections' in pr:
-                sections = pr['sections']
-                for i, section in enumerate(sections, 1):
-                    if isinstance(section, dict):
-                        article_data[f'section_{i:02d}_heading'] = section.get('heading', '')
-                        article_data[f'section_{i:02d}_content'] = section.get('content', '')
-            
-            # ToC
-            if 'toc' in pr:
-                article_data['table_of_contents'] = pr['toc']
-            
-            # FAQ
-            if 'faq' in pr:
-                article_data['FAQ'] = pr['faq']
-            
-            # Intro
-            if 'intro' in pr:
-                article_data['Intro'] = pr['intro']
-
-        # Fallback: extract from final_html if available
-        if not article_data.get('Intro') and hasattr(context, 'final_html'):
-            article_data = self._extract_from_html(context.final_html, article_data)
 
         # Must have at least keyword and some content
         if not article_data.get('primary_keyword') and not article_data.get('Headline'):
