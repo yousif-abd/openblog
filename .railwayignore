@@ -1,0 +1,3 @@
+# Railway ignore file
+# This ensures Railway uses Nixpacks instead of Railpack
+

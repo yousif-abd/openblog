@@ -1,0 +1,13 @@
+[phases.setup]
+nixPkgs = ["python311", "nodejs-18_x"]
+
+[phases.install]
+cmds = [
+  "pip install --upgrade pip",
+  "pip install -r requirements.txt || pip install -r requirements-production.txt",
+  "playwright install chromium"
+]
+
+[start]
+cmd = "uvicorn service.api:app --host 0.0.0.0 --port $PORT"
+

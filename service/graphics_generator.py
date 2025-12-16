@@ -26,8 +26,15 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaInMemoryUpload
 
-# Import from openfigma library
-from openfigma import GraphicsBuilder, Theme
+# Import from openfigma library (optional - only for graphics generation)
+try:
+    from openfigma import GraphicsBuilder, Theme
+    OPENFIGMA_AVAILABLE = True
+except ImportError:
+    OPENFIGMA_AVAILABLE = False
+    GraphicsBuilder = None
+    Theme = None
+    logger.warning("openfigma not available - graphics generation will be limited")
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +85,11 @@ class GraphicsGenerator:
         
         # Initialize component builder with theme (if provided)
         # If theme is None, GraphicsBuilder will use default theme
-        self.builder = GraphicsBuilder(theme=theme) if theme else GraphicsBuilder()
+        if OPENFIGMA_AVAILABLE:
+            self.builder = GraphicsBuilder(theme=theme) if theme else GraphicsBuilder()
+        else:
+            self.builder = None
+            logger.warning("GraphicsBuilder not available - graphics generation will use fallback templates")
         
         # Check for Playwright
         try:
@@ -217,6 +228,8 @@ class GraphicsGenerator:
                 config["theme"] = {k: v for k, v in theme_dict.items() if not k.startswith("_")}
             
             # Build from JSON config using component system
+            if not OPENFIGMA_AVAILABLE or self.builder is None:
+                raise ValueError("OpenFigma graphics builder not available. Install openfigma package for JSON config mode.")
             return self.builder.build_from_config(config)
         
         # Legacy mode: use template-based generation
@@ -277,6 +290,8 @@ class GraphicsGenerator:
         
         # Build HTML from config (OpenFigma API: build_from_config(config))
         # According to OpenFigma docs, build_from_config takes only config
+        if not OPENFIGMA_AVAILABLE or self.builder is None:
+            raise ValueError("OpenFigma graphics builder not available. Install openfigma package for JSON config mode.")
         html_content = self.builder.build_from_config(config_copy)
         
         # Convert to PNG
