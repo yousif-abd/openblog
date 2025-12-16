@@ -27,6 +27,8 @@ from tempfile import NamedTemporaryFile
 # from googleapiclient.discovery import build
 # from googleapiclient.http import MediaInMemoryUpload
 
+logger = logging.getLogger(__name__)
+
 # Import from openfigma library (optional - only for graphics generation)
 try:
     from openfigma import GraphicsBuilder, Theme
@@ -36,8 +38,6 @@ except ImportError:
     GraphicsBuilder = None
     Theme = None
     logger.warning("openfigma not available - graphics generation will be limited")
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass
