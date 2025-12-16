@@ -1,9 +1,13 @@
 #!/bin/bash
 set -e
 
-# Get PORT from environment, default to 3000
-PORT=${PORT:-3000}
+# Railway provides PORT env var - use it directly with fallback
+if [ -z "$PORT" ]; then
+    export PORT=3000
+fi
 
-# Use Python to start uvicorn - this ensures PORT is read from env
-exec python3 -m uvicorn service.api:app --host 0.0.0.0 --port "$PORT"
+echo "Starting uvicorn on port $PORT"
+
+# Start uvicorn directly with Railway's PORT
+exec python3 -c "import uvicorn; import os; uvicorn.run('service.api:app', host='0.0.0.0', port=int(os.environ.get('PORT', 3000)))"
 

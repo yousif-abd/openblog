@@ -4,6 +4,6 @@
     "builder": "DOCKERFILE"
   },
   "deploy": {
-    "startCommand": "/entrypoint.sh"
+    "startCommand": "/bin/bash /entrypoint.sh"
   }
 }
