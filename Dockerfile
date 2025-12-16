@@ -20,9 +20,9 @@ RUN pip install playwright && playwright install chromium --with-deps || true
 # Copy application code
 COPY . .
 
-# Expose port (Railway sets PORT env var)
-EXPOSE 8000
+# Expose port (Railway sets PORT env var, defaults to 3000)
+EXPOSE 3000
 
 # Use shell form CMD - this properly expands $PORT
-# Railway sets PORT automatically, default to 8000 if not set
-CMD uvicorn service.api:app --host 0.0.0.0 --port ${PORT:-8000}
+# Railway sets PORT automatically, default to 3000 if not set
+CMD uvicorn service.api:app --host 0.0.0.0 --port ${PORT:-3000}
