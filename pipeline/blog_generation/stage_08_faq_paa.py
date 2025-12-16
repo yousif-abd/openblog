@@ -43,7 +43,7 @@ class FAQPAAStage(Stage):
     - Minimum count enforcement
     """
 
-    stage_num = 8
+    stage_num = 10
     stage_name = "FAQ/PAA Validation & Enhancement"
 
     async def execute(self, context: ExecutionContext) -> ExecutionContext:

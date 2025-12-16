@@ -37,7 +37,7 @@ class MetadataStage(Stage):
     - Publication date generation
     """
 
-    stage_num = 7
+    stage_num = 8
     stage_name = "Metadata Calculation"
 
     async def execute(self, context: ExecutionContext) -> ExecutionContext:

@@ -93,7 +93,7 @@ class HybridSimilarityCheckStage(Stage):
     - Non-blocking: logs warnings but doesn't block publication
     """
 
-    stage_num = 7
+    stage_num = 9
     stage_name = "Content Similarity Check & Section Regeneration"
 
     def __init__(self, similarity_checker: Optional[HybridSimilarityChecker] = None):

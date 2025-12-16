@@ -64,7 +64,7 @@ class ImageStage(Stage):
     - Error handling and retry logic
     """
 
-    stage_num = 6
+    stage_num = 7
     stage_name = "Image/Graphics Generation"
 
     def __init__(self) -> None:

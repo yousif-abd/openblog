@@ -103,7 +103,7 @@ class CleanupStage(Stage):
     Note: All content manipulation is handled by Stage 3 (AI-based Quality Refinement).
     """
 
-    stage_num = 8
+    stage_num = 11
     stage_name = "Merge & Link"
 
     async def execute(self, context: ExecutionContext) -> ExecutionContext:

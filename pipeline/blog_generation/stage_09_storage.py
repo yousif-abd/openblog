@@ -58,7 +58,7 @@ class StorageStage(Stage):
     Previous stages work with structured data, not HTML.
     """
 
-    stage_num = 9
+    stage_num = 12
     stage_name = "HTML Generation & Storage"
 
     async def execute(self, context: ExecutionContext) -> ExecutionContext:

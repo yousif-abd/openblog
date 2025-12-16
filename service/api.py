@@ -289,21 +289,18 @@ def get_engine() -> WorkflowEngine:
         from pipeline.blog_generation.stage_12_review_iteration import ReviewIterationStage
         
         _engine = WorkflowEngine()
+        # Register minimal stages first to test
+        # Full stages: DataFetch -> PromptBuild -> GeminiCall -> QualityRefinement -> Storage
         _engine.register_stages([
             DataFetchStage(),
             PromptBuildStage(),
             GeminiCallStage(),
             QualityRefinementStage(),
-            CitationsStage(),
-            InternalLinksStage(),
-            TableOfContentsStage(),
-            ImageStage(),
-            MetadataStage(),
-            HybridSimilarityCheckStage(),
-            FAQPAAStage(),
-            CleanupStage(),
             StorageStage(),
-            ReviewIterationStage(),
+            # Skip problematic stages for now:
+            # ImageStage(), HybridSimilarityCheckStage() - might be causing hangs
+            # CitationsStage(), InternalLinksStage(), TableOfContentsStage(), 
+            # MetadataStage(), FAQPAAStage(), CleanupStage(), ReviewIterationStage(),
         ])
     return _engine
 
@@ -681,8 +678,15 @@ async def write_blog(request: BlogGenerationRequest):
         # Get workflow engine
         engine = get_engine()
         
-        # Execute workflow
-        context = await engine.execute(job_id=job_id, job_config=job_config)
+        # Execute workflow with timeout for debugging
+        import asyncio
+        try:
+            context = await asyncio.wait_for(
+                engine.execute(job_id=job_id, job_config=job_config),
+                timeout=30.0  # 30 second timeout for debugging
+            )
+        except asyncio.TimeoutError:
+            raise Exception("Pipeline execution timed out after 30 seconds - likely hanging in a stage")
         
         # Calculate duration
         duration = (datetime.now() - start_time).total_seconds()
