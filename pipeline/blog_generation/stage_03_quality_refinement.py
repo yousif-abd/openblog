@@ -21,12 +21,69 @@ Runs AFTER Stage 2 (Generation + Extraction) but BEFORE Stage 4-9 (Parallel stag
 
 import logging
 import asyncio
+import html
 from typing import Dict, List, Any, Optional
 
 from ..core import ExecutionContext, Stage
 from ..models.output_schema import ArticleOutput
 
 logger = logging.getLogger(__name__)
+
+
+def _encode_html_entities_in_content(article_dict: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Encode HTML entities in HTML content fields.
+    
+    Properly encodes & characters in text content (not already part of entities).
+    Uses minimal regex - only splits HTML tags from text content.
+    
+    Args:
+        article_dict: Dictionary containing article fields
+        
+    Returns:
+        Dictionary with HTML entities properly encoded
+    """
+    import re
+    
+    # HTML content fields that may contain entities
+    html_fields = [
+        'Intro', 'Direct_Answer',
+        'section_01_content', 'section_02_content', 'section_03_content',
+        'section_04_content', 'section_05_content', 'section_06_content',
+        'section_07_content', 'section_08_content', 'section_09_content',
+    ]
+    
+    encoded_dict = article_dict.copy()
+    
+    for field in html_fields:
+        if field in encoded_dict and encoded_dict[field]:
+            content = str(encoded_dict[field])
+            
+            # Only process if content contains HTML tags
+            if '<' in content and '>' in content:
+                # Split content into HTML tags and text content
+                # This regex splits on HTML tags: <...>
+                parts = re.split(r'(<[^>]+>)', content)
+                encoded_parts = []
+                
+                for part in parts:
+                    if part.startswith('<') and part.endswith('>'):
+                        # This is an HTML tag - preserve as-is
+                        encoded_parts.append(part)
+                    else:
+                        # This is text content - encode & that's not already part of an entity
+                        # Only encode & that's not followed by amp;, lt;, gt;, quot;, #, or a letter
+                        # This handles: & -> &amp; but preserves &amp;, &lt;, etc.
+                        encoded_text = re.sub(
+                            r'&(?!amp;|lt;|gt;|quot;|#\d+;|#[xX][0-9a-fA-F]+;|[a-zA-Z]+;)',
+                            '&amp;',
+                            part
+                        )
+                        encoded_parts.append(encoded_text)
+                
+                encoded_dict[field] = ''.join(encoded_parts)
+    
+    return encoded_dict
 
 
 class QualityRefinementStage(Stage):
@@ -227,6 +284,9 @@ Be SURGICAL - only change what's broken, preserve everything else.
 - **Empty paragraphs**: <p>This </p>, <p>. Also,</p> - remove or complete
 - **Broken sentences**: "</p><p><strong>How can</strong> you..." - merge into single paragraph
 - **Orphaned <strong> tags**: "<p><strong>If you</strong></p> want..." → "<p><strong>If you</strong> want...</p>"
+- **Unencoded HTML entities**: & characters in text content must be encoded as &amp; (e.g., "Bain & Company" → "Bain &amp; Company")
+  - Only encode & that's not already part of an HTML entity (preserve &amp;, &lt;, &gt;, etc.)
+  - Only encode in text content, not in HTML tag attributes
 
 ## Capitalization Issues
 
@@ -364,6 +424,18 @@ Use contractions naturally: "it is" → "it's", "you are" → "you're", "do not"
             'Intro', 'Direct_Answer',
         ]
         
+        # Required fields: If empty, that's a quality issue (should be flagged)
+        required_fields = {
+            'Intro', 'Direct_Answer',
+            'section_01_content', 'section_02_content', 'section_03_content',
+            'section_04_content', 'section_05_content', 'section_06_content',
+        }
+        
+        # Optional fields: Can legitimately be empty (articles might only have 6 sections)
+        optional_fields = {
+            'section_07_content', 'section_08_content', 'section_09_content',
+        }
+        
         # Initialize Gemini client
         from ..models.gemini_client import GeminiClient
         gemini_client = GeminiClient()
@@ -372,8 +444,25 @@ Use contractions naturally: "it is" → "it's", "you are" → "you're", "do not"
         async def review_field(field: str) -> tuple[str, int, str, int, int, int, int]:
             """Review a single field and return (field_name, issues_fixed, fixed_content, em_dashes_fixed, en_dashes_fixed, lists_added, citations_added)."""
             content = article_dict.get(field)
-            if not content or not isinstance(content, str) or len(content) < 100:
+            
+            # Handle empty/invalid content
+            if not content or not isinstance(content, str):
+                # Empty required field - flag as quality issue but can't fix it here
+                if field in required_fields:
+                    logger.debug(f"   ⚠️ {field}: Required field is empty (quality issue - Stage 2 should populate)")
+                # Empty optional field - OK to skip
                 return (field, 0, content or "", 0, 0, 0, 0)
+            
+            # Skip optional fields if very short (they can legitimately be empty/short)
+            if field in optional_fields and len(content) < 100:
+                return (field, 0, content or "", 0, 0, 0, 0)
+            
+            # Required fields: Always review, even if short (to detect quality issues)
+            # Note: Stage 3 can't populate empty fields (that's Stage 2's job),
+            # but we should still review short content to detect quality issues
+            if field in required_fields and len(content) < 100:
+                logger.debug(f"   ⚠️ {field}: Required field is very short ({len(content)} chars) - may be incomplete")
+                # Still review it - Gemini can flag it as incomplete
             
             prompt = f"""{CHECKLIST}
 
@@ -452,14 +541,14 @@ If no issues, return original content unchanged with issues_fixed=0 and all coun
             return (field, 0, content, 0, 0, 0, 0)
         
         # Execute all reviews in parallel (with rate limiting via semaphore)
-        # Limit concurrent calls to avoid API rate limits (max 10 concurrent)
-        semaphore = asyncio.Semaphore(10)
+        # Limit concurrent calls to avoid API rate limits (max 15 concurrent - increased for performance)
+        semaphore = asyncio.Semaphore(15)
         
         async def review_field_with_limit(field: str):
             async with semaphore:
                 return await review_field(field)
         
-        logger.info(f"   🔄 Reviewing {len(content_fields)} fields in parallel (max 10 concurrent)...")
+        logger.info(f"   🔄 Reviewing {len(content_fields)} fields in parallel (max 15 concurrent)...")
         tasks = [review_field_with_limit(field) for field in content_fields]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
@@ -610,6 +699,10 @@ Find ALL en dashes (–) and replace them. Return the complete fixed content wit
                 summary_parts.append(f"{total_citations_added} citation(s) added")
             
             logger.info(f"   📝 Gemini fixed {' | '.join(summary_parts)} across all fields")
+            
+            # Encode HTML entities in HTML content fields
+            article_dict = _encode_html_entities_in_content(article_dict)
+            
             context.structured_data = ArticleOutput(**article_dict)
         else:
             logger.info("   ℹ️ Gemini review: no additional issues found")
@@ -816,15 +909,15 @@ Be GENEROUS - add 2-3 citations, 2-3 conversational phrases, and 1-2 question pa
                 return (field, content, False)
         
         # Execute all optimizations in parallel (with rate limiting via semaphore)
-        # Limit concurrent calls to avoid API rate limits (max 7 concurrent)
+        # Limit concurrent calls to avoid API rate limits (max 10 concurrent - increased for performance)
         if sections_to_optimize:
-            semaphore = asyncio.Semaphore(7)
+            semaphore = asyncio.Semaphore(10)
             
             async def optimize_section_with_limit(section_data: tuple):
                 async with semaphore:
                     return await optimize_section(section_data)
             
-            logger.info(f"   🔄 Optimizing {len(sections_to_optimize)} sections in parallel (max 7 concurrent)...")
+            logger.info(f"   🔄 Optimizing {len(sections_to_optimize)} sections in parallel (max 10 concurrent)...")
             tasks = [optimize_section_with_limit(section_data) for section_data in sections_to_optimize]
             results = await asyncio.gather(*tasks, return_exceptions=True)
             
@@ -945,6 +1038,10 @@ Now optimize the Direct Answer above to meet ALL requirements. Ensure it's 30-80
         
         if optimized_count > 0:
             logger.info(f"🚀 AEO optimization: Enhanced {optimized_count} fields")
+            
+            # Encode HTML entities in HTML content fields
+            article_dict = _encode_html_entities_in_content(article_dict)
+            
             context.structured_data = ArticleOutput(**article_dict)
             # Set flag to skip Stage 10's AEO enforcement (avoids conflicts)
             context.stage_3_optimized = True

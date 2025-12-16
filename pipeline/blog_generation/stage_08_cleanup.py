@@ -18,6 +18,7 @@ Output:
 """
 
 import logging
+import re
 from typing import Dict, Any, Optional
 from urllib.parse import urlparse
 
@@ -26,6 +27,63 @@ from ..processors.citation_linker import CitationLinker
 from ..models.output_schema import ArticleOutput
 
 logger = logging.getLogger(__name__)
+
+
+def _encode_html_entities_in_content(article_dict: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Encode HTML entities in HTML content fields.
+    
+    Properly encodes & characters in text content (not already part of entities).
+    Uses minimal regex - only splits HTML tags from text content.
+    
+    This is a technical requirement (HTML validity), not content manipulation.
+    Called after citation linking to ensure newly created links have properly encoded entities.
+    
+    Args:
+        article_dict: Dictionary containing article fields
+        
+    Returns:
+        Dictionary with HTML entities properly encoded
+    """
+    # HTML content fields that may contain entities
+    html_fields = [
+        'Intro', 'Direct_Answer',
+        'section_01_content', 'section_02_content', 'section_03_content',
+        'section_04_content', 'section_05_content', 'section_06_content',
+        'section_07_content', 'section_08_content', 'section_09_content',
+    ]
+    
+    encoded_dict = article_dict.copy()
+    
+    for field in html_fields:
+        if field in encoded_dict and encoded_dict[field]:
+            content = str(encoded_dict[field])
+            
+            # Only process if content contains HTML tags
+            if '<' in content and '>' in content:
+                # Split content into HTML tags and text content
+                # This regex splits on HTML tags: <...>
+                parts = re.split(r'(<[^>]+>)', content)
+                encoded_parts = []
+                
+                for part in parts:
+                    if part.startswith('<') and part.endswith('>'):
+                        # This is an HTML tag - preserve as-is
+                        encoded_parts.append(part)
+                    else:
+                        # This is text content - encode & that's not already part of an entity
+                        # Only encode & that's not followed by amp;, lt;, gt;, quot;, #, or a letter
+                        # This handles: & -> &amp; but preserves &amp;, &lt;, etc.
+                        encoded_text = re.sub(
+                            r'&(?!amp;|lt;|gt;|quot;|#\d+;|#[xX][0-9a-fA-F]+;|[a-zA-Z]+;)',
+                            '&amp;',
+                            part
+                        )
+                        encoded_parts.append(encoded_text)
+                
+                encoded_dict[field] = ''.join(encoded_parts)
+    
+    return encoded_dict
 
 
 class CleanupStage(Stage):
@@ -87,7 +145,7 @@ class CleanupStage(Stage):
         # Also store ArticleOutput for Stage 9
         try:
             context.article_output = ArticleOutput.model_validate(validated_article)
-        except Exception as e:
+                        except Exception as e:
             logger.debug(f"Could not create ArticleOutput (non-critical): {e}")
             context.article_output = None
 
@@ -218,6 +276,11 @@ class CleanupStage(Stage):
                 citations_for_linking
             )
             logger.info(f"✅ Linked {len(citations_for_linking)} citations in content")
+            
+            # Encode HTML entities after citation linking
+            # This ensures newly created citation links have properly encoded entities (e.g., "Bain & Company" -> "Bain &amp; Company")
+            article = _encode_html_entities_in_content(article)
+            logger.debug("✅ Encoded HTML entities in content after citation linking")
         
         # Set citation_map for HTML rendering
         if citation_map:
