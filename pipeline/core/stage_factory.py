@@ -32,18 +32,13 @@ try:
     from ..blog_generation.stage_03_quality_refinement import QualityRefinementStage
     from ..blog_generation.stage_04_citations import CitationsStage
     from ..blog_generation.stage_05_internal_links import InternalLinksStage
-    # Stages 6-8 consolidated: ToC and Metadata into Stage 2, FAQ/PAA validation into Stage 3
-    # #region agent log
-    try: import traceback, os; log_path = '/Users/federicodeponte/openblog/.cursor/debug.log'; os.makedirs(os.path.dirname(log_path), exist_ok=True) if os.path.dirname(log_path) else None; log_file = open(log_path, 'a'); log_file.write(f'{{"sessionId":"debug-session","runId":"import-trace","hypothesisId":"A","location":"stage_factory.py:29","message":"About to import stage_06_image","data":{{"timestamp":{__import__("time").time()}}},"timestamp":{int(__import__("time").time()*1000)}}}\n'); log_file.close()
-    except: pass
-    # #endregion
+    from ..blog_generation.stage_06_toc import TableOfContentsStage
     from ..blog_generation.stage_06_image import ImageStage
-    # #region agent log
-    try: import traceback, os; log_path = '/Users/federicodeponte/openblog/.cursor/debug.log'; os.makedirs(os.path.dirname(log_path), exist_ok=True) if os.path.dirname(log_path) else None; log_file = open(log_path, 'a'); log_file.write(f'{{"sessionId":"debug-session","runId":"import-trace","hypothesisId":"A","location":"stage_factory.py:31","message":"Imported stage_06_image successfully","data":{{"timestamp":{__import__("time").time()}}},"timestamp":{int(__import__("time").time()*1000)}}}\n'); log_file.close()
-    except: pass
-    # #endregion
+    from ..blog_generation.stage_07_metadata import MetadataStage
     from ..blog_generation.stage_07_similarity_check import HybridSimilarityCheckStage
+    from ..blog_generation.stage_08_faq_paa import FAQPAAStage
     from ..blog_generation.stage_08_cleanup import CleanupStage
+    from ..blog_generation.stage_12_review_iteration import ReviewIterationStage
     # #region agent log
     try: import traceback, os; log_path = '/Users/federicodeponte/openblog/.cursor/debug.log'; os.makedirs(os.path.dirname(log_path), exist_ok=True) if os.path.dirname(log_path) else None; log_file = open(log_path, 'a'); log_file.write(f'{{"sessionId":"debug-session","runId":"import-trace","hypothesisId":"A","location":"stage_factory.py:35","message":"About to import stage_09_storage","data":{{"timestamp":{__import__("time").time()}}},"timestamp":{int(__import__("time").time()*1000)}}}\n'); log_file.close()
     except: pass
@@ -151,7 +146,7 @@ class ProductionStageFactory(IStageFactory):
         """
         registry = {}
         
-        # Standard pipeline stages (0-9)
+        # Standard pipeline stages (0-13)
         stage_classes = [
             (0, DataFetchStage),
             (1, PromptBuildStage),
@@ -159,10 +154,14 @@ class ProductionStageFactory(IStageFactory):
             (3, QualityRefinementStage),  # Always runs - AI-based quality refinement
             (4, CitationsStage),
             (5, InternalLinksStage),
-            (6, ImageStage),
-            (7, HybridSimilarityCheckStage),
-            (8, CleanupStage),
-            (9, StorageStage),
+            (6, TableOfContentsStage),
+            (7, ImageStage),
+            (8, MetadataStage),
+            (9, HybridSimilarityCheckStage),
+            (10, FAQPAAStage),
+            (11, CleanupStage),
+            (12, StorageStage),
+            (13, ReviewIterationStage),
         ]
         
         for stage_num, stage_class in stage_classes:
@@ -210,7 +209,7 @@ class ProductionStageFactory(IStageFactory):
                 failed_stages.append(stage_num)
                 
                 # Critical stages - fail fast
-                if stage_num in [0, 1, 2, 3, 8, 9]:
+                if stage_num in [0, 1, 2, 3, 11, 12]:
                     raise StageRegistrationError(
                         f"Critical stage {stage_num} creation failed: {e}"
                     )

@@ -64,11 +64,24 @@ class ImageStage(Stage):
     - Error handling and retry logic
     """
 
-    stage_num = 7
+    stage_num = 6
     stage_name = "Image/Graphics Generation"
 
     def __init__(self) -> None:
-        """Initialize image stage with Google Imagen client (primary) and Replicate fallback."""
+        """Initialize image stage with lazy loading to avoid import hangs."""
+        # Lazy initialization - defer Google Imagen and Replicate initialization until first use
+        self.primary_generator = None
+        self.fallback_generator = None
+        self._graphics_generator = None
+        self._generators_initialized = False
+        
+        logger.info("Image stage initialized with lazy loading")
+
+    def _ensure_generators_initialized(self):
+        """Initialize generators on first use to avoid import hangs."""
+        if self._generators_initialized:
+            return
+            
         # Try Google Imagen first (primary)
         try:
             self.primary_generator = GoogleImagenClient()
@@ -88,8 +101,7 @@ class ImageStage(Stage):
             logger.warning(f"Replicate fallback initialization failed: {e}")
             self.fallback_generator = None
         
-        # Graphics generator (lazy initialization)
-        self._graphics_generator = None
+        self._generators_initialized = True
 
     async def execute(self, context: ExecutionContext) -> ExecutionContext:
         """
@@ -114,6 +126,9 @@ class ImageStage(Stage):
         Returns:
             Updated context with parallel_results populated
         """
+        # Initialize generators on first use (lazy loading to avoid import hangs)
+        self._ensure_generators_initialized()
+        
         # Check if graphics mode is enabled
         use_graphics = context.job_config.get("use_graphics", False)
         mode_name = "graphics" if use_graphics else "images"

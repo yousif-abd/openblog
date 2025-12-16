@@ -103,7 +103,7 @@ class CleanupStage(Stage):
     Note: All content manipulation is handled by Stage 3 (AI-based Quality Refinement).
     """
 
-    stage_num = 11
+    stage_num = 8
     stage_name = "Merge & Link"
 
     async def execute(self, context: ExecutionContext) -> ExecutionContext:
@@ -389,3 +389,4 @@ class CleanupStage(Stage):
     def __repr__(self) -> str:
         """String representation."""
         return f"CleanupStage(stage_num={self.stage_num})"
+# Deploy trigger Tue Dec 16 21:07:34 CET 2025

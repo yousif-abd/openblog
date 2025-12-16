@@ -81,9 +81,13 @@ class GoogleImagenClient:
                 "Set GOOGLE_API_KEY environment variable for real image generation."
             )
             self.mock_mode = True
+            self.google_available = True  # Allow mock mode
+            self.client = None
         else:
             self.mock_mode = False
-            self._init_google_clients()
+            self.google_available = False  # Will be set to True if initialization succeeds
+            self.client = None
+            # Defer Google client initialization until first use (lazy loading)
 
     def _init_google_clients(self) -> None:
         """Initialize Google clients."""
@@ -122,6 +126,10 @@ class GoogleImagenClient:
             return None
 
         logger.info(f"Generating image with Imagen 4.0: {prompt[:100]}...")
+
+        # Initialize Google client on first use if needed (lazy loading)
+        if not self.mock_mode and not self.google_available and self.client is None:
+            self._init_google_clients()
 
         if self.mock_mode:
             return self._generate_mock_image_url(prompt)
