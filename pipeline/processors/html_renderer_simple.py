@@ -309,10 +309,12 @@ class HTMLRendererSimple:
         if not items:
             return ""
         
+        # Join items with newline and indent (can't use backslash in f-string expression)
+        items_str = '\n                '.join(items)
         return f"""<div class="toc">
             <h2>Table of Contents</h2>
             <ul>
-                {'\n                '.join(items)}
+                {items_str}
             </ul>
         </div>"""
     
