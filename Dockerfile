@@ -25,6 +25,6 @@ COPY . .
 # Expose port
 EXPOSE 8000
 
-# Start command - explicitly use python -m uvicorn
-CMD ["python3", "-m", "uvicorn", "service.api:app", "--host", "0.0.0.0", "--port", "${PORT:-8000}"]
+# Start command - use shell form to expand $PORT
+CMD python3 -m uvicorn service.api:app --host 0.0.0.0 --port ${PORT:-8000}
 
