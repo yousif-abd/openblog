@@ -2107,11 +2107,12 @@ async def debug_environment():
 if __name__ == "__main__":
     import uvicorn
     
-    port = int(os.getenv("PORT", "8000"))
+    # Railway sets PORT env var, default to 3000
+    port = int(os.getenv("PORT", "3000"))
     host = os.getenv("HOST", "0.0.0.0")
     
     uvicorn.run(
-        "service.api:app",
+        app,  # Use app directly instead of string to avoid import issues
         host=host,
         port=port,
         reload=False,  # Disable reload in production
