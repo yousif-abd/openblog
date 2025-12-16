@@ -283,11 +283,10 @@ def get_engine() -> WorkflowEngine:
         from pipeline.blog_generation.stage_03_quality_refinement import QualityRefinementStage
         from pipeline.blog_generation.stage_04_citations import CitationsStage
         from pipeline.blog_generation.stage_05_internal_links import InternalLinksStage
-        from pipeline.blog_generation.stage_06_toc import TableOfContentsStage
+        # Stage 6 (ToC) and Stage 8 (Metadata) consolidated into Stage 2
+        # Stage 10 (FAQ/PAA) consolidated into Stage 3
         from pipeline.blog_generation.stage_06_image import ImageStage
-        from pipeline.blog_generation.stage_07_metadata import MetadataStage
         from pipeline.blog_generation.stage_07_similarity_check import HybridSimilarityCheckStage
-        from pipeline.blog_generation.stage_08_faq_paa import FAQPAAStage
         from pipeline.blog_generation.stage_08_cleanup import CleanupStage
         from pipeline.blog_generation.stage_09_storage import StorageStage
         from pipeline.blog_generation.stage_12_review_iteration import ReviewIterationStage
