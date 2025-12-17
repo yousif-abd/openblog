@@ -1,15 +1,17 @@
 #!/bin/bash
-# Railway deployment script with fresh API key
+# Railway deployment script - SECURE VERSION
 
-echo "🚀 Deploying openblog with fresh API key..."
+echo "🚀 Deploying openblog..."
 
-# Set environment variables for deployment
-export GEMINI_API_KEY=***REMOVED***
-export SERPER_API_KEY=***REMOVED***
-export DATAFORSEO_LOGIN=tech@scaile.it
-export DATAFORSEO_PASSWORD=***REMOVED***
+# SECURITY NOTE: API keys are now stored in Railway environment variables
+# Use: railway variables --set "KEY=value" to set them securely
+echo "⚠️  Make sure you've set these environment variables in Railway:"
+echo "   - GEMINI_API_KEY"
+echo "   - SERPER_API_KEY" 
+echo "   - DATAFORSEO_LOGIN"
+echo "   - DATAFORSEO_PASSWORD"
 
-echo "✅ Environment variables set"
+echo "✅ Using secure environment variables from Railway"
 
 # Deploy to Railway
 railway up --detach
