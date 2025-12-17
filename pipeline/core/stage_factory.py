@@ -29,7 +29,7 @@ try:
     from ..blog_generation.stage_07_similarity_check import HybridSimilarityCheckStage
     from ..blog_generation.stage_08_cleanup import CleanupStage
     from ..blog_generation.stage_09_storage import StorageStage
-    # Stage 13 (Review Iteration) removed - use /refresh endpoint instead
+    from ..blog_generation.stage_10_review_iteration import ReviewIterationStage
 except ImportError as e:
     logging.error(f"Failed to import stage modules: {e}")
     # For graceful degradation, we'll still provide the factory interface
@@ -123,21 +123,19 @@ class ProductionStageFactory(IStageFactory):
         """
         registry = {}
         
-        # Standard pipeline stages (0-13)
-        # NOTE: Stage 3 (QualityRefinementStage) is NOT registered here.
-        # It's executed conditionally via _execute_stage_3_conditional() after Stage 2.
+        # Standard pipeline stages (0-10) - CONSOLIDATED VERSION
         stage_classes = [
             (0, DataFetchStage),
             (1, PromptBuildStage),
-            (2, GeminiCallStage),
+            (2, GeminiCallStage),  # Includes ToC + Metadata
+            (3, QualityRefinementStage),  # Includes FAQ/PAA validation
             (4, CitationsStage),
             (5, InternalLinksStage),
-            # Stages 6-8 consolidated: ToC and Metadata into Stage 2, FAQ/PAA validation into Stage 3
-            (6, ImageStage),  # Renumbered from 9
-            (7, HybridSimilarityCheckStage),  # Renumbered from 12
-            (8, CleanupStage),  # Renumbered from 10
-            (9, StorageStage),  # Renumbered from 11
-            # Stage 13 (Review Iteration) removed - use /refresh endpoint instead
+            (6, ImageStage),  # Renumbered from 7
+            (7, HybridSimilarityCheckStage),  # Renumbered from 9
+            (8, CleanupStage),  # Renumbered from 11
+            (9, StorageStage),  # Renumbered from 12
+            (10, ReviewIterationStage),  # Renumbered from 13
         ]
         
         for stage_num, stage_class in stage_classes:
@@ -185,7 +183,7 @@ class ProductionStageFactory(IStageFactory):
                 failed_stages.append(stage_num)
                 
                 # Critical stages - fail fast
-                if stage_num in [0, 1, 2, 3, 8, 9]:
+                if stage_num in [0, 1, 2, 3, 8, 9, 10]:
                     raise StageRegistrationError(
                         f"Critical stage {stage_num} creation failed: {e}"
                     )
