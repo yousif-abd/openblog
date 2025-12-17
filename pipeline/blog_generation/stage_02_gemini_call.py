@@ -111,9 +111,34 @@ class GeminiCallStage(Stage):
         logger.info("(Deep research via googleSearch + urlContext, output forced to JSON)")
 
         # System instruction (high priority rules) - Optimized for AEO 95+
-        # HTML-first approach (no markdown) - comprehensive rules for production quality
+        # HTML-first approach (STRICT NO MARKDOWN) - comprehensive rules for production quality
         system_instruction = self._get_system_instruction(word_count=word_count)
         logger.info(f"System instruction length: {len(system_instruction)} chars")
+        
+        # CRITICAL: Add markdown prevention instruction at the very top
+        markdown_prevention = """
+🚨 CRITICAL: OUTPUT FORMATTING REQUIREMENTS 🚨
+
+**FORBIDDEN - NEVER USE THESE:**
+- **bold text** (markdown format) ❌
+- *italic text* (markdown format) ❌
+- - bullet lists (markdown format) ❌
+- [link text](url) (markdown format) ❌
+
+**REQUIRED - ALWAYS USE THESE:**
+- <strong>bold text</strong> (HTML format) ✅
+- <em>italic text</em> (HTML format) ✅
+- <ul><li>bullet item</li></ul> (HTML format) ✅
+- <a href="url" class="citation">link text</a> (HTML format) ✅
+
+**MARKDOWN DETECTION RULE:** If your output contains ANY ** or * characters for formatting, you MUST revise it to use HTML tags instead.
+
+Example - WRONG vs CORRECT:
+❌ WRONG: **What are** the most common structures...
+✅ CORRECT: <strong>What are</strong> the most common structures...
+
+"""
+        system_instruction = markdown_prevention + system_instruction
         
         raw_response = await self._generate_content_with_retry(
             context, 

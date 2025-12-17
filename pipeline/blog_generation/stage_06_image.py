@@ -88,9 +88,9 @@ class ImageStage(Stage):
             if not self.primary_generator.mock_mode:
                 logger.info("Using Imagen 4.0 for image generation (via Gemini SDK)")
             else:
-                logger.info("Imagen 4.0 in mock mode, will use fallback")
+                logger.warning("⚠️ Imagen 4.0 in mock mode - check GEMINI_API_KEY environment variable")
         except Exception as e:
-            logger.warning(f"Google Imagen initialization failed: {e}")
+            logger.error(f"❌ Google Imagen initialization failed: {e}")
             self.primary_generator = None
         
         # Initialize Replicate fallback
@@ -310,43 +310,58 @@ class ImageStage(Stage):
         Returns:
             Image URL if successful, None if failed
         """
-        # Try Google Imagen first
-        if self.primary_generator and not self.primary_generator.mock_mode:
+        # Try Google Imagen first (force real image generation)
+        if self.primary_generator:
             logger.info("Attempting image generation with Imagen 4.0...")
             try:
                 # Extract project folder ID if available
                 project_folder_id = context.company_data.get("project_folder_id")
                 image_url = self.primary_generator.generate_image(image_prompt, project_folder_id)
-                if image_url:
+                
+                # Check if we got a real image URL (not a mock)
+                if image_url and not image_url.startswith("https://drive.google.com/uc?id="):
                     logger.info("✅ Imagen 4.0 generation successful")
                     return image_url
-                logger.warning("Imagen 4.0 generation failed, trying fallback...")
+                elif image_url and image_url.startswith("https://drive.google.com/uc?id="):
+                    logger.warning("⚠️ Imagen 4.0 returned mock URL - API key may be missing or invalid")
+                else:
+                    logger.warning("⚠️ Imagen 4.0 generation returned empty result")
             except Exception as e:
-                logger.warning(f"Google Imagen error: {e}, trying fallback...")
+                logger.error(f"❌ Google Imagen error: {e}")
+        else:
+            logger.warning("⚠️ Primary image generator not available")
         
         # Try Replicate fallback
-        if self.fallback_generator and not getattr(self.fallback_generator, 'mock_mode', True):
+        if self.fallback_generator:
             logger.info("Attempting image generation with Replicate fallback...")
             try:
                 image_url = self.fallback_generator.generate_image(image_prompt)
-                if image_url:
+                
+                # Check if we got a real image URL (not a mock)
+                if image_url and not image_url.startswith("https://drive.google.com/uc?id="):
                     logger.info("✅ Replicate fallback generation successful")
                     return image_url
-                logger.warning("Replicate generation also failed")
+                elif image_url and image_url.startswith("https://drive.google.com/uc?id="):
+                    logger.warning("⚠️ Replicate returned mock URL - API key may be missing or invalid")
+                else:
+                    logger.warning("⚠️ Replicate generation returned empty result")
             except Exception as e:
-                logger.warning(f"Replicate error: {e}")
+                logger.error(f"❌ Replicate error: {e}")
+        else:
+            logger.warning("⚠️ Fallback image generator not available")
         
-        # Both failed, use mock
-        logger.info("Both image generators failed, using mock URL")
+        # Both failed, create better mock URL with clear identification
+        logger.error("❌ All image generators failed - using clearly identifiable mock URL")
         if self.primary_generator:
             return self.primary_generator._generate_mock_image_url(image_prompt)
         elif self.fallback_generator:
             return self.fallback_generator._generate_mock_image_url(image_prompt)
         else:
-            # Final fallback
+            # Final fallback - create clearly identifiable mock URL
             import hashlib
             prompt_hash = hashlib.md5(image_prompt.encode()).hexdigest()
-            return f"https://drive.google.com/uc?id={prompt_hash}&export=view"
+            logger.warning(f"⚠️ Using final fallback mock URL for prompt: {image_prompt[:100]}...")
+            return f"https://drive.google.com/uc?id=MOCK-{prompt_hash}&export=view"
 
     def _generate_alt_text(self, headline: str) -> str:
         """

@@ -267,8 +267,27 @@ class QualityRefinementStage(Stage):
             lists_added: int = Field(default=0, description="Number of lists added (if any)")
             citations_added: int = Field(default=0, description="Number of citations added (if any)")
         
+        # CRITICAL: Add markdown prevention instruction at the very top
+        markdown_prevention = """
+🚨 CRITICAL: OUTPUT FORMATTING REQUIREMENTS 🚨
+
+**FORBIDDEN - NEVER USE THESE:**
+- **bold text** (markdown format) ❌
+- *italic text* (markdown format) ❌
+- # Heading (markdown format) ❌
+- [link text](url) (markdown format) ❌
+
+**REQUIRED - ALWAYS USE THESE:**
+- <strong>bold text</strong> (HTML format) ✅
+- <em>italic text</em> (HTML format) ✅
+- <h1>Heading</h1> (HTML format) ✅
+- <a href="url">link text</a> (HTML format) ✅
+
+NEVER output markdown formatting. ALWAYS output HTML formatting.
+        """
+        
         # Full quality checklist - AI-only approach (no regex)
-        CHECKLIST = """
+        CHECKLIST = markdown_prevention + """
 # Quality Review Checklist
 
 You are an expert quality editor. Your job is to find and fix ALL issues using AI intelligence.
