@@ -29,7 +29,6 @@ try:
     from ..blog_generation.stage_07_similarity_check import HybridSimilarityCheckStage
     from ..blog_generation.stage_08_cleanup import CleanupStage
     from ..blog_generation.stage_09_storage import StorageStage
-    from ..blog_generation.stage_10_review_iteration import ReviewIterationStage
 except ImportError as e:
     logging.error(f"Failed to import stage modules: {e}")
     # For graceful degradation, we'll still provide the factory interface
@@ -123,7 +122,7 @@ class ProductionStageFactory(IStageFactory):
         """
         registry = {}
         
-        # Standard pipeline stages (0-10) - CONSOLIDATED VERSION
+        # Standard pipeline stages (0-9) - CONSOLIDATED VERSION
         stage_classes = [
             (0, DataFetchStage),
             (1, PromptBuildStage),
@@ -135,7 +134,6 @@ class ProductionStageFactory(IStageFactory):
             (7, HybridSimilarityCheckStage),  # Renumbered from 9
             (8, CleanupStage),  # Renumbered from 11
             (9, StorageStage),  # Renumbered from 12
-            (10, ReviewIterationStage),  # Renumbered from 13
         ]
         
         for stage_num, stage_class in stage_classes:
@@ -183,7 +181,7 @@ class ProductionStageFactory(IStageFactory):
                 failed_stages.append(stage_num)
                 
                 # Critical stages - fail fast
-                if stage_num in [0, 1, 2, 3, 8, 9, 10]:
+                if stage_num in [0, 1, 2, 3, 8, 9]:
                     raise StageRegistrationError(
                         f"Critical stage {stage_num} creation failed: {e}"
                     )

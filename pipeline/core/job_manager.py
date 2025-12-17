@@ -92,7 +92,7 @@ class JobResult:
     current_stage: Optional[str] = None          # "stage_02" etc.
     progress_percent: int = 0                    # 0-100
     stages_completed: int = 0                    # Number completed
-    total_stages: int = 11                       # Total in consolidated pipeline
+    total_stages: int = 10                       # Total in consolidated pipeline
     
     # Results
     result_data: Optional[Dict[str, Any]] = None # Full response
@@ -424,7 +424,7 @@ class JobManager:
             engine.register_stages(create_production_pipeline_stages())
             
             # Create progress tracker
-            progress_tracker = self._create_progress_tracker(job_id, total_stages=11)
+            progress_tracker = self._create_progress_tracker(job_id, total_stages=10)
             
             # Build job config dict
             job_config = {
