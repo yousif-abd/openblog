@@ -6,7 +6,7 @@ Once deployed, your FastAPI app automatically provides interactive documentation
 
 ### **Swagger UI (Recommended)**
 ```
-https://openblog-production.up.railway.app/docs
+https://openblog-service.up.railway.app/docs
 ```
 - Interactive API explorer
 - Try endpoints directly from browser
@@ -15,14 +15,14 @@ https://openblog-production.up.railway.app/docs
 
 ### **ReDoc (Alternative)**
 ```
-https://openblog-production.up.railway.app/redoc
+https://openblog-service.up.railway.app/redoc
 ```
 - Clean, readable documentation
 - Better for sharing with non-technical users
 
 ### **OpenAPI JSON Schema**
 ```
-https://openblog-production.up.railway.app/openapi.json
+https://openblog-service.up.railway.app/openapi.json
 ```
 - Machine-readable API specification
 - Can import into Postman, Insomnia, etc.
@@ -103,13 +103,13 @@ All endpoints (except `/health` and `/debug/env`) require authentication via API
 **Method 1: Authorization Header (Recommended)**
 ```bash
 curl -H "Authorization: Bearer ob_prod_7Zq3Am6qgCXPuFFppDswxRyTQwHBBnp6" \
-     https://openblog-production.up.railway.app/write
+     https://openblog-service.up.railway.app/write
 ```
 
 **Method 2: X-API-Key Header**
 ```bash
 curl -H "X-API-Key: ob_prod_7Zq3Am6qgCXPuFFppDswxRyTQwHBBnp6" \
-     https://openblog-production.up.railway.app/write
+     https://openblog-service.up.railway.app/write
 ```
 
 ### Security Features
@@ -124,7 +124,7 @@ curl -H "X-API-Key: ob_prod_7Zq3Am6qgCXPuFFppDswxRyTQwHBBnp6" \
 ## 📝 Example Request
 
 ```bash
-curl -X POST "https://openblog-production.up.railway.app/write" \
+curl -X POST "https://openblog-service.up.railway.app/write" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_API_KEY_HERE" \
   -d '{
@@ -137,5 +137,5 @@ curl -X POST "https://openblog-production.up.railway.app/write" \
 
 ---
 
-**Note**: Replace `openblog-production.up.railway.app` with your actual domain once deployed!
+**Live API**: `https://openblog-service.up.railway.app` is the correct production URL.
 
