@@ -101,6 +101,16 @@ class GeminiCallStage(Stage):
         # Extract voice_persona from company_data for injection into system instruction
         voice_persona = context.company_data.get("voice_persona") if context.company_data else None
 
+        # Extract competitors for exclusion from citations
+        competitors_raw = context.company_data.get("company_competitors", []) if context.company_data else []
+        competitors = []
+        for comp in competitors_raw:
+            if comp and isinstance(comp, str):
+                if "," in comp:
+                    competitors.extend([c.strip() for c in comp.split(",") if c.strip()])
+                else:
+                    competitors.append(comp.strip())
+
         logger.debug(f"Prompt length: {len(context.prompt)} characters")
         if word_count:
             logger.debug(f"Target word count: {word_count:,} words")
@@ -117,7 +127,7 @@ class GeminiCallStage(Stage):
 
         # System instruction (high priority rules) - Optimized for AEO 95+
         # HTML-first approach (STRICT NO MARKDOWN) - comprehensive rules for production quality
-        system_instruction = self._get_system_instruction(word_count=word_count, voice_persona=voice_persona)
+        system_instruction = self._get_system_instruction(word_count=word_count, voice_persona=voice_persona, competitors=competitors)
         logger.info(f"System instruction length: {len(system_instruction)} chars")
         
         # CRITICAL: Add markdown prevention instruction at the very top
@@ -244,7 +254,7 @@ Example - WRONG vs CORRECT:
 
         return context
 
-    def _get_system_instruction(self, word_count: int = None, voice_persona: dict = None) -> str:
+    def _get_system_instruction(self, word_count: int = None, voice_persona: dict = None, competitors: list = None) -> str:
         """System instruction with comprehensive rules for production-quality content."""
 
         # Build voice persona section for TOP of system instruction (HIGHEST PRIORITY)
@@ -304,7 +314,13 @@ This overrides all other style guidance below.
         else:
             word_count_text = "3,000-4,000 words"
             total_length_text = "Minimum: 3,000 words total\n- Target: 3,000-4,000 words total\n- This word count allows for proper section variety: 2 LONG sections (700+ words each) + 2-3 MEDIUM sections (400+ words each) + remaining SHORT sections"
-        
+
+        # Build competitor exclusion text for Sources section
+        if competitors:
+            competitor_exclusion = f"Blocked domains: {', '.join(competitors[:10])}"
+        else:
+            competitor_exclusion = "Check the company context for competitor names to avoid."
+
         return f"""{voice_persona_block}You are an expert content writer optimizing for AI search engines (AEO - Agentic Search Optimization).
 
 # TASK
@@ -932,6 +948,7 @@ Opener paragraph starts with a question - this is the #1 AI content signal
   - **AVOID** sources that are off-topic, low-quality, or don't support your claims
   - **PREFER** authoritative sources (Gartner, IBM, Forrester, NIST) over community sources when possible
   - If a source seems questionable or irrelevant, **DO NOT USE IT** - find a better source instead
+- **🚨 COMPETITOR EXCLUSION (CRITICAL):** NEVER cite or link to competitor websites as sources. {competitor_exclusion}
 - **WRONG (generic URLs - NEVER DO THIS):**
   - [1]: Gartner Cybersecurity Trends – https://www.gartner.com/en/newsroom
   - [2]: IBM Report – https://www.ibm.com/reports
