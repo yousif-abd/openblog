@@ -10,7 +10,7 @@ Usage:
 """
 
 import defusedxml.ElementTree as ET
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Tuple
 from datetime import datetime
 from collections import OrderedDict
 import httpx
@@ -194,7 +194,7 @@ class SitemapCrawler:
         self.cache_ttl = cache_ttl
         self.max_urls = max_urls
         self.max_cache_size = max_cache_size
-        self._cache: OrderedDict[str, tuple[SitemapPageList, float]] = OrderedDict()
+        self._cache: OrderedDict[str, Tuple[SitemapPageList, float]] = OrderedDict()
         self._cache_hits = 0
         self._cache_misses = 0
         self._cache_lock = asyncio.Lock()  # Thread-safety for cache operations

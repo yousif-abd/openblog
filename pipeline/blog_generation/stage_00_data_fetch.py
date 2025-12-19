@@ -26,14 +26,20 @@ Output:
 """
 
 import logging
+import os
 from typing import Dict, Any, Optional, List
 from urllib.parse import urlparse
 import re
+
+import httpx
 
 from ..core import ExecutionContext, Stage
 from ..data_sources import SitemapCrawler, SitemapPageList
 
 logger = logging.getLogger(__name__)
+
+# OpenContext API URL - Railway service or localhost fallback
+OPENCONTEXT_API_URL = os.getenv("OPENCONTEXT_API_URL", "http://localhost:3000/api/analyze")
 
 
 class DataFetchStage(Stage):
@@ -134,33 +140,120 @@ class DataFetchStage(Stage):
 
         logger.debug(f"Required fields present: {', '.join(required_fields.keys())}")
 
+    async def _call_opencontext(self, company_url: str) -> Optional[Dict[str, Any]]:
+        """
+        Call OpenContext API to get rich company context.
+
+        OpenContext analyzes the company website using Gemini and returns:
+        - company_name, industry, description, products
+        - competitors, tone, pain_points, value_propositions
+        - use_cases, content_themes, country, language
+
+        Args:
+            company_url: Company website URL to analyze
+
+        Returns:
+            OpenContext response dict or None if failed
+        """
+        logger.info(f"Calling OpenContext API: {OPENCONTEXT_API_URL}")
+        logger.debug(f"URL to analyze: {company_url}")
+
+        try:
+            async with httpx.AsyncClient(timeout=90.0) as client:
+                response = await client.post(
+                    OPENCONTEXT_API_URL,
+                    json={"url": company_url},
+                    headers={"Content-Type": "application/json"}
+                )
+                response.raise_for_status()
+                data = response.json()
+
+                logger.info(f"✅ OpenContext returned {len(data)} fields")
+                logger.debug(f"OpenContext fields: {list(data.keys())}")
+                return data
+
+        except httpx.TimeoutException:
+            logger.warning(f"OpenContext API timeout (90s) for {company_url}")
+            return None
+        except httpx.HTTPStatusError as e:
+            logger.warning(f"OpenContext API HTTP error: {e.response.status_code}")
+            return None
+        except Exception as e:
+            logger.warning(f"OpenContext API error: {e}")
+            return None
+
     async def _auto_detect_company(self, company_url: str) -> Dict[str, Any]:
         """
         Auto-detect company information from URL.
 
         Operations:
-        1. Extract domain and company name from URL
-        2. Scrape website for metadata (language, location)
-        3. Use Gemini to analyze company (industry, business model)
-        4. Fetch sitemap for internal links pool
+        1. Try OpenContext API for rich company data (preferred)
+        2. Fall back to basic domain parsing if OpenContext unavailable
+        3. Extract domain and company name from URL
 
         Args:
             company_url: Company website URL
 
         Returns:
-            Dictionary with auto-detected company information:
-            - company_name: Detected or extracted from domain
+            Dictionary with company information:
             - company_url: Validated URL
-            - company_location: Detected from metadata/Gemini
-            - company_language: Detected language
-            - company_info: Business info from Gemini analysis
-            - company_competitors: Empty (will be filled later)
-            - links: Internal links from sitemap
-
-        Note:
-            For MVP, return basic info. Full Gemini analysis optional.
+            - company_name: From OpenContext or domain extraction
+            - industry: From OpenContext (if available)
+            - description: From OpenContext (if available)
+            - products: From OpenContext (if available)
+            - competitors: From OpenContext (if available)
+            - tone: From OpenContext (if available)
+            - pain_points, value_propositions, use_cases, content_themes
+            - company_language: From OpenContext or default
+            - company_location: From OpenContext or default
         """
         logger.debug(f"Auto-detecting company info from: {company_url}")
+
+        # Step 1: Try OpenContext API for rich company data
+        opencontext_data = await self._call_opencontext(company_url)
+
+        if opencontext_data:
+            logger.info("✅ Using OpenContext data for company context")
+
+            # Map OpenContext fields to our company_data format
+            company_data = {
+                "company_url": opencontext_data.get("company_url", company_url),
+                "company_name": opencontext_data.get("company_name", self._extract_company_name(self._extract_domain(company_url))),
+                "company_language": opencontext_data.get("language", "en"),
+                "company_location": opencontext_data.get("country", "Unknown"),
+                "company_info": {
+                    "description": opencontext_data.get("description", ""),
+                    "industry": opencontext_data.get("industry", "Unknown"),
+                    "business_model": "Unknown",
+                },
+                "company_competitors": opencontext_data.get("competitors", []),
+                # Pass through rich OpenContext fields for prompt building
+                "industry": opencontext_data.get("industry", ""),
+                "description": opencontext_data.get("description", ""),
+                "products": opencontext_data.get("products", ""),
+                "target_audience": opencontext_data.get("target_audience", ""),
+                "tone": opencontext_data.get("tone", "professional"),
+                "pain_points": opencontext_data.get("pain_points", ""),
+                "value_propositions": opencontext_data.get("value_propositions", ""),
+                "use_cases": opencontext_data.get("use_cases", ""),
+                "content_themes": opencontext_data.get("content_themes", ""),
+                # Voice persona - dynamically generated by OpenContext (CRITICAL for quality)
+                "voice_persona": opencontext_data.get("voice_persona", {}),
+                # Flag that we used OpenContext
+                "_opencontext_enriched": True,
+            }
+
+            # Log voice persona availability
+            if company_data.get("voice_persona"):
+                logger.info("✅ Voice persona received from OpenContext")
+            else:
+                logger.warning("⚠️ No voice_persona in OpenContext response")
+
+            logger.debug(f"OpenContext company data: {list(company_data.keys())}")
+            return company_data
+
+        # Step 2: Fall back to basic domain parsing
+        logger.info("⚠️ OpenContext unavailable, using basic auto-detection")
 
         # Extract domain and basic info
         domain = self._extract_domain(company_url)
@@ -169,7 +262,7 @@ class DataFetchStage(Stage):
         logger.debug(f"Domain: {domain}")
         logger.debug(f"Company name: {company_name}")
 
-        # Build initial company_data
+        # Build basic company_data (fallback)
         company_data = {
             "company_url": company_url,
             "company_name": company_name,
@@ -177,16 +270,24 @@ class DataFetchStage(Stage):
             "company_location": "Unknown",  # Can be overridden
             "company_info": {
                 "description": f"Information about {company_name}",
-                "industry": "Unknown",  # Can be filled by Gemini
+                "industry": "Unknown",
                 "business_model": "Unknown",
             },
-            "company_competitors": [],  # Empty for now
+            "company_competitors": [],
+            # Empty fields for consistency
+            "industry": "",
+            "description": "",
+            "products": "",
+            "target_audience": "",
+            "tone": "professional",
+            "pain_points": "",
+            "value_propositions": "",
+            "use_cases": "",
+            "content_themes": "",
+            "_opencontext_enriched": False,
         }
 
-        # NOTE: Sitemap fetching is implemented in _crawl_company_sitemap()
-        # Future enhancements: Gemini analysis for company info, website scraping for metadata
-
-        logger.debug(f"Auto-detected company data: {company_data}")
+        logger.debug(f"Fallback company data: {company_data}")
         return company_data
 
     def _extract_domain(self, url: str) -> str:

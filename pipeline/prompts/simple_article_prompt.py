@@ -1,10 +1,13 @@
 """
 Simple Article Prompt - Company Context Based
 Replaces complex market-aware prompts with simple company context injection.
+Enhanced with dynamically-generated voice personas from OpenContext.
 """
 
 from typing import Dict, Any
 import logging
+
+from .voice_personas import get_voice_persona_section
 
 logger = logging.getLogger(__name__)
 
@@ -116,34 +119,43 @@ COMPETITORS TO DIFFERENTIATE FROM: {competitors}"""
     
     # Content guidelines section
     guidelines_section = ""
-    
+
     # Article-level system instructions (from company_context)
     if system_instructions:
         guidelines_section += f"""
 
 SYSTEM INSTRUCTIONS (Article-level):
 {system_instructions}"""
-    
+
     # Batch-level system prompts (applies to all articles in batch)
     if batch_system_prompts_text:
         guidelines_section += f"""
 
 BATCH INSTRUCTIONS (Applies to all articles in this batch):
 {batch_system_prompts_text}"""
-    
+
     # Company knowledge base (article-level)
     if client_knowledge_base:
         guidelines_section += f"""
 
 COMPANY KNOWLEDGE BASE:
 {client_knowledge_base}"""
-    
+
     # Article-level content instructions
     if content_instructions:
         guidelines_section += f"""
 
 CONTENT WRITING INSTRUCTIONS (Article-level):
 {content_instructions}"""
+
+    # Voice persona section (from OpenContext - dynamically generated per company)
+    voice_persona_section = ""
+    persona_text = get_voice_persona_section(company_context)
+    if persona_text:
+        voice_persona_section = f"""
+
+{persona_text}"""
+        logger.debug(f"Added voice persona from OpenContext")
     
     # Determine word count target (dynamic or default)
     if word_count:
@@ -189,13 +201,13 @@ ADDITIONAL CONTENT INSTRUCTIONS:
     prompt = f"""Write a comprehensive, high-quality blog article about "{primary_keyword}".
 
 TOPIC FOCUS:
-The article must be entirely focused on "{primary_keyword}". Every section, paragraph, and example should relate directly to this topic. 
+The article must be entirely focused on "{primary_keyword}". Every section, paragraph, and example should relate directly to this topic.
 - Deep dive into what "{primary_keyword}" means, how it works, why it matters
 - Provide practical, actionable insights about "{primary_keyword}"
 - Include real-world examples and use cases related to "{primary_keyword}"
 - Address common questions and concerns about "{primary_keyword}"
 
-{company_section}{optional_sections}{guidelines_section}{market_section}{custom_instruction_section}
+{voice_persona_section}{company_section}{optional_sections}{guidelines_section}{market_section}{custom_instruction_section}
 
 ARTICLE REQUIREMENTS:
 - Target language: {language}
@@ -222,6 +234,7 @@ Please write the complete article now."""
     logger.debug(f"Company context included: {bool(company_name and company_url)}")
     logger.debug(f"Optional sections: {len(optional_sections)} chars")
     logger.debug(f"Guidelines sections: {len(guidelines_section)} chars")
+    logger.debug(f"Voice persona section: {len(voice_persona_section)} chars")
     
     return prompt
 

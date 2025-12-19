@@ -21,7 +21,7 @@ Process:
 
 import logging
 import asyncio
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 import httpx
 
 from ..core import ExecutionContext, Stage
@@ -664,7 +664,7 @@ class InternalLinksStage(Stage):
         updated_fields = {}
         
         # Process sections with assigned links in parallel
-        async def embed_links_in_section(section_num: int, links: List[Dict[str, str]]) -> tuple[str, str]:
+        async def embed_links_in_section(section_num: int, links: List[Dict[str, str]]) -> Tuple[str, str]:
             """Embed links into a single section's content."""
             field_name = f"section_{section_num:02d}_content"
             content = article_dict.get(field_name, '')

@@ -23,7 +23,7 @@ The citations from Gemini come in format:
 """
 
 import logging
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 
 from ..core import ExecutionContext, Stage
 from ..models.citation import Citation, CitationList
@@ -144,14 +144,23 @@ class CitationsStage(Stage):
             security_map = await self._check_security_ai(citation_list)
 
             # ============================================================
+            # STEP 3.5: Competitor Check
+            # ============================================================
+            logger.info("🏢 Step 3.5: Checking citations for competitor domains...")
+            competitor_map = self._check_competitors(citation_list, context)
+
+            # ============================================================
             # STEP 4: Identify Issues
             # ============================================================
             logger.info("📋 Step 4: Identifying citations needing replacement...")
-            issues_list = self._identify_issues(citation_list, status_map, security_map)
+            issues_list = self._identify_issues(citation_list, status_map, security_map, competitor_map)
 
             # ============================================================
             # STEP 5: Find Replacements (1 Retry Max)
             # ============================================================
+            # Save original URLs before replacement (needed for body update)
+            original_urls = {c.number: c.url for c in issues_list} if issues_list else {}
+
             if issues_list:
                 logger.info("🔍 Step 5: Finding replacements for broken/risky citations...")
                 citation_list, no_replacement_nums = await self._find_replacements(
@@ -161,14 +170,25 @@ class CitationsStage(Stage):
                 logger.info("✅ Step 5: No citations need replacement")
                 no_replacement_nums = []
 
+            # Build URL replacement map: original_url → new_url (or None if no replacement)
+            url_updates = {}
+            for num, original_url in original_urls.items():
+                if num in no_replacement_nums:
+                    url_updates[original_url] = None  # No replacement, will be stripped
+                else:
+                    # Find the new URL for this citation
+                    for c in citation_list.citations:
+                        if c.number == num:
+                            if c.url != original_url:
+                                url_updates[original_url] = c.url  # Updated URL
+                            break
+
             # ============================================================
-            # STEP 6: Update Body Citations (AI-Based)
+            # STEP 6: Update Body Citations
             # ============================================================
-            if no_replacement_nums or issues_list:
-                logger.info("🔗 Step 6: Updating body citations (AI-based)...")
-                context = await self._update_body_citations_ai(
-                    context, citation_list, no_replacement_nums
-                )
+            if url_updates:
+                logger.info("🔗 Step 6: Updating body citations...")
+                context = await self._update_body_citations(context, url_updates)
             else:
                 logger.info("✅ Step 6: No body citations need updating")
 
@@ -714,7 +734,7 @@ Return a JSON object with a "citations" array. Each citation must have:
         import requests
         from concurrent.futures import ThreadPoolExecutor
         
-        def check_single_url_sync(citation: Citation) -> tuple[int, str]:
+        def check_single_url_sync(citation: Citation) -> Tuple[int, str]:
             """Check a single URL synchronously and return (number, status)."""
             try:
                 response = requests.head(
@@ -875,41 +895,131 @@ Only mark as security risk if you're confident it's spam/malicious. Legitimate s
             logger.warning("   Continuing without security check")
             return {}
     
+    def _check_competitors(
+        self,
+        citation_list: CitationList,
+        context: ExecutionContext
+    ) -> Dict[int, bool]:
+        """
+        Check if any citation URLs are from competitor domains.
+
+        Args:
+            citation_list: CitationList with citations to check
+            context: Execution context with company data
+
+        Returns:
+            Dict mapping citation number to is_competitor (True = competitor domain)
+        """
+        competitor_map = {}
+
+        # Get competitors from company_data
+        if not context.company_data:
+            logger.warning("No company_data available for competitor check")
+            return competitor_map
+
+        competitors = context.company_data.get("company_competitors", [])
+        if not competitors:
+            logger.info("   No competitors defined - skipping competitor check")
+            return competitor_map
+
+        # Normalize competitor list (handle comma-separated strings)
+        normalized_competitors = []
+        for comp in competitors:
+            if not comp or not isinstance(comp, str):
+                continue
+            if "," in comp:
+                normalized_competitors.extend([c.strip().lower() for c in comp.split(",") if c.strip()])
+            else:
+                normalized_competitors.append(comp.strip().lower())
+
+        if not normalized_competitors:
+            return competitor_map
+
+        logger.info(f"   Checking against {len(normalized_competitors)} competitors: {normalized_competitors[:5]}...")
+
+        from urllib.parse import urlparse
+
+        competitor_count = 0
+        for citation in citation_list.citations:
+            try:
+                parsed = urlparse(citation.url)
+                host = parsed.netloc.lower().replace("www.", "")
+
+                # Check if host matches any competitor
+                is_competitor = False
+                matched_competitor = None
+                for comp in normalized_competitors:
+                    # Clean competitor name (might be just company name, not domain)
+                    comp_clean = comp.replace("www.", "").replace("https://", "").replace("http://", "").strip("/")
+
+                    # Check for exact match or subdomain
+                    if host == comp_clean or host.endswith(f".{comp_clean}"):
+                        is_competitor = True
+                        matched_competitor = comp
+                        break
+
+                    # Check if competitor name is in the domain (e.g., "rewardful" in "rewardful.com")
+                    if comp_clean in host:
+                        is_competitor = True
+                        matched_competitor = comp
+                        break
+
+                competitor_map[citation.number] = is_competitor
+                if is_competitor:
+                    competitor_count += 1
+                    logger.warning(f"   ⚠️ Citation [{citation.number}]: Competitor domain detected - {host} (matched: {matched_competitor})")
+
+            except Exception as e:
+                logger.debug(f"   Error checking competitor for citation [{citation.number}]: {e}")
+                competitor_map[citation.number] = False
+
+        logger.info(f"   ✅ Competitor check complete: {competitor_count} competitor citations found")
+        return competitor_map
+
     def _identify_issues(
         self,
         citation_list: CitationList,
         status_map: Dict[int, str],
-        security_map: Dict[int, bool]
+        security_map: Dict[int, bool],
+        competitor_map: Optional[Dict[int, bool]] = None
     ) -> List[Citation]:
         """
-        Identify citations that need replacement based on HTTP status and security checks.
-        
+        Identify citations that need replacement based on HTTP status, security, and competitor checks.
+
         Args:
             citation_list: CitationList with all citations
             status_map: Dict mapping citation number to HTTP status ('valid' | 'broken' | 'unknown')
             security_map: Dict mapping citation number to is_security_risk (True/False)
-            
+            competitor_map: Dict mapping citation number to is_competitor (True/False)
+
         Returns:
             List of Citation objects that need replacement
         """
         issues = []
-        
+
         for citation in citation_list.citations:
             needs_replacement = False
             reason = []
-            
+
             # Check HTTP status
             status = status_map.get(citation.number, 'unknown')
             if status == 'broken':
                 needs_replacement = True
                 reason.append('broken URL (404/500/timeout)')
-            
+
             # Check security risk
             is_security_risk = security_map.get(citation.number, False)
             if is_security_risk:
                 needs_replacement = True
                 reason.append('security risk (spam/malicious)')
-            
+
+            # Check competitor domain
+            if competitor_map:
+                is_competitor = competitor_map.get(citation.number, False)
+                if is_competitor:
+                    needs_replacement = True
+                    reason.append('competitor domain')
+
             # Check if domain-only (path has <= 1 part)
             from urllib.parse import urlparse
             try:
@@ -920,11 +1030,11 @@ Only mark as security risk if you're confident it's spam/malicious. Legitimate s
                     reason.append('domain-only URL')
             except Exception:
                 pass
-            
+
             if needs_replacement:
                 issues.append(citation)
                 logger.debug(f"   ⚠️ Citation [{citation.number}] needs replacement: {', '.join(reason)}")
-        
+
         logger.info(f"📋 Identified {len(issues)} citations needing replacement")
         return issues
     
@@ -933,7 +1043,7 @@ Only mark as security risk if you're confident it's spam/malicious. Legitimate s
         citation_list: CitationList,
         issues_list: List[Citation],
         context: ExecutionContext
-    ) -> tuple[CitationList, List[int]]:
+    ) -> Tuple[CitationList, List[int]]:
         """
         Find replacement URLs for broken/security-risk citations (1 retry max).
         
@@ -991,14 +1101,27 @@ Only mark as security risk if you're confident it's spam/malicious. Legitimate s
     async def _find_alternative_url(self, citation: Citation, context: ExecutionContext) -> Optional[str]:
         """
         Use Gemini web search to find alternative URL for a broken citation (AI-only, no regex).
-        
+
         Args:
             citation: Citation needing replacement
             context: Execution context
-            
+
         Returns:
             Alternative URL if found, None otherwise
         """
+        # Get competitors to avoid in search
+        competitors = []
+        if context.company_data:
+            comp_data = context.company_data.get("company_competitors", [])
+            for comp in comp_data:
+                if comp and isinstance(comp, str):
+                    if "," in comp:
+                        competitors.extend([c.strip() for c in comp.split(",") if c.strip()])
+                    else:
+                        competitors.append(comp.strip())
+
+        competitors_str = ", ".join(competitors[:10]) if competitors else "none"
+
         prompt = f"""Find a high-quality alternative source for this broken citation.
 
 Original Citation:
@@ -1011,47 +1134,60 @@ REQUIREMENTS:
 3. Prefer recent sources (2020+) unless historical context needed
 4. Return the URL of the best alternative source in the "url" field
 5. If no good alternative exists, set "url" to null
+6. NEVER use URLs from these competitor domains: {competitors_str}
 
 Search for: {citation.title}
 """
         
         try:
-            # Use structured JSON output (AI-only, no regex)
-            from pipeline.models.gemini_client import build_response_schema
-            
-            response_schema = build_response_schema({
-                "type": "object",
-                "properties": {
-                    "url": {
-                        "type": "string",
-                        "description": "Alternative URL if found, null if no good alternative exists"
-                    },
-                    "reason": {
-                        "type": "string",
-                        "description": "Brief reason why this URL was chosen or why no alternative exists"
-                    }
-                },
-                "required": ["url", "reason"]
-            })
-            
+            # Simple prompt asking for JSON response
+            json_prompt = prompt + """
+
+RESPOND WITH ONLY A JSON OBJECT:
+{"url": "https://example.com/article", "reason": "why this source"}
+OR if no good source found:
+{"url": null, "reason": "why no source"}
+"""
+
             response = await self.gemini_client.generate_content(
-                prompt=prompt,
-                response_schema=response_schema,
+                prompt=json_prompt,
                 enable_tools=True  # Enable Google Search grounding
             )
-            
+
             if not response:
                 return None
-            
-            # Parse JSON response (AI-only, no regex)
+
+            # Parse JSON response
             import json
-            parsed = json.loads(response)
+            # Clean response - find JSON object
+            response_text = response.strip()
+            if '{' in response_text:
+                start = response_text.find('{')
+                end = response_text.rfind('}') + 1
+                response_text = response_text[start:end]
+
+            parsed = json.loads(response_text)
             url = parsed.get('url')
             
             if url and url.strip() and url.lower() != 'null':
                 # Validate URL format (simple check, no regex)
                 if url.startswith(('http://', 'https://')):
-                    return url.strip()
+                    # Double-check replacement URL is not from a competitor
+                    from urllib.parse import urlparse
+                    parsed = urlparse(url.strip())
+                    host = parsed.netloc.lower().replace("www.", "")
+
+                    is_competitor = False
+                    for comp in competitors:
+                        comp_clean = comp.lower().replace("www.", "").replace("https://", "").replace("http://", "").strip("/")
+                        if host == comp_clean or host.endswith(f".{comp_clean}") or comp_clean in host:
+                            is_competitor = True
+                            logger.warning(f"   ⚠️ Replacement URL {url[:60]}... is from competitor {comp} - rejecting")
+                            break
+
+                    if not is_competitor:
+                        return url.strip()
+                    # If competitor, fall through to try grounding URLs
             
             # Fallback: Check grounding URLs from Gemini search (from current response)
             # Note: Gemini's grounding URLs are automatically included in the response
@@ -1101,42 +1237,40 @@ Search for: {citation.title}
         except Exception:
             return 'broken'
     
-    async def _update_body_citations_ai(
+    async def _update_body_citations(
         self,
         context: ExecutionContext,
-        citation_list: CitationList,
-        no_replacement_nums: List[int]
+        url_updates: Dict[str, Optional[str]]
     ) -> ExecutionContext:
         """
-        Update body citations using AI (find-and-replace similar to Stage 3).
-        
-        - Update href URLs to match validated citations
-        - Remove citations with no replacement
-        - Preserve citation numbers for remaining citations
-        
+        Update body citations: replace broken URLs or strip to plain text.
+
+        Uses BeautifulSoup for reliable HTML parsing:
+        - Find all <a class="citation" href="..."> tags
+        - If href has replacement → update href to new URL
+        - If href has no replacement (None) → unwrap (keep text, remove link)
+
         Args:
             context: Execution context with structured_data
-            citation_list: Updated CitationList with validated URLs
-            no_replacement_nums: List of citation numbers to remove from body
-            
+            url_updates: Map of original_url → new_url (or None to strip)
+
         Returns:
-            Updated context with body citations updated
+            Updated context with body citations fixed
         """
         if not context.structured_data:
             return context
-        
-        # Initialize Gemini client if needed
-        if not self.gemini_client:
-            self.gemini_client = GeminiClient()
-        
-        # Build citation map for URL updates
-        citation_map = {citation.number: citation.url for citation in citation_list.citations}
-        
-        # Build list of citations to remove
-        remove_nums_str = ', '.join(str(n) for n in no_replacement_nums) if no_replacement_nums else 'none'
-        
-        logger.info(f"🔗 Updating body citations: {len(citation_map)} valid, {len(no_replacement_nums)} to remove")
-        
+
+        if not url_updates:
+            return context
+
+        from bs4 import BeautifulSoup
+
+        # Separate URLs to update vs strip
+        urls_to_update = {k: v for k, v in url_updates.items() if v is not None}
+        urls_to_strip = {k for k, v in url_updates.items() if v is None}
+
+        logger.info(f"   URLs to update: {len(urls_to_update)}, URLs to strip: {len(urls_to_strip)}")
+
         # Fields to update
         fields_to_update = [
             'Intro', 'Direct_Answer',
@@ -1144,70 +1278,59 @@ Search for: {citation.title}
             'section_04_content', 'section_05_content', 'section_06_content',
             'section_07_content', 'section_08_content', 'section_09_content'
         ]
-        
+
         article_dict = context.structured_data.model_dump()
-        
-        import asyncio
-        
-        async def update_field(field_name: str) -> tuple[str, str]:
-            """Update a single field's citations."""
+        updated_count = 0
+        replaced_count = 0
+        stripped_count = 0
+
+        for field_name in fields_to_update:
             content = article_dict.get(field_name, '')
             if not content or not isinstance(content, str):
-                return field_name, content or ''
-            
-            prompt = f"""Update citation links in this content.
+                continue
 
-VALIDATED CITATIONS (update href URLs to match these):
-{chr(10).join(f'[{num}]: {url}' for num, url in sorted(citation_map.items()))}
+            # Skip if no citation tags
+            if 'class="citation"' not in content and "class='citation'" not in content:
+                continue
 
-CITATIONS TO REMOVE (remove these citation links completely):
-Citation numbers: {remove_nums_str if no_replacement_nums else 'none'}
+            # Parse HTML
+            soup = BeautifulSoup(content, 'html.parser')
+            modified = False
 
-CONTENT TO UPDATE:
-{content}
+            # Find all citation links
+            for link in soup.find_all('a', class_='citation'):
+                href = link.get('href', '')
+                if not href:
+                    continue
 
-TASK:
-1. Update all <a href="..." class="citation"> tags to use validated URLs from the list above
-2. Remove all citation links for citations in the "remove" list (citation numbers: {remove_nums_str if no_replacement_nums else 'none'})
-3. Preserve all other content exactly as-is
-4. Preserve citation numbers for remaining citations
+                # Check if this URL should be updated
+                if href in urls_to_update:
+                    new_url = urls_to_update[href]
+                    link['href'] = new_url
+                    modified = True
+                    replaced_count += 1
+                    logger.debug(f"   Replaced URL in {field_name}: {href[:40]}... → {new_url[:40]}...")
 
-Return ONLY the updated content, no explanations.
-"""
-            
-            try:
-                response = await self.gemini_client.generate_content(
-                    prompt=prompt,
-                    enable_tools=False
-                )
-                
-                if response and response.strip():
-                    return field_name, response.strip()
-                else:
-                    return field_name, content
-            except Exception as e:
-                logger.warning(f"   ⚠️ Field {field_name}: Citation update failed - {e}")
-                return field_name, content
-        
-        # Update all fields in parallel
-        tasks = [update_field(field) for field in fields_to_update]
-        results = await asyncio.gather(*tasks)
-        
-        # Apply updates
-        updated_count = 0
-        for field_name, updated_content in results:
-            if article_dict.get(field_name) != updated_content:
-                article_dict[field_name] = updated_content
+                # Check if this URL should be stripped
+                elif href in urls_to_strip:
+                    # Unwrap: keep text, remove link
+                    link.unwrap()
+                    modified = True
+                    stripped_count += 1
+                    logger.debug(f"   Stripped broken citation in {field_name}: {href[:50]}...")
+
+            if modified:
+                article_dict[field_name] = str(soup)
                 updated_count += 1
-        
+
         if updated_count > 0:
-            logger.info(f"✅ Updated citations in {updated_count} body fields")
+            logger.info(f"✅ Updated {updated_count} fields: {replaced_count} URLs replaced, {stripped_count} citations stripped")
             # Update structured_data
             from ..models.output_schema import ArticleOutput
             context.structured_data = ArticleOutput(**article_dict)
         else:
             logger.debug("   No body citations needed updating")
-        
+
         return context
 
     async def _validate_citations_ultimate(

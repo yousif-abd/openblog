@@ -6,7 +6,7 @@ import asyncio
 import base64
 import logging
 import os
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 from dataclasses import dataclass
 
 import httpx
@@ -120,7 +120,7 @@ class DataForSeoProvider:
         num_results: int,
         language: str,
         country: str,
-    ) -> tuple[Optional[str], Optional[str]]:
+    ) -> Tuple[Optional[str], Optional[str]]:
         """Submit a search task to DataForSEO.
         
         Returns:
@@ -171,7 +171,7 @@ class DataForSeoProvider:
         self,
         client: httpx.AsyncClient,
         task_id: str,
-    ) -> tuple[Optional[List[Dict[str, Any]]], Optional[str]]:
+    ) -> Tuple[Optional[List[Dict[str, Any]]], Optional[str]]:
         """Poll for task results with exponential backoff.
         
         Returns:

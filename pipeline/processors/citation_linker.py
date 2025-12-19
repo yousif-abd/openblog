@@ -20,7 +20,7 @@ Design Principles:
 
 import re
 import logging
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -207,7 +207,7 @@ class CitationLinker:
             pass
         return None
     
-    def _link_multi_word_sources(self, content: str) -> tuple[str, int]:
+    def _link_multi_word_sources(self, content: str) -> Tuple[str, int]:
         """
         Link multi-word source names before regular pattern matching.
         

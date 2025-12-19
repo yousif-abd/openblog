@@ -49,6 +49,9 @@ class CompanyContext:
     system_instructions: Optional[str] = None  # Reusable prompts for all content
     client_knowledge_base: Optional[List[str]] = field(default_factory=list)  # Facts about company
     content_instructions: Optional[str] = None  # Style, format, requirements
+
+    # OPTIONAL INPUT FIELD - Voice Persona (from OpenContext, dynamic per-company)
+    voice_persona: Optional[Dict[str, Any]] = field(default_factory=dict)  # ICP-aligned writing style
     
     def validate(self) -> bool:
         """
@@ -101,8 +104,11 @@ class CompanyContext:
             "system_instructions": self.system_instructions or "",
             "client_knowledge_base": "\n".join([f"- {fact}" for fact in self.client_knowledge_base]) if self.client_knowledge_base else "",
             "content_instructions": self.content_instructions or "",
+
+            # Voice Persona (from OpenContext, dynamic per-company)
+            "voice_persona": self.voice_persona or {},
         }
-        
+
         return context
     
     @classmethod
@@ -153,7 +159,8 @@ class CompanyContext:
             content_themes=ensure_list(data.get("content_themes", [])),
             system_instructions=data.get("system_instructions"),
             client_knowledge_base=ensure_list(data.get("client_knowledge_base", [])),
-            content_instructions=data.get("content_instructions")
+            content_instructions=data.get("content_instructions"),
+            voice_persona=data.get("voice_persona", {}) or {},
         )
 
 

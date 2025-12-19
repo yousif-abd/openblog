@@ -70,28 +70,28 @@ class PromptBuildStage(Stage):
         if not primary_keyword:
             raise ValueError("primary_keyword is required")
 
+        # Get company_data first (needed for language detection below)
+        company_data = context.company_data or {}
+
         # Extract language (optional, default to English)
         # Priority: job_config.language > company_data.language > "en"
         language = context.job_config.get("language") or company_data.get("language") or company_data.get("company_language", "en")
-        
+
         # Extract word count (optional, dynamic)
         word_count = context.job_config.get("word_count")
-        
+
         # Extract country (optional, for market-specific content)
         country = context.job_config.get("country")
-        
+
         # Extract content generation instruction (optional, custom instructions)
         content_generation_instruction = context.job_config.get("content_generation_instruction")
-        
+
         # Extract tone override (optional, overrides company_context.tone)
         tone_override = context.job_config.get("tone")
-        
+
         # Extract system_prompts (batch-level instructions)
         # These apply to all articles in a batch and merge with article-level instructions
         system_prompts = context.job_config.get("system_prompts", [])
-
-        # Convert company_data to CompanyContext
-        company_data = context.company_data or {}
         
         # Handle both dict and CompanyContext inputs
         if isinstance(company_data, dict):

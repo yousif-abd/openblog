@@ -22,7 +22,7 @@ Runs AFTER Stage 2 (Generation + Extraction) but BEFORE Stage 4-9 (Parallel stag
 import logging
 import asyncio
 import html
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 
 from ..core import ExecutionContext, Stage
 from ..models.output_schema import ArticleOutput
@@ -237,8 +237,98 @@ class QualityRefinementStage(Stage):
         logger.info("❓ Step 6: Validating FAQ/PAA items...")
         context = self._validate_faq_paa(context)
 
-        # Log completion (Gemini has already fixed all issues)
-        logger.info("✅ Quality refinement complete - all fixes applied by Gemini AI")
+        # ============================================================
+        # STEP 7: CONTENT QUALITY VALIDATION (NEW - Human-like patterns)
+        # ============================================================
+        logger.info("📊 Step 7: Validating content quality patterns...")
+        context = await self._validate_content_quality(context)
+
+        # ============================================================
+        # STEP 7B: QUALITY FIX LOOP (if score < 60, try to fix issues)
+        # ============================================================
+        initial_metrics = context.parallel_results.get("content_quality", {})
+        initial_score = initial_metrics.get("score", 0)
+
+        # Only attempt fix if: score < 60, not already attempted, and we have issues to fix
+        if initial_score < 60 and not context.parallel_results.get("quality_fix_attempted"):
+            context.parallel_results["quality_fix_attempted"] = True
+
+            # Build targeted fix instructions based on detected issues
+            fix_instructions = []
+
+            question_openers = initial_metrics.get("question_openers", 0)
+            if question_openers > 2:
+                fix_instructions.append(
+                    f"REWRITE {question_openers} section openers that start with questions. "
+                    "Replace with STATEMENTS, STATISTICS, or SCENARIOS (not questions)."
+                )
+
+            attribution_ratio = initial_metrics.get("attribution_ratio", 0)
+            if attribution_ratio > 0.35:
+                fix_instructions.append(
+                    "REDUCE attribution phrases ('According to...', 'Research shows...', 'Experts say...'). "
+                    "State facts confidently without hedging."
+                )
+
+            content_blocks = initial_metrics.get("content_blocks_found", 0)
+            if content_blocks < 2:
+                missing = []
+                if not initial_metrics.get("has_decision_framework"):
+                    missing.append("a decision framework (e.g., 'Choose X if you need Y. Go with Z if you prioritize W.')")
+                if not initial_metrics.get("has_scenario"):
+                    missing.append("a concrete scenario (e.g., 'Imagine you're processing payments at 2am when...')")
+                if not initial_metrics.get("has_mistake_callout"):
+                    missing.append("a mistake callout (e.g., 'Here's where most teams go wrong...')")
+                if not initial_metrics.get("has_hot_take"):
+                    missing.append("a hot take/opinion (e.g., 'Honestly, most enterprises over-complicate this.')")
+                if missing:
+                    fix_instructions.append(f"ADD within the content: {', '.join(missing[:2])}")
+
+            if fix_instructions:
+                logger.info(f"🔧 Step 7B: Quality Fix Loop - {len(fix_instructions)} issues to fix...")
+                context = await self._apply_quality_fixes(context, fix_instructions, initial_metrics)
+
+                # Re-run validation to measure improvement
+                logger.info("📊 Step 7B: Re-validating after fixes...")
+                context = await self._validate_content_quality(context)
+
+                # Log improvement
+                new_metrics = context.parallel_results.get("content_quality", {})
+                new_score = new_metrics.get("score", 0)
+                if new_score > initial_score:
+                    logger.info(f"   ✅ Quality improved: {initial_score} → {new_score}/100")
+                else:
+                    logger.warning(f"   ⚠️ Quality unchanged: {initial_score} → {new_score}/100")
+
+        # ============================================================
+        # STEP 8: SET QUALITY STATUS ON OUTPUT (for downstream filtering)
+        # ============================================================
+        quality_metrics = context.parallel_results.get("content_quality", {})
+
+        # If quality validation didn't run (no content), mark as failed
+        if not quality_metrics:
+            logger.warning("🚨 No quality metrics available - marking as failed")
+            quality_score = 0
+            quality_failed = True
+        else:
+            quality_failed = quality_metrics.get("quality_failed", False)
+            quality_score = quality_metrics.get("score", 0)
+
+        # Store quality status on structured_data for output
+        if context.structured_data:
+            context.structured_data.quality_score = quality_score
+            context.structured_data.quality_failed = quality_failed
+
+        if quality_failed:
+            logger.warning(
+                f"🚨 LOW QUALITY: score={quality_score}/100, "
+                f"openers={quality_metrics.get('unique_opener_types', 0)}/4, "
+                f"attribution={quality_metrics.get('attribution_ratio', 0)}, "
+                f"blocks={quality_metrics.get('content_blocks_found', 0)}/4 "
+                f"- Article will be stored with quality_failed=True"
+            )
+        else:
+            logger.info(f"✅ Quality check passed: {quality_score}/100")
 
         return context
     async def _gemini_full_review(self, context: ExecutionContext) -> ExecutionContext:
@@ -460,7 +550,7 @@ Use contractions naturally: "it is" → "it's", "you are" → "you're", "do not"
         gemini_client = GeminiClient()
         
         # PARALLELIZE: Create tasks for all fields to review concurrently
-        async def review_field(field: str) -> tuple[str, int, str, int, int, int, int]:
+        async def review_field(field: str) -> Tuple[str, int, str, int, int, int, int]:
             """Review a single field and return (field_name, issues_fixed, fixed_content, em_dashes_fixed, en_dashes_fixed, lists_added, citations_added)."""
             content = article_dict.get(field)
             
@@ -901,7 +991,7 @@ Return the optimized article content. Be surgical - only add what's missing, don
         sections_to_optimize = sections_to_optimize[:7]  # Increased from 5 to 7 sections
         
         # PARALLELIZE: Optimize all sections concurrently
-        async def optimize_section(section_data: tuple) -> tuple[str, str, bool]:
+        async def optimize_section(section_data: tuple) -> Tuple[str, str, bool]:
             """Optimize a single section and return (field_name, optimized_content, success)."""
             i, field, content, section_citations, section_phrases, section_questions = section_data
             
@@ -1387,6 +1477,407 @@ Return the complete updated Sources field with all enhancements applied.
         context.parallel_results["paa_items"] = cleaned_paa
         context.parallel_results["faq_count"] = cleaned_faq.count()
         context.parallel_results["paa_count"] = cleaned_paa.count()
-        
+
+        return context
+
+    async def _validate_content_quality(self, context: ExecutionContext) -> ExecutionContext:
+        """
+        Validate content quality for human-like writing patterns.
+
+        Checks:
+        1. Section opener variety (max 2 questions, varied types)
+        2. Citation density (not over-attributed)
+        3. Required content blocks (decision framework, scenario, mistake, hot take)
+
+        This is a VALIDATION step - it logs warnings and stores quality metrics
+        but doesn't block the pipeline. Quality issues are flagged for review.
+        """
+        import re
+
+        if not context.structured_data:
+            logger.warning("No structured_data for content quality validation")
+            return context
+
+        logger.info("📊 Validating content quality patterns...")
+
+        # Collect all section content
+        section_fields = [
+            'section_01_content', 'section_02_content', 'section_03_content',
+            'section_04_content', 'section_05_content', 'section_06_content',
+            'section_07_content', 'section_08_content', 'section_09_content',
+        ]
+
+        sections = []
+        for field in section_fields:
+            content = getattr(context.structured_data, field, '') or ''
+            if content.strip():
+                sections.append(content)
+
+        all_content = ' '.join(sections)
+
+        # ============================================================
+        # CHECK 1: Section Opener Variety
+        # ============================================================
+        question_openers = 0
+        opener_types = []
+
+        question_patterns = [
+            r'^<p>\s*What\s+is',
+            r'^<p>\s*Why\s+(do|does|is|are|should)',
+            r'^<p>\s*How\s+(do|does|can|to)',
+            r'^<p>\s*When\s+(should|do|does)',
+            r'^<p>\s*Where\s+(do|does|can)',
+            r'^<p>\s*Who\s+(should|can|does)',
+        ]
+
+        for section in sections:
+            # Get first paragraph - extract full content including HTML tags, then strip them
+            first_p_match = re.search(r'^<p>(.*?)</p>', section.strip(), re.DOTALL | re.IGNORECASE)
+            if first_p_match:
+                # Strip HTML tags to get plain text for analysis
+                first_html = first_p_match.group(1).strip()
+                first_text = re.sub(r'<[^>]+>', '', first_html).strip()[:100]
+
+                # Check if it's a question opener (check raw text, not wrapped in <p>)
+                is_question = any(re.match(pattern.replace('^<p>\\s*', '^\\s*'), first_text, re.IGNORECASE) for pattern in question_patterns)
+                if is_question:
+                    question_openers += 1
+                    opener_types.append('QUESTION')
+                elif re.match(r'^\d', first_text):
+                    opener_types.append('STATISTIC')
+                elif any(word in first_text.lower() for word in ['imagine', 'picture this', "let's say", 'consider a', 'here\'s exactly']):
+                    opener_types.append('SCENARIO')
+                elif any(word in first_text.lower() for word in ['honestly', 'unpopular', 'contrary', 'most people', 'the truth is', 'skip', 'overrated']):
+                    opener_types.append('BOLD_CLAIM')
+                else:
+                    opener_types.append('STATEMENT')
+
+        # Count unique opener types
+        unique_openers = len(set(opener_types))
+
+        # Log opener analysis
+        logger.info(f"   Section openers: {opener_types}")
+        logger.info(f"   Question openers: {question_openers} (max 2 recommended)")
+        logger.info(f"   Unique opener types: {unique_openers} (aim for 3+)")
+
+        if question_openers > 2:
+            logger.warning(f"   ⚠️ Too many question openers: {question_openers} (robotic pattern)")
+
+        if unique_openers < 3:
+            logger.warning(f"   ⚠️ Low opener variety: only {unique_openers} types used")
+
+        # ============================================================
+        # CHECK 2: Citation Density (Over-Attribution)
+        # ============================================================
+        attribution_patterns = [
+            r'according to\s+\w+',
+            r'research\s+(by|from|shows|suggests)',
+            r'study\s+(by|from|shows|finds)',
+            r'experts?\s+(say|suggest|recommend|note)',
+            r'analysts?\s+(say|suggest|predict|note)',
+            r'reports?\s+(show|indicate|suggest)',
+        ]
+
+        attribution_count = 0
+        for pattern in attribution_patterns:
+            attribution_count += len(re.findall(pattern, all_content, re.IGNORECASE))
+
+        # Count total paragraphs for ratio
+        paragraph_count = len(re.findall(r'<p>', all_content))
+        attribution_ratio = attribution_count / max(paragraph_count, 1)
+
+        logger.info(f"   Attribution phrases: {attribution_count} in {paragraph_count} paragraphs")
+        logger.info(f"   Attribution ratio: {attribution_ratio:.2f} (aim for <0.3)")
+
+        if attribution_ratio > 0.4:
+            logger.warning(f"   ⚠️ Over-attribution detected: {attribution_ratio:.2f} ratio")
+
+        # ============================================================
+        # CHECK 3: Required Content Blocks (simple presence indicators)
+        # ============================================================
+        # Simplified from complex regex to simple keyword presence checks.
+        # Less strict, but more reliable and easier to maintain.
+        content_lower = all_content.lower()
+
+        # Decision framework: Presence of decision-making language
+        decision_indicators = ["if you", "choose", "when to use", "go with", "pick"]
+        has_decision_framework = sum(1 for ind in decision_indicators if ind in content_lower) >= 2
+
+        # Scenario: Presence of immersive narrative language
+        scenario_indicators = ["imagine", "picture", "step 1", "let's say", "here's what happens"]
+        has_scenario = any(ind in content_lower for ind in scenario_indicators)
+
+        # Mistake callout: Presence of warning/avoidance language
+        mistake_indicators = ["mistake", "wrong", "avoid", "don't", "never do"]
+        has_mistake = sum(1 for ind in mistake_indicators if ind in content_lower) >= 2
+
+        # Hot take: Presence of opinionated language
+        hot_take_indicators = ["honestly", "overrated", "truth is", "most people get", "unpopular"]
+        has_hot_take = any(ind in content_lower for ind in hot_take_indicators)
+
+        content_blocks_found = sum([has_decision_framework, has_scenario, has_mistake, has_hot_take])
+
+        logger.info(f"   Required content blocks found: {content_blocks_found}/4")
+        logger.info(f"      - Decision framework: {'✅' if has_decision_framework else '❌'}")
+        logger.info(f"      - Concrete scenario: {'✅' if has_scenario else '❌'}")
+        logger.info(f"      - Mistake callout: {'✅' if has_mistake else '❌'}")
+        logger.info(f"      - Hot take/opinion: {'✅' if has_hot_take else '❌'}")
+
+        if content_blocks_found < 3:
+            logger.warning(f"   ⚠️ Missing content blocks: only {content_blocks_found}/4 found")
+
+        # ============================================================
+        # CHECK 4: Voice Persona Adherence (filler phrase check only)
+        # ============================================================
+        # Simplified: Just check for universally bad filler phrases.
+        # The complex dont_list mapping was fragile and rarely matched.
+        voice_violations = 0
+
+        # Filler phrases that indicate robotic/AI-generated content
+        filler_phrases = [
+            "it's important to note",
+            "it's worth mentioning",
+            "in today's rapidly evolving",
+            "in today's digital landscape",
+            "needless to say",
+            "as we all know",
+            "at the end of the day",
+            "it goes without saying",
+            "moving forward",
+            "in conclusion",
+            "let's dive in",
+            "without further ado",
+        ]
+
+        for filler in filler_phrases:
+            if filler in content_lower:
+                voice_violations += 1
+                logger.debug(f"      Found filler phrase: '{filler}'")
+
+        if voice_violations > 0:
+            logger.warning(f"   ⚠️ Voice persona violations: {voice_violations} filler/dont patterns found")
+        else:
+            logger.info(f"   ✅ Voice persona: No filler phrases or dont_list violations detected")
+
+        # ============================================================
+        # CALCULATE QUALITY SCORE (simplified)
+        # ============================================================
+        quality_score = 0
+
+        # Opener variety (max 30 points)
+        # Question openers: 0-2 is good (15 pts), 3-4 is ok (8 pts), 5+ is bad (0 pts)
+        if question_openers <= 2:
+            quality_score += 15
+        elif question_openers <= 4:
+            quality_score += 8
+
+        # Unique opener types: 3+ is good (15 pts), 2 is ok (10 pts), 1 is bad (5 pts)
+        if unique_openers >= 3:
+            quality_score += 15
+        elif unique_openers >= 2:
+            quality_score += 10
+        else:
+            quality_score += 5
+
+        # Attribution (max 30 points) - simplified: just check ratio
+        # <0.25 is good (30 pts), 0.25-0.40 is ok (20 pts), >0.40 is over-attributed (10 pts)
+        if attribution_count == 0:
+            quality_score += 10  # No citations - not ideal but not fatal
+        elif attribution_ratio <= 0.25:
+            quality_score += 30  # Good balance
+        elif attribution_ratio <= 0.40:
+            quality_score += 20  # Acceptable
+        else:
+            quality_score += 10  # Over-attributed
+
+        # Content blocks (max 40 points) - 10 pts each
+        quality_score += content_blocks_found * 10
+
+        logger.info(f"📊 Content Quality Score: {quality_score}/100")
+
+        # Determine quality status (three-tier system for nuanced handling)
+        # 70+ = PASS (auto-approve), 60-69 = WARNING (needs human review), <60 = FAIL (reject)
+        # Note: quality_failed articles are flagged but NOT blocked - downstream filters decide
+        quality_failed = quality_score < 60  # Hard fail threshold
+        quality_warning = quality_score < 70 and quality_score >= 60  # Soft warning zone
+
+        if quality_failed:
+            logger.warning(f"   ⚠️ LOW QUALITY SCORE: {quality_score}/100 - article flagged for review")
+        elif quality_warning:
+            logger.warning(f"   ⚠️ MODERATE QUALITY: {quality_score}/100 - some patterns need improvement")
+        else:
+            logger.info(f"   ✅ GOOD QUALITY: {quality_score}/100")
+
+        # Store quality metrics in context (used by downstream systems)
+        context.parallel_results["content_quality"] = {
+            "score": quality_score,
+            "quality_failed": quality_failed,  # Flag for filtering/rejection
+            "quality_warning": quality_warning,  # Flag for review
+            "question_openers": question_openers,
+            "unique_opener_types": unique_openers,
+            "opener_types": opener_types,
+            "attribution_count": attribution_count,
+            "attribution_ratio": round(attribution_ratio, 2),
+            "has_decision_framework": has_decision_framework,
+            "has_scenario": has_scenario,
+            "has_mistake_callout": has_mistake,
+            "has_hot_take": has_hot_take,
+            "content_blocks_found": content_blocks_found,
+            "voice_persona_violations": voice_violations,  # Count of filler phrase violations
+        }
+
+        # Log enforcement status
+        if quality_failed:
+            logger.warning("   🚨 QUALITY_FAILED=True - downstream systems should filter this article")
+
+        return context
+
+    async def _apply_quality_fixes(
+        self,
+        context: ExecutionContext,
+        fix_instructions: list,
+        quality_metrics: dict
+    ) -> ExecutionContext:
+        """
+        Apply AI-driven fixes to content that failed quality validation.
+
+        Instead of just logging warnings, this method calls Gemini to actually
+        FIX the detected issues:
+        - Rewrite question openers to be statements/scenarios
+        - Reduce over-attribution phrases
+        - Add missing content blocks (decision framework, scenario, etc.)
+
+        Args:
+            context: ExecutionContext with structured_data
+            fix_instructions: List of specific fixes to apply
+            quality_metrics: Dict with detected quality issues
+
+        Returns:
+            Updated context with fixed content
+        """
+        import json
+
+        if not context.structured_data or not fix_instructions:
+            return context
+
+        logger.info(f"🔧 Quality Fix Loop: Applying {len(fix_instructions)} fixes...")
+
+        # Collect all section content to fix
+        section_fields = [
+            'section_01_content', 'section_02_content', 'section_03_content',
+            'section_04_content', 'section_05_content', 'section_06_content',
+            'section_07_content', 'section_08_content', 'section_09_content',
+        ]
+
+        sections_content = {}
+        for field in section_fields:
+            content = getattr(context.structured_data, field, '') or ''
+            if content.strip():
+                sections_content[field] = content
+
+        if not sections_content:
+            logger.warning("   No section content to fix")
+            return context
+
+        # Get opener types for context
+        opener_types = quality_metrics.get("opener_types", [])
+
+        # Build the fix prompt
+        fix_prompt = f"""You are a content quality editor. Your job is to FIX specific quality issues in the article sections below.
+
+## FIXES REQUIRED (Do ALL of these):
+
+{chr(10).join(f"- {instruction}" for instruction in fix_instructions)}
+
+## CURRENT SECTION OPENER ANALYSIS:
+
+{chr(10).join(f"Section {i+1}: {opener_types[i] if i < len(opener_types) else 'N/A'}" for i in range(len(sections_content)))}
+
+## RULES:
+
+1. **PRESERVE all existing content** - only modify what's specifically mentioned in the fixes
+2. **Keep HTML formatting** - use <p>, <strong>, <ul>, <li> etc., NOT markdown
+3. **Be surgical** - don't rewrite entire sections, just fix the specific issues
+4. **For question openers**: Replace "What is X?" style openers with VARIED alternatives:
+   - Use a MIX of opener types (don't make them all the same):
+   - STATEMENT: "X is the foundation of Y." or "The key to X lies in Y."
+   - STATISTIC: "87% of enterprises now use X." or "In 2024, X grew by 40%."
+   - SCENARIO: "Imagine your team discovers X at 2am." or "Picture this: Y happens."
+   - BOLD_CLAIM: "Honestly, X is overrated." or "Most developers get X wrong."
+   - IMPORTANT: Use at least 3 DIFFERENT opener types across all sections for variety
+5. **For over-attribution**: Reduce HEDGING phrases but KEEP citations:
+   - KEEP statistics and sources: "IBM reports breach costs average $4.45M" → keep as is
+   - REMOVE hedging language: "According to experts, X is important" → "X is important"
+   - State facts confidently: "Research shows MFA is effective" → "MFA blocks 99.9% of attacks"
+   - IMPORTANT: Do NOT remove all citations - reduce attribution ratio but preserve authority
+6. **For missing content blocks**: Add naturally within relevant sections:
+   - Decision framework: "Choose X if you need Y. Go with Z if you prioritize W."
+   - Scenario: "Imagine you're processing payments at 2am when..."
+   - Mistake: "Here's where most teams go wrong: they assume..."
+   - Hot take: "Honestly, most enterprises over-complicate this."
+
+## SECTIONS TO FIX:
+
+{chr(10).join(f"### {field}:{chr(10)}{content}{chr(10)}" for field, content in sections_content.items())}
+
+## OUTPUT FORMAT:
+
+Return JSON with:
+- fixed_sections: Dict mapping field names to their COMPLETE fixed content
+- fixes_applied: List of strings describing what was fixed
+- success: true if fixes were applied
+
+Only include sections that were actually modified. If a section doesn't need changes, don't include it.
+"""
+
+        try:
+            # Initialize Gemini client
+            from ..models.gemini_client import GeminiClient
+            gemini_client = GeminiClient()
+
+            # Note: We don't use response_schema here because Gemini doesn't support
+            # additionalProperties which Pydantic includes for dict fields.
+            # The prompt already requests JSON format, so we parse manually.
+            response = await gemini_client.generate_content(
+                prompt=fix_prompt,
+                enable_tools=False
+            )
+
+            if response and response.strip():
+                # Parse response
+                json_str = response.strip()
+                if json_str.startswith('```'):
+                    json_str = json_str.split('\n', 1)[1] if '\n' in json_str else json_str[3:]
+                if json_str.endswith('```'):
+                    json_str = json_str[:-3]
+
+                try:
+                    result = json.loads(json_str)
+                    fixed_sections = result.get('fixed_sections', {})
+                    fixes_applied = result.get('fixes_applied', [])
+
+                    if fixed_sections:
+                        # Apply fixes to structured_data
+                        for field, fixed_content in fixed_sections.items():
+                            if field in section_fields and fixed_content:
+                                setattr(context.structured_data, field, fixed_content)
+                                logger.info(f"   ✅ Fixed: {field}")
+
+                        # Log what was fixed
+                        for fix in fixes_applied[:5]:  # Log first 5
+                            logger.info(f"      - {fix}")
+
+                        logger.info(f"   🔧 Applied {len(fixed_sections)} section fixes")
+                    else:
+                        logger.warning("   ⚠️ No sections were fixed by Gemini")
+
+                except json.JSONDecodeError as e:
+                    logger.warning(f"   ⚠️ Could not parse quality fix response: {e}")
+            else:
+                logger.warning("   ⚠️ Empty response from Gemini quality fix")
+
+        except Exception as e:
+            logger.warning(f"   ⚠️ Quality fix failed: {e}")
+
         return context
 

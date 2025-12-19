@@ -229,6 +229,16 @@ class ArticleOutput(BaseModel):
         description="Comparison tables (max 2 per article). Use for product comparisons, pricing tiers, feature matrices.",
     )
 
+    # Quality metrics (set by Stage 3 validation)
+    quality_score: Optional[int] = Field(
+        default=None,
+        description="Quality score 0-100. Set by Stage 3 validation.",
+    )
+    quality_failed: Optional[bool] = Field(
+        default=False,
+        description="True if quality score < 60. Use for filtering/review.",
+    )
+
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
