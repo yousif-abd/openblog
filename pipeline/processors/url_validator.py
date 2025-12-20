@@ -315,6 +315,13 @@ class CitationURLValidator:
                 logger.warning(f"HTTP 404 detected: {final_url}")
                 _URL_STATUS_CACHE[url] = (False, final_url, current_time)
                 return False, final_url
+            elif response.status_code == 403:
+                # 403 Forbidden - page exists but blocks automated requests (WAF/bot protection)
+                # These URLs usually work fine for real users in a browser
+                # Accept as valid but log a warning
+                logger.warning(f"HTTP 403 detected (WAF/bot protection): {final_url} - accepting as valid")
+                _URL_STATUS_CACHE[url] = (True, final_url, current_time)
+                return True, final_url
             elif response.status_code == 200:
                 # Check for error page indicators in URL path
                 if self._is_error_page_url(final_url):

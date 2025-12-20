@@ -23,17 +23,7 @@ logger = logging.getLogger(__name__)
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-# #region agent log
-try:
-    import traceback, os; log_path = '/Users/federicodeponte/openblog/.cursor/debug.log'; os.makedirs(os.path.dirname(log_path), exist_ok=True) if os.path.dirname(log_path) else None; log_file = open(log_path, 'a'); log_file.write(f'{{"sessionId":"debug-session","runId":"import-trace","hypothesisId":"C","location":"api.py:25","message":"About to import WorkflowEngine","data":{{"timestamp":{__import__("time").time()}}},"timestamp":{int(__import__("time").time()*1000)}}}\n'); log_file.close()
-except: pass
-# #endregion
 from pipeline.core import WorkflowEngine
-# #region agent log
-try:
-    import traceback, os; log_path = '/Users/federicodeponte/openblog/.cursor/debug.log'; os.makedirs(os.path.dirname(log_path), exist_ok=True) if os.path.dirname(log_path) else None; log_file = open(log_path, 'a'); log_file.write(f'{{"sessionId":"debug-session","runId":"import-trace","hypothesisId":"C","location":"api.py:27","message":"WorkflowEngine imported","data":{{"timestamp":{__import__("time").time()}}},"timestamp":{int(__import__("time").time()*1000)}}}\n'); log_file.close()
-except: pass
-# #endregion
 from pipeline.core.job_manager import JobManager, JobConfig, JobStatus, get_job_manager
 # Content similarity checker for SEO duplicate detection
 from pipeline.utils.similarity_checker import (
@@ -42,9 +32,6 @@ from pipeline.utils.similarity_checker import (
     check_for_duplicates,
     store_article_fingerprint,
 )
-# Content refresher for updating existing content
-from service.content_refresher import ContentParser, ContentRefresher
-from pipeline.models.gemini_client import GeminiClient
 # Content refresher for updating existing content
 from service.content_refresher import ContentParser, ContentRefresher
 from pipeline.models.gemini_client import GeminiClient

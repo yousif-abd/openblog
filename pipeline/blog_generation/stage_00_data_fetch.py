@@ -159,7 +159,7 @@ class DataFetchStage(Stage):
         logger.debug(f"URL to analyze: {company_url}")
 
         try:
-            async with httpx.AsyncClient(timeout=90.0) as client:
+            async with httpx.AsyncClient(timeout=60.0) as client:  # Matches OpenContext maxDuration
                 response = await client.post(
                     OPENCONTEXT_API_URL,
                     json={"url": company_url},
