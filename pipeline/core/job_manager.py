@@ -810,24 +810,79 @@ class JobManager:
             logger.warning(f"Failed to generate embedding: {e}")
             return None
     
+    def _validate_webhook_url(self, url: str) -> tuple[bool, str]:
+        """Validate webhook URL to prevent SSRF attacks."""
+        try:
+            from urllib.parse import urlparse
+            import re
+
+            parsed = urlparse(url)
+
+            # Only allow HTTP/HTTPS
+            if parsed.scheme not in ('http', 'https'):
+                return False, 'Only HTTP/HTTPS URLs allowed'
+
+            hostname = parsed.hostname.lower() if parsed.hostname else ''
+
+            # Block localhost variations
+            if hostname in ('localhost', '127.0.0.1', '::1'):
+                return False, 'Localhost URLs not allowed'
+
+            # Block internal hostnames
+            if hostname.endswith('.local') or hostname.endswith('.internal') or hostname.endswith('.lan'):
+                return False, 'Internal hostnames not allowed'
+
+            # Block private IPv4 ranges
+            ip_match = re.match(r'^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$', hostname)
+            if ip_match:
+                a, b, c, d = map(int, ip_match.groups())
+                # Validate octets
+                if a > 255 or b > 255 or c > 255 or d > 255:
+                    return False, 'Invalid IP address'
+                # 10.0.0.0/8
+                if a == 10:
+                    return False, 'Private IP addresses not allowed'
+                # 172.16.0.0/12
+                if a == 172 and 16 <= b <= 31:
+                    return False, 'Private IP addresses not allowed'
+                # 192.168.0.0/16
+                if a == 192 and b == 168:
+                    return False, 'Private IP addresses not allowed'
+                # 169.254.0.0/16 (link-local)
+                if a == 169 and b == 254:
+                    return False, 'Link-local addresses not allowed'
+                # 127.0.0.0/8 (loopback)
+                if a == 127:
+                    return False, 'Loopback addresses not allowed'
+
+            return True, ''
+        except Exception as e:
+            return False, f'Invalid URL: {e}'
+
     async def _call_webhook(self, webhook_url: str, job_id: str, result_data: Dict[str, Any]) -> None:
         """Call webhook URL with job completion data."""
         try:
             import httpx
-            
+
+            # SSRF protection: validate webhook URL before calling
+            is_valid, error = self._validate_webhook_url(webhook_url)
+            if not is_valid:
+                logger.error(f"Webhook URL validation failed for job {job_id}: {error}")
+                return
+
             payload = {
                 "job_id": job_id,
                 "status": "completed",
                 "timestamp": datetime.now().isoformat(),
                 "result": result_data
             }
-            
+
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.post(webhook_url, json=payload)
                 response.raise_for_status()
-                
+
             logger.info(f"Webhook called successfully for job {job_id}")
-            
+
         except Exception as e:
             logger.error(f"Webhook failed for job {job_id}: {e}")
     

@@ -61,10 +61,13 @@ def verify_api_key(credentials: HTTPAuthorizationCredentials = Depends(security)
     valid_keys = os.getenv("OPENBLOG_API_KEYS", "").split(",")
     valid_keys = [key.strip() for key in valid_keys if key.strip()]
     
-    # If no API keys configured, allow access (backward compatibility)
+    # If no API keys configured, reject access (security requirement)
     if not valid_keys:
-        logger.warning("⚠️  No API keys configured - API is open to public!")
-        return None
+        logger.error("❌ No API keys configured - OPENBLOG_API_KEYS environment variable required")
+        raise HTTPException(
+            status_code=500,
+            detail="API not configured. Contact administrator.",
+        )
     
     # Check if provided token matches any valid key
     if credentials.credentials not in valid_keys:
@@ -630,7 +633,8 @@ async def health_check():
 
 
 @app.post("/write", response_model=BlogGenerationResponse)
-async def write_blog(request: BlogGenerationRequest, api_key: str = Depends(verify_api_key)):
+@limiter.limit("5/hour")
+async def write_blog(request: Request, blog_request: BlogGenerationRequest, api_key: str = Depends(verify_api_key)):
     """
     Generate a blog article using the 12-stage pipeline (SYNCHRONOUS).
     
@@ -655,80 +659,80 @@ async def write_blog(request: BlogGenerationRequest, api_key: str = Depends(veri
     Expected duration: 5-30 minutes (quality content takes time)
     """
     start_time = datetime.now()
-    job_id = f"api-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{request.primary_keyword[:20]}"
-    
+    job_id = f"api-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{blog_request.primary_keyword[:20]}"
+
     try:
         # Verify API key
-        api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_GEMINI_API_KEY")
-        if not api_key:
+        gemini_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_GEMINI_API_KEY")
+        if not gemini_key:
             raise HTTPException(
                 status_code=500,
                 detail="GOOGLE_API_KEY or GOOGLE_GEMINI_API_KEY not configured"
             )
-        
+
         # Build job config with all fields
         job_config = {
-            "primary_keyword": request.primary_keyword,
-            "company_url": request.company_url,
-            "language": request.language,
-            "country": request.country,
-            "index": request.index,
+            "primary_keyword": blog_request.primary_keyword,
+            "company_url": blog_request.company_url,
+            "language": blog_request.language,
+            "country": blog_request.country,
+            "index": blog_request.index,
         }
-        
+
         # Optional fields
-        if request.company_name:
-            job_config["company_name"] = request.company_name
-        
-        if request.company_data:
-            job_config["company_data"] = request.company_data.model_dump()
-        
-        if request.sitemap_urls:
-            job_config["sitemap_urls"] = request.sitemap_urls
-        
-        if request.existing_blog_slugs:
-            job_config["existing_blog_slugs"] = [s.model_dump() for s in request.existing_blog_slugs]
-        
-        if request.batch_siblings:
-            job_config["batch_siblings"] = [s.model_dump() for s in request.batch_siblings]
-        
-        if request.batch_id:
-            job_config["batch_id"] = request.batch_id
-        
-        if request.content_generation_instruction:
-            job_config["content_generation_instruction"] = request.content_generation_instruction
-        
-        if request.word_count:
-            job_config["word_count"] = request.word_count
-        
-        if request.tone:
-            job_config["tone"] = request.tone
-        
-        if request.system_prompts:
-            job_config["system_prompts"] = request.system_prompts
-        
-        if request.review_prompts:
-            job_config["review_prompts"] = request.review_prompts
-        
-        if request.slug:
-            job_config["slug"] = request.slug
-        
+        if blog_request.company_name:
+            job_config["company_name"] = blog_request.company_name
+
+        if blog_request.company_data:
+            job_config["company_data"] = blog_request.company_data.model_dump()
+
+        if blog_request.sitemap_urls:
+            job_config["sitemap_urls"] = blog_request.sitemap_urls
+
+        if blog_request.existing_blog_slugs:
+            job_config["existing_blog_slugs"] = [s.model_dump() for s in blog_request.existing_blog_slugs]
+
+        if blog_request.batch_siblings:
+            job_config["batch_siblings"] = [s.model_dump() for s in blog_request.batch_siblings]
+
+        if blog_request.batch_id:
+            job_config["batch_id"] = blog_request.batch_id
+
+        if blog_request.content_generation_instruction:
+            job_config["content_generation_instruction"] = blog_request.content_generation_instruction
+
+        if blog_request.word_count:
+            job_config["word_count"] = blog_request.word_count
+
+        if blog_request.tone:
+            job_config["tone"] = blog_request.tone
+
+        if blog_request.system_prompts:
+            job_config["system_prompts"] = blog_request.system_prompts
+
+        if blog_request.review_prompts:
+            job_config["review_prompts"] = blog_request.review_prompts
+
+        if blog_request.slug:
+            job_config["slug"] = blog_request.slug
+
         # Get workflow engine
         engine = get_engine()
-        
+
         # Execute workflow
         context = await engine.execute(job_id=job_id, job_config=job_config)
-        
+
         # Calculate duration
         duration = (datetime.now() - start_time).total_seconds()
-        
+
         # Build comprehensive response from context
         response = build_response_from_context(
             context=context,
-            request=request,
+            request=blog_request,
             job_id=job_id,
             duration=duration,
         )
-        
+
         return response
         
     except Exception as e:
@@ -769,14 +773,6 @@ async def _async_generate_and_save(request: AsyncBlogRequest, job_id: str):
     start_time = datetime.now()
     
     try:
-        # Supabase integration removed - just generate content
-        
-        # Update status to 'generating'
-        supabase.table('articles').update({
-            'generation_status': 'generating',
-            'generation_started_at': datetime.now().isoformat(),
-        }).eq('id', request.article_id).execute()
-        
         # Build job config (same as /write endpoint)
         job_config = {
             "primary_keyword": request.primary_keyword,
@@ -1009,23 +1005,24 @@ async def _create_google_doc_for_article(title: str, html_content: str, folder_i
 
 
 @app.post("/write-async")
-async def write_blog_async(request: AsyncBlogRequest, api_key: str = Depends(verify_api_key)):
+@limiter.limit("10/hour")
+async def write_blog_async(request: Request, async_request: AsyncBlogRequest, api_key: str = Depends(verify_api_key)):
     """
     Generate a blog article asynchronously with fire-and-forget architecture.
-    
+
     This endpoint:
     1. Returns immediately with job_id and status 'pending'
     2. Queues the job for background processing
     3. Supports 5+ minute generation times for high-quality content
     4. Provides webhook callback when complete (optional)
     5. Persistent job tracking that survives server restarts
-    
+
     Fire-and-forget design:
     - Submit job → get job_id
     - Poll /jobs/{job_id}/status for progress
     - Retrieve results when complete
     - Optional webhook notification
-    
+
     Quality-first approach:
     - Default 30-minute timeout (configurable)
     - No rush for completion
@@ -1034,31 +1031,31 @@ async def write_blog_async(request: AsyncBlogRequest, api_key: str = Depends(ver
     """
     try:
         # Build client_info (Supabase integration removed)
-        client_info = request.client_info or {}
+        client_info = async_request.client_info or {}
         
         # Build job configuration
         job_config = JobConfig(
-            primary_keyword=request.primary_keyword,
-            company_url=request.company_url,
-            language=request.language,
-            country=request.country,
-            company_name=request.company_name,
-            company_data=request.company_data.model_dump() if request.company_data else None,
-            sitemap_urls=request.sitemap_urls,
-            existing_blog_slugs=[s.model_dump() for s in request.existing_blog_slugs] if request.existing_blog_slugs else None,
-            batch_siblings=[s.model_dump() for s in request.batch_siblings] if request.batch_siblings else None,
-            batch_id=request.batch_id,
-            content_generation_instruction=request.content_generation_instruction,
-            word_count=request.word_count,
-            tone=request.tone,
-            system_prompts=request.system_prompts,
-            review_prompts=request.review_prompts,
-            slug=request.slug,
-            index=request.index,
-            callback_url=request.callback_url,
-            priority=request.priority,
-            max_duration_minutes=request.max_duration_minutes,
-            client_info=client_info,  # Include Supabase integration info
+            primary_keyword=async_request.primary_keyword,
+            company_url=async_request.company_url,
+            language=async_request.language,
+            country=async_request.country,
+            company_name=async_request.company_name,
+            company_data=async_request.company_data.model_dump() if async_request.company_data else None,
+            sitemap_urls=async_request.sitemap_urls,
+            existing_blog_slugs=[s.model_dump() for s in async_request.existing_blog_slugs] if async_request.existing_blog_slugs else None,
+            batch_siblings=[s.model_dump() for s in async_request.batch_siblings] if async_request.batch_siblings else None,
+            batch_id=async_request.batch_id,
+            content_generation_instruction=async_request.content_generation_instruction,
+            word_count=async_request.word_count,
+            tone=async_request.tone,
+            system_prompts=async_request.system_prompts,
+            review_prompts=async_request.review_prompts,
+            slug=async_request.slug,
+            index=async_request.index,
+            callback_url=async_request.callback_url,
+            priority=async_request.priority,
+            max_duration_minutes=async_request.max_duration_minutes,
+            client_info=client_info,
         )
         
         # Submit job to manager
@@ -2042,108 +2039,6 @@ async def refresh_content(refresh_request: ContentRefreshRequest, request: Reque
             status_code=500,
             detail=f"Internal server error: {str(e)}"
         )
-
-
-@app.get("/debug/env")
-async def debug_environment():
-    """Debug endpoint to check environment variables and API key availability."""
-    try:
-        # Check common API key environment variable names
-        api_key_vars = [
-            "GOOGLE_API_KEY",
-            "GEMINI_API_KEY", 
-            "GOOGLE_GEMINI_API_KEY",
-            "GEMINI_API_KEY_API",
-            "GEMINI_API_KEY_KEY",
-            "GEMINI",
-            "GOOGLE",
-        ]
-        
-        found_keys = {}
-        for var_name in api_key_vars:
-            value = os.getenv(var_name)
-            if value:
-                # Mask the key for security (show first 8 chars + ...)
-                masked = f"{value[:8]}..." if len(value) > 8 else "***"
-                found_keys[var_name] = {"available": True, "masked_value": masked}
-            else:
-                found_keys[var_name] = {"available": False, "masked_value": None}
-        
-        # Check all environment variables containing 'API' or 'KEY'
-        api_env_vars = {}
-        for key, value in os.environ.items():
-            if 'API' in key.upper() or 'KEY' in key.upper():
-                masked = f"{value[:8]}..." if len(value) > 8 else "***"
-                api_env_vars[key] = masked
-        
-        # Test Google GenAI SDK
-        genai_test = {"import_success": False, "client_creation": False, "tools_available": False}
-        
-        try:
-            import google.genai as genai
-            genai_test["import_success"] = True
-            
-            # Try to find an API key
-            api_key = None
-            api_key_source = None
-            for var_name in api_key_vars:
-                if os.getenv(var_name):
-                    api_key = os.getenv(var_name)
-                    api_key_source = var_name
-                    break
-            
-            if api_key:
-                try:
-                    client = genai.Client(api_key=api_key)
-                    genai_test["client_creation"] = True
-                    genai_test["api_key_source"] = api_key_source
-                    
-                    # Test tools import
-                    from google.genai.types import Tool, GoogleSearch, GenerateContentConfig
-                    genai_test["tools_available"] = True
-                    
-                    # Test actual tool usage with a simple API call
-                    try:
-                        tools = [Tool(google_search=GoogleSearch())]
-                        config = GenerateContentConfig(tools=tools, max_output_tokens=100)
-                        test_response = client.models.generate_content(
-                            model="gemini-2.5-flash",
-                            contents="What is the capital of France? Use search to confirm.",
-                            config=config,
-                        )
-                        genai_test["tools_test"] = {
-                            "success": True,
-                            "response_length": len(test_response.text) if test_response.text else 0,
-                            "has_search_metadata": hasattr(test_response, 'search_metadata') or 'search' in str(test_response)
-                        }
-                    except Exception as tools_error:
-                        genai_test["tools_test"] = {
-                            "success": False,
-                            "error": str(tools_error)
-                        }
-                    
-                except Exception as client_error:
-                    genai_test["client_error"] = str(client_error)
-            else:
-                genai_test["error"] = "No API key found"
-                
-        except ImportError as e:
-            genai_test["import_error"] = str(e)
-        
-        return {
-            "status": "success",
-            "api_key_check": found_keys,
-            "all_api_env_vars": list(api_env_vars.keys()),  # Don't expose values in production
-            "genai_sdk_test": genai_test,
-            "timestamp": "2025-12-03"
-        }
-        
-    except Exception as e:
-        return {
-            "status": "error",
-            "error": str(e),
-            "timestamp": "2025-12-03"
-        }
 
 
 if __name__ == "__main__":
