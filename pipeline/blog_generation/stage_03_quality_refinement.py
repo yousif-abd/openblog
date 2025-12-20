@@ -220,16 +220,16 @@ class QualityRefinementStage(Stage):
         logger.info("✍️ Step 3: Humanization handled by Gemini review (Step 2)")
         
         # ============================================================
-        # STEP 4: AEO OPTIMIZATION (boost score to 95+)
+        # STEP 4+5: AEO OPTIMIZATION + URL ENHANCEMENT (PARALLEL)
+        # These modify different fields so can run concurrently
         # ============================================================
-        logger.info("🚀 Step 4: AEO optimization (target: score 95+)...")
-        context = await self._optimize_aeo_components(context)
-        
-        # ============================================================
-        # STEP 5: ENHANCE DOMAIN-ONLY URLs IN SOURCES
-        # ============================================================
-        logger.info("📎 Step 5: Enhancing domain-only URLs in Sources field...")
-        context = await self._enhance_domain_only_urls(context)
+        logger.info("🚀 Step 4+5: AEO optimization + URL enhancement (parallel)...")
+
+        # Run both in parallel - they modify different fields (sections vs Sources)
+        await asyncio.gather(
+            self._optimize_aeo_components(context),
+            self._enhance_domain_only_urls(context)
+        )
 
         # ============================================================
         # STEP 6: VALIDATE FAQ/PAA (previously Stage 8)
