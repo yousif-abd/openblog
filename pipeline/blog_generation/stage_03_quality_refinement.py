@@ -724,77 +724,72 @@ If no issues, return original content unchanged with issues_fixed=0 and all coun
                 if en_count > 0:
                     remaining_en_dashes[field] = en_count
         
-        if remaining_em_dashes:
-            logger.warning(f"   ⚠️ Em dashes still present after review: {remaining_em_dashes}")
-            # Try one more pass for fields with em dashes
-            for field, count in remaining_em_dashes.items():
-                content = article_dict.get(field, "")
-                if content:
-                    # Create a focused prompt just for em dashes
-                    em_dash_prompt = f"""CRITICAL: This content still contains {count} em dash(es) (—). 
+        # PARALLEL second pass for remaining em/en dashes
+        if remaining_em_dashes or remaining_en_dashes:
+            logger.warning(f"   ⚠️ Dashes still present - running parallel second pass")
 
+            async def fix_dash(field: str, count: int, dash_type: str, dash_char: str) -> Tuple[str, int, str, bool]:
+                """Fix dashes in a single field. Returns (field, count_fixed, content, success)."""
+                content = article_dict.get(field, "")
+                if not content:
+                    return (field, 0, "", False)
+
+                if dash_type == "em":
+                    prompt = f"""CRITICAL: This content still contains {count} em dash(es) (—).
 You MUST find and replace EVERY em dash with " - " (space-hyphen-space) or a comma.
 
 CONTENT:
 {content}
 
 Find ALL em dashes (—) and replace them. Return the complete fixed content with ZERO em dashes remaining."""
-                    
-                    try:
-                        response = await gemini_client.generate_content(
-                            prompt=em_dash_prompt,
-                            enable_tools=False,
-                            response_schema=None
-                        )
-                        # Validate response: must be actual content (not just "OK" or empty)
-                        if response and em_dash not in response:
-                            response_stripped = response.strip()
-                            # Validate response length (at least 50% of original content)
-                            if len(response_stripped) > len(content) * 0.5:
-                                article_dict[field] = response_stripped
-                                logger.info(f"   ✅ {field}: Fixed {count} remaining em dash(es) in second pass")
-                                total_fixes += count
-                                total_em_dashes_fixed += count  # Track in metrics
-                            else:
-                                logger.warning(f"   ⚠️ {field}: Second pass response too short ({len(response_stripped)} chars vs {len(content)}), skipping")
-                    except Exception as e:
-                        logger.debug(f"   ⚠️ {field}: Second pass em dash fix failed - {e}")
-        
-        if remaining_en_dashes:
-            logger.warning(f"   ⚠️ En dashes still present after review: {remaining_en_dashes}")
-            # Try one more pass for fields with en dashes
-            for field, count in remaining_en_dashes.items():
-                content = article_dict.get(field, "")
-                if content:
-                    # Create a focused prompt just for en dashes
-                    en_dash_prompt = f"""CRITICAL: This content still contains {count} en dash(es) (–). 
-
+                else:
+                    prompt = f"""CRITICAL: This content still contains {count} en dash(es) (–).
 You MUST find and replace EVERY en dash with "-" (hyphen) or " to " (space-to-space).
 
 CONTENT:
 {content}
 
 Find ALL en dashes (–) and replace them. Return the complete fixed content with ZERO en dashes remaining."""
-                    
-                    try:
-                        response = await gemini_client.generate_content(
-                            prompt=en_dash_prompt,
-                            enable_tools=False,
-                            response_schema=None
-                        )
-                        # Validate response: must be actual content (not just "OK" or empty)
-                        if response and en_dash not in response:
-                            response_stripped = response.strip()
-                            # Validate response length (at least 50% of original content)
-                            if len(response_stripped) > len(content) * 0.5:
-                                article_dict[field] = response_stripped
-                                logger.info(f"   ✅ {field}: Fixed {count} remaining en dash(es) in second pass")
-                                total_fixes += count
-                                total_en_dashes_fixed += count  # Track in metrics
-                            else:
-                                logger.warning(f"   ⚠️ {field}: Second pass response too short ({len(response_stripped)} chars vs {len(content)}), skipping")
-                    except Exception as e:
-                        logger.debug(f"   ⚠️ {field}: Second pass en dash fix failed - {e}")
+
+                try:
+                    response = await gemini_client.generate_content(
+                        prompt=prompt,
+                        enable_tools=False,
+                        response_schema=None
+                    )
+                    if response and dash_char not in response:
+                        response_stripped = response.strip()
+                        if len(response_stripped) > len(content) * 0.5:
+                            return (field, count, response_stripped, True)
+                except Exception as e:
+                    logger.debug(f"   ⚠️ {field}: Second pass {dash_type} dash fix failed - {e}")
+                return (field, 0, content, False)
+
+            # Build all tasks for parallel execution
+            dash_tasks = []
+            for field, count in remaining_em_dashes.items():
+                dash_tasks.append(fix_dash(field, count, "em", em_dash))
+            for field, count in remaining_en_dashes.items():
+                dash_tasks.append(fix_dash(field, count, "en", en_dash))
+
+            # Execute all dash fixes in parallel
+            if dash_tasks:
+                logger.info(f"   🔄 Fixing {len(dash_tasks)} fields with remaining dashes in parallel...")
+                dash_results = await asyncio.gather(*dash_tasks, return_exceptions=True)
+
+                for result in dash_results:
+                    if isinstance(result, Exception):
+                        continue
+                    field, count_fixed, fixed_content, success = result
+                    if success and count_fixed > 0:
+                        article_dict[field] = fixed_content
+                        total_fixes += count_fixed
+                        if field in remaining_em_dashes:
+                            total_em_dashes_fixed += count_fixed
+                            logger.info(f"   ✅ {field}: Fixed {count_fixed} remaining em dash(es) in second pass")
+                        else:
+                            total_en_dashes_fixed += count_fixed
+                            logger.info(f"   ✅ {field}: Fixed {count_fixed} remaining en dash(es) in second pass")
         
         if total_fixes > 0:
             summary_parts = [f"{total_fixes} total issues fixed"]
