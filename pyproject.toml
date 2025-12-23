@@ -14,7 +14,12 @@ dependencies = [
     "aiohttp>=3.9.0",
     "python-dotenv>=1.0.0",
     "markdown>=3.5.0",
+    "click>=8.0.0",
+    "rich>=13.0.0",
 ]
+
+[project.scripts]
+openblog = "cli:cli"
 
 [project.optional-dependencies]
 dev = [
