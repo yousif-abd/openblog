@@ -573,12 +573,64 @@ REQUIRED JSON STRUCTURE:
 - **FORBIDDEN:** Markdown syntax (**bold**, - lists, [links](url))
 - **FORBIDDEN:** <br><br> for paragraph breaks (use <p> tags instead)
 
-### Strong Tags Usage
+### Strong Tags Usage - STRICT RULES FOR LOGICAL EMPHASIS
 
-- Use <strong> tags sparingly for key insights, statistics, or important points
-- Don't force emphasis if it doesn't add value
-- Target: 1-2 <strong> tags per section when they highlight critical information
-- Example: "<p>Data breaches cost organizations an average of <strong>$5.17 million</strong> per incident.</p>"
+**CRITICAL: Use <strong> tags ONLY for these specific purposes:**
+
+1. **Key statistics and numbers** (the most important use case)
+   - ✅ "The average cost is <strong>$4.88 million</strong> per incident"
+   - ✅ "Data shows a <strong>73% increase</strong> in adoption cases"
+   - ✅ "Freibetrag increases from 20,000€ to <strong>400,000€</strong>"
+   
+2. **Critical warnings or important notices** (sparingly)
+   - ✅ "This is <strong>irreversible</strong> - you cannot undo the adoption"
+   - ✅ "The deadline is <strong>non-negotiable</strong>"
+
+3. **Key technical terms on first mention ONLY** (optional, use sparingly)
+   - ✅ "This is called <strong>schwache Adoption</strong> (weak adoption)"
+   - ❌ Don't bold the same term repeatedly
+
+**FORBIDDEN - NEVER use <strong> for these:**
+
+❌ **Entire sentences:** Never bold a complete sentence
+   - WRONG: "<strong>Die Volljährigenadoption ist das stärkste Instrument im Familienrecht.</strong>"
+   - RIGHT: "Die Volljährigenadoption ist das stärkste Instrument im Familienrecht."
+
+❌ **List item labels:** Don't bold category names in lists
+   - WRONG: "<li><strong>Notarielle Beurkundung:</strong> Text here</li>"
+   - RIGHT: "<li>Notarielle Beurkundung: Text here</li>"
+
+❌ **Transition phrases:** Don't bold connective language
+   - WRONG: "<strong>Das bedeutet:</strong> explanation text"
+   - RIGHT: "Das bedeutet: explanation text"
+
+❌ **Section openers:** Don't bold the opening sentence of a section
+   - WRONG: "<p><strong>Das Gesetz ist hier unerbittlich:</strong> § 1767..."
+   - RIGHT: "<p>Das Gesetz ist hier unerbittlich: § 1767..."
+
+❌ **Subsection headings:** Use proper <h3> tags instead
+   - WRONG: "<p><strong>1. Erbrecht und Steuern</strong></p>"
+   - RIGHT: "<h3>1. Erbrecht und Steuern</h3>"
+
+❌ **Generic emphasis:** Don't bold words just for "importance"
+   - WRONG: "This is <strong>very important</strong> to understand"
+   - RIGHT: "This is crucial to understand" (use stronger words instead)
+
+❌ **Decision framework labels:** These are already clear without bold
+   - WRONG: "<strong>Choose X if:</strong> condition"
+   - RIGHT: "Choose X if: condition"
+
+**TARGET USAGE:**
+- Average: 2-4 <strong> tags per section (not per paragraph!)
+- Use ONLY for specific numbers, amounts, percentages, or critical warnings
+- If a section has no statistics, it may have ZERO <strong> tags - that's perfectly fine
+- Less is more - bold text loses impact when overused
+
+**GOOD EXAMPLE:**
+"Through adoption, your tax bracket changes to Steuerklasse I. The personal exemption increases from 20,000€ to <strong>400,000€</strong>. The tax rate drops from 30% to <strong>11-15%</strong>. This can save families with assets over <strong>1 million euros</strong> significant amounts in inheritance tax."
+
+**BAD EXAMPLE (over-bolding):**
+"<strong>Through adoption</strong>, your tax bracket changes to <strong>Steuerklasse I</strong>. <strong>The personal exemption increases</strong> from 20,000€ to <strong>400,000€</strong>. <strong>This is important:</strong> The tax rate drops significantly."
 
 ## Citations (CRITICAL FOR AEO)
 
@@ -690,6 +742,18 @@ REQUIRED JSON STRUCTURE:
 6. **NO over-qualification of every statement:**
    - ❌ "This can potentially help..." | "This may possibly lead to..." | "This could theoretically..."
    - ✅ INSTEAD: Be direct - "This helps..." | "This leads to..." | "This causes..."
+
+7. **NO exaggerated adjectives or superlatives:**
+   - ❌ "incredibly powerful" | "absolutely essential" | "remarkably effective"
+   - ❌ "extremely important" | "highly critical" | "very significant"
+   - ❌ "revolutionary approach" | "game-changing solution" | "cutting-edge technology"
+   - ❌ "fantastic opportunity" | "amazing benefits" | "incredible results"
+   - ✅ INSTEAD: Use specific, factual descriptions or omit the intensifier
+   - ✅ "This saves 40% on processing time" (specific benefit)
+   - ✅ "This is required by law" (factual statement, no "absolutely essential")
+   - ✅ "Three companies using this approach saw 15% growth" (concrete evidence)
+
+   **Why this matters:** Superlatives and intensifiers are AI content markers. They weaken credibility and sound like marketing copy, not expert analysis.
 
 ### Writing Style Examples (MANDATORY - EMULATE THE GOOD EXAMPLES)
 
