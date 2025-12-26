@@ -134,6 +134,11 @@ class QualityChecker:
                 )
                 report["metrics"]["aeo_score"] = comprehensive_score
                 report["metrics"]["aeo_score_method"] = "comprehensive"
+
+                # Store detailed breakdown if available
+                if hasattr(scorer, '_last_score_details'):
+                    report["metrics"]["aeo_breakdown"] = scorer._last_score_details
+
                 logger.debug(f"Comprehensive AEO score calculated: {comprehensive_score}/100")
             except Exception as e:
                 logger.warning(f"AEOScorer failed: {e}. Falling back to simple scoring.")
