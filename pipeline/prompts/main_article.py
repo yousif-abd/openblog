@@ -136,7 +136,7 @@ You are writing a long-form blog post in {company_name}'s voice, fully optimized
 - The exact phrase "{primary_keyword}" MUST appear **EXACTLY 5-8 times** in your output
 - **MANDATORY LOCATIONS (NON-NEGOTIABLE):**
   - Headline: MUST include "{primary_keyword}" (mention 1)
-  - Direct_Answer: MUST naturally include "{primary_keyword}" within the 45-55 word answer (mention 2)
+  - Direct_Answer: MUST naturally include "{primary_keyword}" OR if it's a long phrase (4+ words), include the first 2 words + last word (mention 2)
   - Intro paragraph: MUST include "{primary_keyword}" 1-2 times naturally (mentions 2-3)
   - Section content: MUST include "{primary_keyword}" 3-5 times distributed across sections (mentions 4-8)
 - **BEFORE YOU SUBMIT**: Use Ctrl+F or search to count "{primary_keyword}" occurrences
@@ -170,7 +170,7 @@ You are writing a long-form blog post in {company_name}'s voice, fully optimized
 - NOT 4 times. NOT 9 times. NOT 0 times. EXACTLY 5-8 times.
 - **MANDATORY PLACEMENT REQUIREMENTS:**
   - ✅ Headline: MUST contain "{primary_keyword}" (1 mention)
-  - ✅ Direct_Answer: MUST contain "{primary_keyword}" naturally within the answer (1 mention)
+  - ✅ Direct_Answer: MUST contain "{primary_keyword}" naturally within the answer (1 mention) - OR if 4+ words, include first 2 + last word
   - ✅ Intro: MUST contain "{primary_keyword}" 1-2 times (1-2 mentions)
   - ✅ Sections: MUST contain "{primary_keyword}" 3-5 times distributed across sections (3-5 mentions)
 - **MANDATORY VALIDATION STEPS BEFORE SUBMISSION:**
@@ -192,10 +192,12 @@ You are writing a long-form blog post in {company_name}'s voice, fully optimized
 - ❌ FORBIDDEN: Broken sentence patterns like "You can to implement", "What is as we", "so you can managing"
 - ✅ REQUIRED: Complete, grammatically correct sentences at ALL times
 
-**RULE 0E: CONVERSATIONAL PHRASES (MANDATORY - 12+ REQUIRED)**
-- 🚨 **CRITICAL: You MUST include 12+ conversational phrases throughout your article**
-- Required phrases: "how to", "what is", "you can", "you'll", "here's", "let's", "that's", "when you", "if you", "so you can", etc.
+**RULE 0E: CONVERSATIONAL PHRASES (MANDATORY - 12+ REQUIRED IN TARGET LANGUAGE)**
+- 🚨 **CRITICAL: You MUST include 12+ conversational phrases throughout your article IN {language_name}**
+- For English: "how to", "what is", "you can", "you'll", "here's", "let's", "that's", "when you", "if you", "so you can", etc.
+- For German: "wie man", "was ist", "Sie können", "das ist", "wenn Sie", "hier ist", "wie Sie", "warum", etc.
 - **COUNT THEM BEFORE SUBMITTING - Articles with <12 phrases will be REJECTED**
+- **NOTE:** AEO Natural Language scoring currently only supports English - non-English articles will receive informational note instead of penalty
 - See detailed requirements in Section 12 below
 
 **RULE 0F: INTERNAL LINKS (MANDATORY - 3+ REQUIRED)**
@@ -212,14 +214,25 @@ You are writing a long-form blog post in {company_name}'s voice, fully optimized
 2. Headline: EXACTLY 50-60 characters. Subtitle: 80-100 characters. Teaser: 2-3 sentences with HOOK.
 
 3. Direct_Answer: 45-55 words exactly, featured snippet optimized, with inline source link (see citation style below).
-   
+
    **🚨 CRITICAL: Direct_Answer MUST naturally include the primary keyword "{primary_keyword}" within the answer.**
-   - The keyword should appear naturally in context, not forced at the end
-   - Example: "When evaluating {primary_keyword}, organizations prioritize security frameworks that reduce vulnerability rates by 45% [1]."
+   - The EXACT phrase "{primary_keyword}" should appear naturally in context (not forced at the end)
+   - If the keyword is very long (4+ words), you MUST include at least the first 2 words AND the last word
+   - Example: "When evaluating {primary_keyword}, organizations prioritize security frameworks that reduce vulnerability rates by 45% <a href=\"#source-1\" class=\"citation\">according to IBM research</a>."
    - DO NOT append the keyword artificially - it must flow naturally within the 45-55 word limit
-   
+
+   **🚨 CITATION REQUIREMENT (MANDATORY - 5 POINTS LOST IF MISSING):**
+   - Direct_Answer MUST include a citation using one of these formats:
+     1. Natural language: "according to [Source]", "[Company] reports that", "research by [Organization]"
+     2. HTML citation tag: <a href="#source-1" class="citation">according to IBM</a>
+     3. Academic style: [1] (less preferred)
+   - Example with natural + HTML: "Organizations report 45% improvement <a href=\"#source-1\" class=\"citation\">according to IBM research</a>."
+   - NEVER submit Direct_Answer without a citation - it will lose 5 points automatically
+
    **🚨 CONVERSATIONAL PHRASE REQUIREMENT:**
-   - Direct_Answer MUST include at least 1 conversational phrase (e.g., "you can", "here's", "what is", "how to")
+   - Direct_Answer MUST include at least 1 conversational phrase in {language_name}
+   - English examples: "you can", "here's", "what is", "how to"
+   - German examples: "Sie können", "hier ist", "was ist", "wie man"
    - This counts toward your mandatory 12+ conversational phrases total
 
 4. Intro: **Engaging opening paragraph with STORY/HOOK (real scenario, surprising insight, or question). Do NOT include bullet lists in Intro.**
@@ -227,7 +240,9 @@ You are writing a long-form blog post in {company_name}'s voice, fully optimized
    **FOCUS: Create a compelling opening that immediately engages the reader with natural, conversational flow (typically 2-4 sentences).**
    
    **🚨 CONVERSATIONAL PHRASE REQUIREMENT:**
-   - Intro paragraph MUST include 2-3 conversational phrases (e.g., "you'll find", "here's", "when you", "that's why")
+   - Intro paragraph MUST include 2-3 conversational phrases in {language_name}
+   - English examples: "you'll find", "here's", "when you", "that's why"
+   - German examples: "Sie finden", "hier ist", "wenn Sie", "deshalb"
    - This counts toward your mandatory 12+ conversational phrases total
    - Start conversational from the very beginning to engage readers
 
@@ -415,46 +430,59 @@ You are writing a long-form blog post in {company_name}'s voice, fully optimized
     
     REQUIREMENT: Minimum 2 case studies per article, each 30+ words.
     
-    Citations: Embed inline source links naturally within complete sentences - NO academic-style numbered citations [1][2].
-    
-    **CITATION STYLE (CRITICAL - INLINE LINKS ONLY):**
-    
-    🚫 **ABSOLUTELY FORBIDDEN - NEVER USE THESE:**
-    ```html
-    <p>GitHub Copilot increases productivity by 55% [1][2].</p>
-    <p>Amazon Q saved 4,500 developer years [3][4].</p>
-    <p>Research shows 45% vulnerability rate [5].</p>
-    ```
-    ❌ ANY numbered brackets like [1], [2], [3], [1][2], [2][3] are BANNED
-    ❌ If you write [N] anywhere, the output will be REJECTED
-    ❌ Scientific/academic citation style is NOT ALLOWED
-    
-    ✅ **REQUIRED - Inline contextual links ONLY:**
-    ```html
-    <p>GitHub Copilot increases productivity by 55% <a href="#source-1" class="citation">according to GitHub's enterprise study</a>.</p>
-    <p>Amazon Q saved 4,500 developer years <a href="#source-2" class="citation">in Amazon's Java modernization project</a>.</p>
-    <p>Research shows 45% vulnerability rate <a href="#source-5" class="citation">per Veracode's 2025 report</a>.</p>
-    ```
-    
-    **MANDATORY INLINE LINK RULES:**
+    Citations: Embed inline source links naturally within complete sentences using HTML citation tags.
+
+    **CITATION STYLE (CRITICAL - HTML CITATION TAGS PREFERRED):**
+
+    **🎯 AEO SCORING: The citation scorer recognizes these formats (listed by preference):**
+
+    1. ✅ **HTML citation tag (PREFERRED - Worth most points):**
+       ```html
+       <p>GitHub Copilot increases productivity by 55% <a href="#source-1" class="citation">according to GitHub's enterprise study</a>.</p>
+       <p>Amazon Q saved 4,500 developer years <a href="#source-2" class="citation">in Amazon's Java modernization project</a>.</p>
+       <p>Research shows 45% vulnerability rate <a href="#source-5" class="citation">per Veracode's 2025 report</a>.</p>
+       ```
+
+    2. ✅ **Natural language citations (Also recognized):**
+       ```html
+       <p>According to IBM research, productivity increases by 55%.</p>
+       <p>Gartner reports that AI adoption grew 40% in 2025.</p>
+       <p>Per NIST guidelines, security frameworks reduce risks.</p>
+       ```
+
+    3. ⚠️ **Academic style [N] (Recognized but discouraged):**
+       - Academic citations like [1], [2] ARE recognized by the AEO scorer
+       - However, they are stripped from final output by the HTML renderer
+       - Use HTML citation tags instead for better user experience
+
+    **MANDATORY HTML CITATION TAG RULES:**
     - Link text = 2-5 words describing the source (e.g., "according to NIST", "GitHub's 2024 study", "Amazon's case study")
-    - Use `class="citation"` for all source links
-    - EVERY fact must have an inline contextual link (NOT [N])
+    - Use `class="citation"` for all source links (REQUIRED for AEO scoring)
+    - EVERY fact/statistic must have a citation (HTML tag preferred)
     - href = `#source-N` where N matches source number in Sources section
     - Place link at END of claim/data point (before period)
     - Natural language, not academic markers
     
-    **CITATION DISTRIBUTION REQUIREMENT (MANDATORY - 70%+ PARAGRAPHS):**
-    🚨 **CRITICAL: At least 70% of all paragraphs MUST contain 2+ citations.**
-    
-    - Target: 70%+ paragraphs with 2+ citations (buffer above minimum 60%)
-    - Every paragraph should cite multiple sources for credibility
-    - Articles with less than 70% citation distribution will be REJECTED
+    **CITATION DISTRIBUTION REQUIREMENT (MANDATORY - TARGET: 40%+ PARAGRAPHS):**
+    🚨 **CRITICAL: Target at least 40% of paragraphs with citations for optimal AEO score.**
+
+    **AEO Scoring Breakdown:**
+    - 40%+ paragraphs cited → Full 5 points ✅
+    - 30-39% paragraphs cited → 4 points ⚠️
+    - 20-29% paragraphs cited → 3 points ⚠️
+    - 10-19% paragraphs cited → 2 points ❌
+    - <10% paragraphs cited → 0 points ❌
+
+    **Best Practices:**
+    - Aim for 50-60% paragraphs with citations (buffer above minimum)
+    - Each cited paragraph should have 1-2 citations (not just one)
     - Distribute citations evenly across all sections (not bunched in one area)
-    
-    ✅ GOOD: 75% of paragraphs have 2-3 citations each
-    ❌ REJECTED: Only 50% of paragraphs have citations
-    
+    - Use HTML citation tags for best scoring: `<a href="#source-N" class="citation">source description</a>`
+
+    ✅ GOOD: 50% of paragraphs have 1-2 citations each (distributed throughout)
+    ⚠️ ACCEPTABLE: 40% of paragraphs have citations
+    ❌ POOR: Only 20% of paragraphs have citations
+
     **EXAMPLES:**
     - "...productivity gains of 55% <a href="#source-1" class="citation">per GitHub research</a>."
     - "...saving $260 million <a href="#source-2" class="citation">according to AWS</a>."
@@ -541,33 +569,46 @@ You are writing a long-form blog post in {company_name}'s voice, fully optimized
     
     Format: 4-8 items per list, each item 8-15 words, introduced by lead-in sentence.
 
-12. **CONVERSATIONAL TONE** (🚨 ABSOLUTELY MANDATORY - MINIMUM 12+ PHRASES REQUIRED - NON-NEGOTIABLE): 
-    
+12. **CONVERSATIONAL TONE** (🚨 ABSOLUTELY MANDATORY - MINIMUM 12+ PHRASES IN {language_name} - NON-NEGOTIABLE):
+
     **THIS IS THE #1 PRIORITY - YOUR ARTICLE WILL BE INSTANTLY REJECTED WITHOUT 12+ CONVERSATIONAL PHRASES.**
-    
-    Write as if explaining to a colleague. Use "you/your" naturally, contractions (it's, you'll, here's), and direct language. 
+
+    Write as if explaining to a colleague. Use natural, conversational language appropriate for {language_name}.
     Avoid banned AI phrases: "seamlessly", "leverage", "cutting-edge", "robust", "comprehensive", "holistic".
-    
-    **🚨 REQUIRED CONVERSATIONAL PHRASES (YOU MUST INCLUDE 12+ OF THESE - COUNT THEM BEFORE SUBMITTING):**
-    
-    **ESSENTIAL PHRASES (use liberally throughout):**
+
+    **🚨 REQUIRED CONVERSATIONAL PHRASES (YOU MUST INCLUDE 12+ OF THESE IN {language_name} - COUNT THEM BEFORE SUBMITTING):**
+
+    **FOR ENGLISH ARTICLES - ESSENTIAL PHRASES (use liberally throughout):**
     - "how to", "what is", "why does", "when should", "where can"
     - "you can", "you'll", "you should", "let's", "here's", "this is"
     - "how can", "what are", "how do", "why should", "where are"
     - "we'll", "that's", "when you", "if you", "so you can", "which means"
     - "you're", "you've", "you'd", "it's", "that's", "here's", "there's"
     - "what you need", "how you can", "why you should", "when you're"
+
+    **FOR GERMAN ARTICLES - WESENTLICHE PHRASEN (verwenden Sie diese großzügig):**
+    - "wie man", "was ist", "warum", "wann sollte", "wo kann"
+    - "Sie können", "das ist", "hier ist", "wenn Sie", "deshalb"
+    - "wie Sie", "was sind", "wie funktioniert", "warum sollten Sie"
+    - "Sie werden", "Sie sollten", "lassen Sie", "so können Sie"
+    - "Sie finden", "Sie brauchen", "wie Sie können", "wenn Sie möchten"
     
     **MANDATORY VALIDATION PROCESS (DO THIS BEFORE SUBMITTING):**
     1. Copy your entire article content to a text editor
-    2. Search for each conversational phrase from the list above (case-insensitive)
+    2. Search for each conversational phrase from the appropriate language list above (case-insensitive)
     3. Count ALL occurrences across ALL sections (Intro, Direct_Answer, sections 1-9)
     4. If count < 12: GO BACK AND ADD MORE CONVERSATIONAL PHRASES IMMEDIATELY
     5. Distribute phrases evenly - don't bunch them all in one section
     6. Verify final count is 12+ before submitting
-    
+
     **🚨 CRITICAL: Articles with fewer than 12 conversational phrases will be INSTANTLY REJECTED.**
     **🚨 CRITICAL: This is checked automatically - you cannot bypass this requirement.**
+
+    **ℹ️ NOTE ON AEO SCORING:**
+    - The AEO Natural Language scorer currently only detects English conversational phrases
+    - If writing in German/other languages, you will see an informational note instead of a score
+    - This is NOT a penalty - your German phrases still count for content quality
+    - Future updates will add multi-language detection for accurate scoring
     
     ✅ EXCELLENT EXAMPLE (15+ conversational phrases - natural, engaging):
     "Here's the reality: you'll find that you can pick tools that actually fit your team's workflow. It's not about 
@@ -911,7 +952,7 @@ Include in JSON output as:
   1. ✅ **PRIMARY KEYWORD COUNT (CRITICAL)**: "{primary_keyword}" appears EXACTLY 5-8 times (count exact phrase using search function - if 0-4 or 9+, output will be REJECTED)
   2. ✅ **PRIMARY KEYWORD PLACEMENT (CRITICAL)**: "{primary_keyword}" MUST appear in:
      - Headline (REQUIRED)
-     - Direct_Answer (REQUIRED - must be natural, not appended)
+     - Direct_Answer (REQUIRED - full phrase OR core terms if 4+ words: first 2 + last word)
      - Intro paragraph (REQUIRED)
      - At least 3 different sections (REQUIRED)
   3. ✅ **CONVERSATIONAL PHRASES (CRITICAL - NON-NEGOTIABLE)**: Count ALL conversational phrases ("how to", "what is", "you can", "you'll", "here's", "let's", "that's", "when you", "if you", "so you can", etc.) - MUST have 12+ total or output will be REJECTED
@@ -920,7 +961,7 @@ Include in JSON output as:
      - Intro paragraph (2-3 phrases)
      - Each section (1-2 phrases per section)
   5. ✅ Headline is 50-60 characters and NOT in question format (no "What is...", "Why is...", "How is...")
-  6. ✅ Direct_Answer is 45-55 words and naturally includes "{primary_keyword}" (not forced at the end)
+  6. ✅ Direct_Answer is 45-55 words and naturally includes "{primary_keyword}" (OR core terms if 4+ words) AND contains a citation
   7. ✅ 3-5 internal links present in content
   8. ✅ 5-8 lists distributed throughout article
   9. ✅ 2+ named case studies with company + metric + timeframe + 30+ words each

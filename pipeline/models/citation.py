@@ -33,6 +33,8 @@ class Citation(BaseModel):
     title: str = Field(..., description="Short citation title (8-15 words)")
     meta_description: Optional[str] = Field(default="", description="Short meta description (50-100 chars) for citation preview/tooltip")
     accessed_date: Optional[str] = Field(default="", description="Date accessed (YYYY-MM-DD)")
+    enhanced: bool = Field(default=False, description="True if this citation was enhanced from domain-only to specific URL")
+    domain: Optional[str] = Field(default="", description="Domain extracted from URL")
 
     @field_validator("title")
     @classmethod

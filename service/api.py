@@ -684,7 +684,11 @@ async def write_blog(request: Request, blog_request: BlogGenerationRequest, api_
             job_config["company_name"] = blog_request.company_name
 
         if blog_request.company_data:
-            job_config["company_data"] = blog_request.company_data.model_dump()
+            company_data_dict = blog_request.company_data.model_dump()
+            job_config["company_data"] = company_data_dict
+            logger.info(f"[DEBUG] company_data being passed to workflow: {company_data_dict}")
+            logger.info(f"[DEBUG] author_name in company_data: {company_data_dict.get('author_name')}")
+            logger.info(f"[DEBUG] author_bio in company_data: {company_data_dict.get('author_bio')}")
 
         if blog_request.sitemap_urls:
             job_config["sitemap_urls"] = blog_request.sitemap_urls

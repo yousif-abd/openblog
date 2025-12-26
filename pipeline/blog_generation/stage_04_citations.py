@@ -119,17 +119,62 @@ class CitationsStage(Stage):
             logger.info(f"Processing sources ({len(sources_text)} chars)...")
 
             # ============================================================
-            # STEP 1: Extract URLs (Simple Parsing)
+            # STEP 1: Extract URLs from Multiple Sources
             # ============================================================
-            logger.info("📝 Step 1: Extracting citations from Sources field (AI-only)...")
-            citation_list = await self._extract_citations_simple(sources_text)
+            logger.info("📝 Step 1: Extracting citations from grounding URLs + Sources field...")
+
+            # Extract citations from multiple sources
+            from urllib.parse import urlparse
+            citations_from_sources = []
+            citations_from_grounding = []
+
+            # PRIORITY 1: Extract from Google Search grounding URLs (most reliable)
+            if hasattr(context, 'grounding_urls') and context.grounding_urls:
+                logger.info(f"Extracting citations from {len(context.grounding_urls)} grounding URLs...")
+
+                for idx, grounding_item in enumerate(context.grounding_urls[:15], start=1):
+                    # Grounding URLs are already validated by Google Search
+                    url = grounding_item.get('url', '')
+                    title = grounding_item.get('title', '')
+                    domain = grounding_item.get('domain', '')
+
+                    if url and url.startswith('http'):
+                        citation = Citation(
+                            number=idx,
+                            url=url,
+                            title=title or f"Source {idx}",
+                            domain=domain or urlparse(url).netloc
+                        )
+                        citations_from_grounding.append(citation)
+
+                logger.info(f"✅ Extracted {len(citations_from_grounding)} citations from grounding URLs")
+
+            # PRIORITY 2: Extract from AI-generated Sources field (fallback)
+            if sources_text.strip():
+                logger.info("Extracting citations from Sources field...")
+
+                # Parse Sources field (existing logic)
+                sources_citation_list = await self._extract_citations_simple(sources_text)
+
+                # Start numbering after grounding citations
+                start_number = len(citations_from_grounding) + 1
+                for idx, citation in enumerate(sources_citation_list.citations, start=start_number):
+                    citation.number = idx
+                    citations_from_sources.append(citation)
+
+                logger.info(f"✅ Extracted {len(citations_from_sources)} citations from Sources field")
+
+            # Combine: Grounding first, then Sources
+            citation_list = CitationList()
+            citation_list.citations = citations_from_grounding + citations_from_sources
+            logger.info(f"Total citations before validation: {citation_list.count()}")
 
             if not citation_list.citations:
-                logger.warning("No valid citations extracted")
+                logger.warning("No valid citations extracted from any source")
                 context.parallel_results["citations_html"] = ""
                 return context
 
-            logger.info(f"✅ Extracted {citation_list.count()} citations")
+            logger.info(f"✅ Extracted {citation_list.count()} citations total")
 
             # ============================================================
             # STEP 2: HTTP Status Check (Parallel)
@@ -437,6 +482,7 @@ class CitationsStage(Stage):
                     if should_enhance and best_match:
                         old_url = citation.url
                         citation.url = best_match['url']
+                        citation.enhanced = True  # Mark as enhanced
                         enhanced_count += 1
                         logger.info(f"   ✅ Citation [{citation.number}] enhanced:")
                         logger.info(f"      OLD: {old_url}")
@@ -1021,13 +1067,15 @@ Only mark as security risk if you're confident it's spam/malicious. Legitimate s
                     reason.append('competitor domain')
 
             # Check if domain-only (path has <= 1 part)
+            # Only flag if enhancement failed (i.e., not already enhanced)
             from urllib.parse import urlparse
             try:
                 parsed = urlparse(citation.url)
                 path_parts = [p for p in parsed.path.split('/') if p]
-                if len(path_parts) <= 1:
+                is_enhanced = getattr(citation, 'enhanced', False)
+                if len(path_parts) <= 1 and not is_enhanced:
                     needs_replacement = True
-                    reason.append('domain-only URL')
+                    reason.append('domain-only URL (enhancement failed)')
             except Exception:
                 pass
 
@@ -1045,50 +1093,62 @@ Only mark as security risk if you're confident it's spam/malicious. Legitimate s
         context: ExecutionContext
     ) -> Tuple[CitationList, List[int]]:
         """
-        Find replacement URLs for broken/security-risk citations (1 retry max).
-        
+        Find replacement URLs for broken/security-risk citations (up to 3 retries with varied queries).
+
         Args:
             citation_list: Original CitationList
             issues_list: List of citations needing replacement
             context: Execution context
-            
+
         Returns:
             Tuple of (updated CitationList, list of citation numbers with no replacement found)
         """
         if not issues_list:
             return citation_list, []
-        
+
         # Initialize Gemini client if needed
         if not self.gemini_client:
             self.gemini_client = GeminiClient()
-        
-        logger.info(f"🔍 Finding replacements for {len(issues_list)} citations (1 retry max)...")
-        
+
+        MAX_REPLACEMENT_ATTEMPTS = 3  # Increased from 1
+        logger.info(f"🔍 Finding replacements for {len(issues_list)} citations (up to {MAX_REPLACEMENT_ATTEMPTS} retries)...")
+
         updated_list = CitationList()
         updated_list.citations = citation_list.citations.copy()
         no_replacement_nums = []
-        
+
         for citation in issues_list:
-            # Try to find alternative URL using Gemini web search
-            alternative_url = await self._find_alternative_url(citation, context)
-            
-            if alternative_url:
-                # Validate replacement URL
-                status = await self._validate_replacement_url(alternative_url)
-                if status == 'valid':
-                    # Update citation URL
-                    for updated_citation in updated_list.citations:
-                        if updated_citation.number == citation.number:
-                            logger.info(f"   ✅ Citation [{citation.number}]: Replaced {citation.url[:60]}... → {alternative_url[:60]}...")
-                            updated_citation.url = alternative_url
+            replacement_found = False
+
+            # Try multiple replacement strategies with varied search queries
+            for attempt in range(1, MAX_REPLACEMENT_ATTEMPTS + 1):
+                logger.info(f"   🔄 Citation [{citation.number}] - attempt {attempt}/{MAX_REPLACEMENT_ATTEMPTS}...")
+
+                # Try to find alternative URL using Gemini web search
+                # The _find_alternative_url method will use varied search strategies
+                alternative_url = await self._find_alternative_url(citation, context, attempt=attempt)
+
+                if alternative_url:
+                    # Validate replacement URL
+                    status = await self._validate_replacement_url(alternative_url)
+                    if status == 'valid':
+                        # Update citation URL
+                        for updated_citation in updated_list.citations:
+                            if updated_citation.number == citation.number:
+                                logger.info(f"   ✅ Citation [{citation.number}]: Replaced {citation.url[:60]}... → {alternative_url[:60]}...")
+                                updated_citation.url = alternative_url
+                                replacement_found = True
+                                break
+                        if replacement_found:
                             break
+                    else:
+                        logger.warning(f"   ⚠️ Citation [{citation.number}]: Replacement URL validation failed (attempt {attempt})")
                 else:
-                    # Replacement URL also broken - mark as no replacement
-                    logger.warning(f"   ⚠️ Citation [{citation.number}]: Replacement URL also broken")
-                    no_replacement_nums.append(citation.number)
-            else:
-                # No alternative found - mark as no replacement
-                logger.warning(f"   ⚠️ Citation [{citation.number}]: No replacement found")
+                    logger.warning(f"   ⚠️ Citation [{citation.number}]: No alternative found (attempt {attempt})")
+
+            if not replacement_found:
+                # No valid replacement found after all attempts
+                logger.warning(f"   ❌ Citation [{citation.number}]: No valid replacement found after {MAX_REPLACEMENT_ATTEMPTS} attempts")
                 no_replacement_nums.append(citation.number)
         
         if no_replacement_nums:
@@ -1098,13 +1158,15 @@ Only mark as security risk if you're confident it's spam/malicious. Legitimate s
         
         return updated_list, no_replacement_nums
     
-    async def _find_alternative_url(self, citation: Citation, context: ExecutionContext) -> Optional[str]:
+    async def _find_alternative_url(self, citation: Citation, context: ExecutionContext, attempt: int = 1) -> Optional[str]:
         """
         Use Gemini web search to find alternative URL for a broken citation (AI-only, no regex).
+        Varies search strategy based on attempt number.
 
         Args:
             citation: Citation needing replacement
             context: Execution context
+            attempt: Attempt number (1-3), affects search query strategy
 
         Returns:
             Alternative URL if found, None otherwise
@@ -1122,6 +1184,20 @@ Only mark as security risk if you're confident it's spam/malicious. Legitimate s
 
         competitors_str = ", ".join(competitors[:10]) if competitors else "none"
 
+        # Vary search query by attempt
+        if attempt == 1:
+            search_query = f"{citation.title} official source"
+        elif attempt == 2:
+            # Try with domain if available
+            domain = getattr(citation, 'domain', '')
+            if domain:
+                search_query = f"{domain} {citation.title}"
+            else:
+                search_query = f"{citation.title} authoritative research"
+        else:
+            # Broader search
+            search_query = citation.title
+
         prompt = f"""Find a high-quality alternative source for this broken citation.
 
 Original Citation:
@@ -1136,7 +1212,7 @@ REQUIREMENTS:
 5. If no good alternative exists, set "url" to null
 6. NEVER use URLs from these competitor domains: {competitors_str}
 
-Search for: {citation.title}
+Search for (attempt {attempt}): {search_query}
 """
         
         try:

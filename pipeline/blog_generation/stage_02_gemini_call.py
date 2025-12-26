@@ -177,9 +177,24 @@ Example - WRONG vs CORRECT:
         if grounding_urls:
             logger.info(f"📎 Storing {len(grounding_urls)} specific source URLs from Google Search grounding")
             context.grounding_urls = grounding_urls
+
+            # Format grounding URLs as suggested sources for potential re-injection
+            formatted_sources = []
+            for idx, grounding in enumerate(grounding_urls[:12], start=1):
+                url = grounding.get('url', '')
+                title = grounding.get('title', '')
+                domain = grounding.get('domain', '')
+
+                if url and title:
+                    formatted_sources.append(f"{idx}. {title} - {url}")
+
+            # Store for next regeneration (if needed)
+            context.suggested_sources = "\n".join(formatted_sources)
+            logger.debug(f"Prepared {len(formatted_sources)} suggested sources for potential regeneration")
         else:
             logger.warning("⚠️  No grounding URLs extracted from Gemini response")
             context.grounding_urls = []
+            context.suggested_sources = ""
 
         # Validate response
         self._validate_response(raw_response)
