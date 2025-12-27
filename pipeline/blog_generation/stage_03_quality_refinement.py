@@ -650,16 +650,37 @@ If no issues, return original content unchanged with issues_fixed=0 and all coun
             return (field, 0, content, 0, 0, 0, 0)
         
         # Execute all reviews in parallel (with rate limiting via semaphore)
-        # Limit concurrent calls to avoid API rate limits (max 15 concurrent - increased for performance)
-        semaphore = asyncio.Semaphore(15)
+        # Fix 3: Reduce concurrency from 15 to 5 for better stability and reliability
+        # Lower concurrency = less likely to overwhelm API or trigger rate limits
+        semaphore = asyncio.Semaphore(5)
         
         async def review_field_with_limit(field: str):
             async with semaphore:
                 return await review_field(field)
         
-        logger.info(f"   🔄 Reviewing {len(content_fields)} fields in parallel (max 15 concurrent)...")
+        logger.info(f"   🔄 Reviewing {len(content_fields)} fields in parallel (max 5 concurrent)...")
         tasks = [review_field_with_limit(field) for field in content_fields]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Add timeout to prevent indefinite hangs (Fix 1)
+        try:
+            results = await asyncio.wait_for(
+                asyncio.gather(*tasks, return_exceptions=True),
+                timeout=180  # 3 minutes max for all reviews
+            )
+        except asyncio.TimeoutError:
+            logger.error("⏱️ Quality review timed out after 3 minutes - collecting partial results")
+            # Collect results from completed tasks only
+            results = []
+            for task in tasks:
+                if task.done():
+                    try:
+                        results.append(task.result())
+                    except Exception as e:
+                        logger.debug(f"   Failed task result: {e}")
+                        results.append(Exception(f"Task failed: {e}"))
+                else:
+                    logger.debug(f"   Task incomplete - skipping")
+                    results.append(Exception("Task timed out"))
         
         # Process results and track metrics
         total_em_dashes_fixed = 0
@@ -775,7 +796,22 @@ Find ALL en dashes (–) and replace them. Return the complete fixed content wit
             # Execute all dash fixes in parallel
             if dash_tasks:
                 logger.info(f"   🔄 Fixing {len(dash_tasks)} fields with remaining dashes in parallel...")
-                dash_results = await asyncio.gather(*dash_tasks, return_exceptions=True)
+                try:
+                    dash_results = await asyncio.wait_for(
+                        asyncio.gather(*dash_tasks, return_exceptions=True),
+                        timeout=120  # 2 minutes max for dash fixes
+                    )
+                except asyncio.TimeoutError:
+                    logger.error("⏱️ Dash fix timed out after 2 minutes - collecting partial results")
+                    dash_results = []
+                    for task in dash_tasks:
+                        if task.done():
+                            try:
+                                dash_results.append(task.result())
+                            except Exception as e:
+                                dash_results.append(Exception(f"Task failed: {e}"))
+                        else:
+                            dash_results.append(Exception("Task timed out"))
 
                 for result in dash_results:
                     if isinstance(result, Exception):
@@ -1013,17 +1049,32 @@ Be GENEROUS - add 2-3 citations, 2-3 conversational phrases, and 1-2 question pa
                 return (field, content, False)
         
         # Execute all optimizations in parallel (with rate limiting via semaphore)
-        # Limit concurrent calls to avoid API rate limits (max 10 concurrent - increased for performance)
+        # Fix 3: Reduce concurrency from 10 to 5 for better stability
         if sections_to_optimize:
-            semaphore = asyncio.Semaphore(10)
+            semaphore = asyncio.Semaphore(5)
             
             async def optimize_section_with_limit(section_data: tuple):
                 async with semaphore:
                     return await optimize_section(section_data)
             
-            logger.info(f"   🔄 Optimizing {len(sections_to_optimize)} sections in parallel (max 10 concurrent)...")
+            logger.info(f"   🔄 Optimizing {len(sections_to_optimize)} sections in parallel (max 5 concurrent)...")
             tasks = [optimize_section_with_limit(section_data) for section_data in sections_to_optimize]
-            results = await asyncio.gather(*tasks, return_exceptions=True)
+            try:
+                results = await asyncio.wait_for(
+                    asyncio.gather(*tasks, return_exceptions=True),
+                    timeout=180  # 3 minutes max for AEO optimization
+                )
+            except asyncio.TimeoutError:
+                logger.error("⏱️ AEO optimization timed out after 3 minutes - collecting partial results")
+                results = []
+                for task in tasks:
+                    if task.done():
+                        try:
+                            results.append(task.result())
+                        except Exception as e:
+                            results.append(Exception(f"Task failed: {e}"))
+                    else:
+                        results.append(Exception("Task timed out"))
             
             # Process results
             for result in results:
