@@ -535,15 +535,26 @@ class JobManager:
     def _create_progress_tracker(self, job_id: str, total_stages: int):
         """Create progress tracking callback for workflow engine."""
         def update_progress(stage_name: str, stage_num: int, completed: bool = False):
-            if completed:
+            # Fix 4: Update progress on both stage start AND completion
+            if not completed:
+                # Stage started - update current_stage so users see progress
+                progress_percent = int(stage_num / total_stages * 100)
+                self._update_job_progress(
+                    job_id,
+                    current_stage=stage_name,
+                    progress_percent=progress_percent,
+                    stages_completed=stage_num  # Don't increment yet
+                )
+            else:
+                # Stage completed - increment stages_completed
                 progress_percent = int((stage_num + 1) / total_stages * 100)
                 self._update_job_progress(
-                    job_id, 
+                    job_id,
                     current_stage=stage_name,
                     progress_percent=progress_percent,
                     stages_completed=stage_num + 1
                 )
-        
+
         return update_progress
     
     async def _execute_with_progress(

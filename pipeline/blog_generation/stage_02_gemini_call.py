@@ -1465,11 +1465,14 @@ EXAMPLE OF CORRECT FORMATTING:
             Exception: If generation fails after all retries
         """
         try:
+            # Stage 2 main content generation needs longer timeout (3 minutes)
+            # This is a large, complex generation with search grounding
             raw_response = await self.client.generate_content(
                 prompt=context.prompt,
                 enable_tools=True,  # CRITICAL: tools must be enabled!
                 response_schema=response_schema,  # JSON schema for structured output
                 system_instruction=system_instruction,  # High priority guidance
+                timeout=180,  # 3 minutes for main content generation (vs 90s default)
             )
             
             if not raw_response or len(raw_response.strip()) < 500:
