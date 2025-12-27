@@ -250,6 +250,7 @@ class GeminiClient:
         enable_tools: bool = True,  # Default: True (tools available when needed)
         response_schema: Any = None,
         system_instruction: str = None,
+        timeout: int = 90,  # Per-call timeout in seconds (Fix 2)
     ) -> str:
         """
         Generate content using Gemini API with Google Search grounding.
@@ -259,11 +260,13 @@ class GeminiClient:
             enable_tools: Whether to enable Google Search grounding (includes URL context)
             response_schema: Optional schema for structured JSON output
             system_instruction: Optional system instruction (high priority guidance for Gemini)
+            timeout: Maximum time to wait for API response in seconds (default: 90s)
 
         Returns:
             Raw response text (plain text with embedded JSON, or direct JSON if schema provided)
 
         Raises:
+            asyncio.TimeoutError: If API call exceeds timeout
             Exception: If all retries fail
         """
         logger.info(f"Generating content with {self.MODEL}")
@@ -272,13 +275,20 @@ class GeminiClient:
         logger.debug(f"Response schema: {'Yes' if response_schema else 'No'}")
         logger.debug(f"System instruction: {'Yes' if system_instruction else 'No'}")
 
-        # Call API with retry logic
-        response_text = await self._call_api_with_retry(
-            prompt, 
-            enable_tools, 
-            response_schema=response_schema,
-            system_instruction=system_instruction
-        )
+        # Call API with retry logic and timeout (Fix 2)
+        try:
+            response_text = await asyncio.wait_for(
+                self._call_api_with_retry(
+                    prompt,
+                    enable_tools,
+                    response_schema=response_schema,
+                    system_instruction=system_instruction
+                ),
+                timeout=timeout
+            )
+        except asyncio.TimeoutError:
+            logger.error(f"⏱️ Gemini API call timed out after {timeout}s")
+            raise  # Re-raise to let caller handle it
 
         return response_text
 
