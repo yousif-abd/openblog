@@ -530,12 +530,14 @@ class AEOScorer:
         details = []
 
         # Skip scoring for non-English content (temporary until multi-language support is added)
+        # Award full points as a proxy since the content likely has conversational phrases in the target language
         if language != "en":
+            score = 15.0  # Full points as proxy for unsupported languages
             details.append(f"ℹ️ Natural language scoring skipped (language: {language.upper()}, currently only supports English)")
-            details.append("   This is not a penalty - your content may have conversational phrases in the target language")
+            details.append(f"   ✅ Awarded full 15 points as proxy - assumes natural language patterns exist in {language.upper()}")
             details.append("   Future updates will add multi-language support for German, French, Spanish, etc.")
-            logger.info(f"Natural language scoring skipped for language: {language}")
-            return 0.0, details
+            logger.info(f"Natural language scoring skipped for language: {language} - awarded full 15 points as proxy")
+            return 15.0, details
 
         all_content = output.Intro + " " + self._get_all_section_content(output)
         content_lower = all_content.lower()
