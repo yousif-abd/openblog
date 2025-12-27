@@ -488,24 +488,57 @@ class WorkflowEngine:
         # Quality below target - attempt regeneration (optional improvement)
         context.regeneration_attempts += 1
         max_attempts = 3
-        
-        self.logger.warning(f"⚠️  Quality below target (attempt {context.regeneration_attempts}/{max_attempts}): AEO={aeo_score}/100")
+
+        # Get citation count
+        citations_list = context.parallel_results.get("citations_list")
+        citation_count = len(citations_list.citations) if citations_list else 0
+
+        self.logger.warning(f"⚠️  Quality below target (attempt {context.regeneration_attempts}/{max_attempts}): AEO={aeo_score}/100, Citations={citation_count}/12")
         for issue in critical_issues[:3]:
             self.logger.warning(f"   {issue}")
-        
+
         if context.regeneration_attempts >= max_attempts:
             self.logger.warning(f"⚠️  Quality below target after {max_attempts} attempts - continuing with article (non-blocking)")
             self.logger.warning(f"   Final AEO: {aeo_score}/100, Critical Issues: {len(critical_issues)}")
             # Continue workflow - quality gates are informational only
             context.quality_gate_failed = True
             return context
-        
-        # Regenerate with strategy based on attempt number
-        self.logger.info(f"🔄 Regenerating article (attempt {context.regeneration_attempts + 1}/{max_attempts})")
-        
+
+        # Track citation count across attempts for early stopping
+        if not hasattr(context, 'citation_history'):
+            context.citation_history = []
+        context.citation_history.append(citation_count)
+
+        # Early stopping: If citation count unchanged after 2 attempts, stop trying
+        if len(context.citation_history) >= 2:
+            last_two = context.citation_history[-2:]
+            if last_two[0] == last_two[1]:
+                self.logger.warning(
+                    f"⚠️ Citation count unchanged across attempts ({last_two[0]}) - "
+                    f"stopping regeneration (structural limitation detected)"
+                )
+                context.quality_gate_failed = True
+                return context
+
+        # Detect if citation deficiency is the primary issue
+        low_aeo = aeo_score < 70
+        low_citations = citation_count < 8
+        formatting_issues = len([issue for issue in critical_issues if 'citation' not in issue.lower()]) > 0
+
+        if low_aeo and low_citations and not formatting_issues:
+            # Citation-focused regeneration (faster - only re-run Stage 4)
+            self.logger.info(f"⚡ Attempting citation-focused regeneration (attempt {context.regeneration_attempts + 1}/{max_attempts})")
+            context = await self._regenerate_citations_only(context)
+
+            # Re-check quality after citation regeneration
+            return await self._check_quality_gate_and_regenerate(context)
+
+        # Full regeneration needed
+        self.logger.info(f"🔄 Regenerating full article (attempt {context.regeneration_attempts + 1}/{max_attempts})")
+
         # Apply regeneration strategy
         context = self._apply_regeneration_strategy(context)
-        
+
         # Use centralized regeneration helper
         return await self._regenerate_article(context, "quality")
 
@@ -571,6 +604,77 @@ class WorkflowEngine:
             )
             return context
 
+    async def _regenerate_citations_only(self, context: ExecutionContext) -> ExecutionContext:
+        """
+        Fast citation-focused regeneration.
+
+        Re-runs only Stage 4 (citations) with enhanced grounding URLs.
+        Skips full content regeneration.
+
+        Args:
+            context: Current execution context
+
+        Returns:
+            Updated context with new citations
+        """
+        self.logger.info(
+            f"🔄 Citation regeneration attempt {context.regeneration_attempts} "
+            f"(fast mode - Stage 4 only)"
+        )
+
+        try:
+            # Prioritize grounding URLs for citation extraction
+            if hasattr(context, 'grounding_urls') and context.grounding_urls:
+                self.logger.info(
+                    f"Prioritizing {len(context.grounding_urls)} grounding URLs "
+                    f"for citation extraction"
+                )
+                # The grounding URLs are already in context, Stage 4 will use them
+
+            # Re-run Stage 4 only (citations)
+            stage_4 = self.stages.get(4)
+            if stage_4:
+                start_time = time.time()
+                context = await stage_4.execute(context)
+                stage_4_duration = time.time() - start_time
+                context.add_execution_time("stage_4_citation_regen", stage_4_duration)
+                self.logger.info(f"✅ Citation regeneration Stage 4 completed in {stage_4_duration:.2f}s")
+
+            # Re-run Stage 8 (quality check)
+            stage_8 = self.stages.get(8)
+            if stage_8:
+                start_time = time.time()
+                context = await stage_8.execute(context)
+                stage_8_duration = time.time() - start_time
+                context.add_execution_time("stage_8_citation_regen", stage_8_duration)
+                self.logger.info(f"✅ Citation regeneration Stage 8 completed in {stage_8_duration:.2f}s")
+
+            # Log results
+            new_citation_count = len(
+                context.parallel_results.get("citations_list", {}).get("citations", [])
+            )
+            new_aeo_score = context.quality_report.get("metrics", {}).get("aeo_score", 0)
+
+            self.logger.info(
+                f"✅ Citation regeneration complete: "
+                f"Citations {new_citation_count}, AEO {new_aeo_score}/100"
+            )
+
+            return context
+
+        except Exception as e:
+            self.logger.error(f"Citation regeneration failed: {e}")
+            # Fall back to full regeneration on error
+            context.add_error(
+                "citation_regeneration",
+                e,
+                context={
+                    "job_id": context.job_id,
+                    "attempt": context.regeneration_attempts
+                }
+            )
+            return context
+
     def _apply_regeneration_strategy(self, context: ExecutionContext) -> ExecutionContext:
         """
         Apply regeneration strategy based on attempt number.
@@ -586,11 +690,11 @@ class WorkflowEngine:
         if attempt == 1:
             # First retry: Enhanced focus on failed aspects
             self.logger.info("📝 Regeneration Strategy 1: Enhanced content quality focus")
-            
+
             # Add quality enhancement instructions
             if not context.job_config:
                 context.job_config = {}
-            
+
             enhancement_prompts = [
                 "Focus on achieving 80+ AEO score with strict quality requirements.",
                 "Ensure every paragraph has exactly 2-3 citations with credible sources.",
@@ -598,7 +702,13 @@ class WorkflowEngine:
                 "Target 40-60 words per paragraph with clear, actionable content.",
                 "Include specific data points, KPIs, and real examples in every paragraph."
             ]
-            
+
+            # Inject suggested sources if available
+            if hasattr(context, 'suggested_sources') and context.suggested_sources:
+                self.logger.info(f"📎 Injecting {len(context.suggested_sources.split(chr(10)))} suggested sources into regeneration prompt")
+                enhancement_prompts.append(f"\nCRITICAL: Use these verified sources for citations:\n{context.suggested_sources}")
+                enhancement_prompts.append("\nInclude 12+ citations from the sources above using specific URLs (not domain-only).")
+
             existing_instructions = context.job_config.get("content_generation_instruction", "")
             enhanced_instructions = f"{existing_instructions}\n\nQUALITY ENHANCEMENT:\n" + "\n".join(enhancement_prompts)
             context.job_config["content_generation_instruction"] = enhanced_instructions

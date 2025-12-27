@@ -5,6 +5,7 @@ Simplified stage that only handles essential post-processing:
 1. Merge parallel results (from Stages 6-7)
 2. Link citations in content (convert [1] to clickable links)
 3. Flatten data structure for export compatibility
+4. Run quality check to generate AEO score
 
 All content manipulation, quality refinement, and validation are handled by
 Stage 3 (AI-based Quality Refinement).
@@ -15,6 +16,7 @@ Input:
 
 Output:
   - ExecutionContext.validated_article (merged, flat article)
+  - ExecutionContext.quality_report (quality metrics with AEO score)
 """
 
 import logging
@@ -24,6 +26,7 @@ from urllib.parse import urlparse
 
 from ..core import ExecutionContext, Stage
 from ..processors.citation_linker import CitationLinker
+from ..processors.quality_checker import QualityChecker
 from ..models.output_schema import ArticleOutput
 
 logger = logging.getLogger(__name__)
@@ -99,7 +102,8 @@ class CleanupStage(Stage):
     - Merging parallel results (images from Stage 6, similarity check from Stage 7)
     - Citation linking (convert [1] to clickable links with URL validation)
     - Data flattening (for export compatibility)
-    
+    - Quality checking (generates AEO score and quality metrics)
+
     Note: All content manipulation is handled by Stage 3 (AI-based Quality Refinement).
     """
 
@@ -108,13 +112,13 @@ class CleanupStage(Stage):
 
     async def execute(self, context: ExecutionContext) -> ExecutionContext:
         """
-        Execute Stage 8: Merge parallel results and link citations.
+        Execute Stage 8: Merge parallel results, link citations, and run quality check.
 
         Args:
             context: ExecutionContext from Stages 6-7
 
         Returns:
-            Updated context with validated_article
+            Updated context with validated_article and quality_report
         """
         logger.info(f"Stage 8: {self.stage_name}")
 
@@ -146,13 +150,59 @@ class CleanupStage(Stage):
                     
         # Store results
         context.validated_article = validated_article
-        
+
         # Also store ArticleOutput for Stage 9
         try:
             context.article_output = ArticleOutput.model_validate(validated_article)
         except Exception as e:
             logger.debug(f"Could not create ArticleOutput (non-critical): {e}")
             context.article_output = None
+
+        # Step 4: Run quality check to generate AEO score
+        logger.debug("Running quality check...")
+
+        # DEBUG: Log company_data being passed
+        if hasattr(context, 'company_data') and context.company_data:
+            logger.info(f"[DEBUG] company_data keys being passed to QualityChecker: {list(context.company_data.keys())}")
+            logger.info(f"[DEBUG] author_name from company_data: {context.company_data.get('author_name')}")
+            logger.info(f"[DEBUG] author_bio from company_data: {context.company_data.get('author_bio', '')[:100] if context.company_data.get('author_bio') else 'None'}")
+            logger.info(f"[DEBUG] author_url from company_data: {context.company_data.get('author_url')}")
+
+        try:
+            quality_report = QualityChecker.check_article(
+                article=validated_article,
+                job_config=context.job_config,
+                article_output=context.article_output,
+                input_data=context.company_data if hasattr(context, 'company_data') else None,
+                language_validation=context.language_validation if hasattr(context, 'language_validation') else None,
+                market_profile=context.market_profile if hasattr(context, 'market_profile') else None,
+                target_market=context.target_market if hasattr(context, 'target_market') else "DE"
+            )
+            context.quality_report = quality_report
+            aeo_score = quality_report.get('metrics', {}).get('aeo_score', 0)
+
+            # Log AEO score breakdown if available
+            aeo_breakdown = quality_report.get('metrics', {}).get('aeo_breakdown')
+            if aeo_breakdown:
+                logger.info(f"✅ Quality check complete (AEO: {aeo_score:.1f}/100)")
+                logger.info("   Component scores:")
+                for component, component_score in aeo_breakdown.get('scores', {}).items():
+                    max_score = {
+                        'direct_answer': 25, 'qa_format': 20, 'citation_clarity': 15,
+                        'natural_language': 15, 'structured_data': 10, 'eat': 15
+                    }.get(component, 0)
+                    pct = (component_score / max_score * 100) if max_score > 0 else 0
+                    logger.info(f"   - {component.replace('_', ' ').title()}: {component_score:.1f}/{max_score} ({pct:.0f}%)")
+            else:
+                logger.info(f"✅ Quality check complete (AEO: {aeo_score}/100)")
+        except Exception as e:
+            logger.warning(f"Quality check failed (non-critical): {e}")
+            context.quality_report = {
+                "critical_issues": [],
+                "suggestions": [],
+                "metrics": {"aeo_score": 0},
+                "passed": False
+            }
 
         logger.info(f"✅ Merge & Link complete ({len(validated_article)} fields)")
         return context
