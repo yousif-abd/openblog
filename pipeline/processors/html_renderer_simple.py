@@ -136,13 +136,23 @@ class HTMLRendererSimple:
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{HTMLRendererSimple._escape(meta_title)}</title>
     <meta name="description" content="{HTMLRendererSimple._escape(meta_desc)}">
-    
+    <meta name="robots" content="index, follow">
+    <meta name="author" content="{HTMLRendererSimple._escape(author_name)}">
+    {f'<link rel="canonical" href="{HTMLRendererSimple._escape(article_url)}">' if article_url else ''}
+
     <!-- Open Graph -->
     <meta property="og:title" content="{HTMLRendererSimple._escape(meta_title)}">
     <meta property="og:description" content="{HTMLRendererSimple._escape(meta_desc)}">
     <meta property="og:type" content="article">
+    {f'<meta property="og:url" content="{HTMLRendererSimple._escape(article_url)}">' if article_url else ''}
     {f'<meta property="og:image" content="{HTMLRendererSimple._escape(featured_image)}">' if featured_image else ''}
-    
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="{HTMLRendererSimple._escape(meta_title)}">
+    <meta name="twitter:description" content="{HTMLRendererSimple._escape(meta_desc)}">
+    {f'<meta name="twitter:image" content="{HTMLRendererSimple._escape(featured_image)}">' if featured_image else ''}
+
     <!-- Schema.org -->
     {schemas_html}
     
