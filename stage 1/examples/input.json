@@ -1,0 +1,13 @@
+{
+  "keywords": [
+    "AEO",
+    {"keyword": "answer engine optimization", "word_count": 3000},
+    {"keyword": "AI search optimization", "keyword_instructions": "Focus on Google SGE and Perplexity"}
+  ],
+  "company_url": "https://scaile.tech",
+  "language": "en",
+  "market": "US",
+  "default_word_count": 2000,
+  "batch_instructions": "Target B2B SaaS companies",
+  "company_context": null
+}
