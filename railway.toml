@@ -1,7 +1,0 @@
-[build]
-builder = "DOCKERFILE"
-
-[environments.production]
-projectId = "bf8b4c9c-fbbc-40ff-9173-e8aab13bfbe4"
-serviceId = "8603c2eb-ce7f-4bf1-82d5-ae2a90b98d16"
-

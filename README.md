@@ -1,160 +1,129 @@
-# OpenBlog
+# OpenBlog Neo
 
-**Open-source AI-powered blog generation system** — 12-stage pipeline for producing high-quality, AEO-optimized articles.
+AI-powered blog generation pipeline using Gemini 3 Flash Preview with Google Search grounding.
 
-## ✨ Features
+## Features
 
-- 🔄 **12-Stage Pipeline** — Modular, testable stages from data fetch to HTML output
-- 🎯 **AEO Optimization** — Built-in Answer Engine Optimization scoring (70-85+ scores)
-- 🔍 **Smart Citations** — Automatic source validation and formatting
-- 📝 **Rich Content** — FAQ/PAA extraction, internal links, ToC generation
-- 🖼️ **Image Generation** — AI-powered featured images via OpenRouter
-- 🌐 **Multi-language** — Supports multiple languages with auto-detection
-- ⚡ **Fast** — 60-90 second generation time
+- **5-Stage Pipeline**: Context → Generation → Quality → URL Verify → Internal Links
+- **Google Search Grounding**: Real-time web research for accurate, sourced content
+- **Parallel Processing**: Generate multiple articles simultaneously
+- **Multiple Export Formats**: HTML, Markdown, JSON, CSV, XLSX, PDF
+- **Image Generation**: Optional hero, mid, and bottom images via Google Imagen
 
-## 📋 Pipeline Stages
+## Architecture
 
 ```
-Stage 0: Data Fetch & Company Detection
-Stage 1: Prompt Construction
-Stage 2: AI Content Generation (Gemini + tools)
-Stage 3: Structured Data Extraction
-Stage 4: Citation Validation ─┐
-Stage 5: Internal Links      │ (parallel)
-Stage 6: Table of Contents   │
-Stage 7: Metadata            │
-Stage 8: FAQ/PAA Enhancement │
-Stage 9: Image Generation   ─┘
-Stage 10: Cleanup & Validation
-Stage 11: HTML Generation & Storage
+Stage 1 (once per batch)
+     ↓
+┌────┴────┬─────────┐
+▼         ▼         ▼
+[Art 1]  [Art 2]  [Art 3]  ← parallel processing
+  │         │         │
+  ▼         ▼         ▼
+Stage 2   Stage 2   Stage 2   ← Blog Gen + Images
+  │         │         │
+  ▼         ▼         ▼
+Stage 3   Stage 3   Stage 3   ← Quality Check
+  │         │         │
+  ▼         ▼         ▼
+Stage 4   Stage 4   Stage 4   ← URL Verify
+  │         │         │
+  ▼         ▼         ▼
+Stage 5   Stage 5   Stage 5   ← Internal Links
+  │         │         │
+  ▼         ▼         ▼
+Export    Export    Export    ← HTML/MD/JSON/CSV/XLSX/PDF
 ```
 
-## 🚀 Quick Start
+## Pipeline Stages
 
-### Installation
+| Stage | Name | AI Calls | Purpose |
+|-------|------|----------|---------|
+| 1 | Set Context | 0-1 | Company context + authors + sitemap (runs once per batch) |
+| 2 | Blog Gen + Images | 1-4 | Generate article with Gemini + 3 images with Imagen |
+| 3 | Quality Check | 1 | Surgical find/replace fixes (uses structured schema) |
+| 4 | URL Verify | 0-2 | Validate/replace dead URLs (uses structured schema) |
+| 5 | Internal Links | 1 | Embed internal links from sitemap (uses structured schema) |
+
+## Quick Start
+
+### 1. Install Dependencies
 
 ```bash
-git clone https://github.com/federicodeponte/openblog.git
-cd openblog
 pip install -r requirements.txt
 ```
 
-### Environment Variables
+### 2. Set Environment Variables
 
 ```bash
-# Required
-GEMINI_API_KEY=your_gemini_api_key
-
-# Optional - DataForSEO fallback (when Google Search quota exhausted)
-# Cost: $0.50 per 1,000 queries - Standard mode (async task-based)
-# Automatically activates when Google Search returns 429/quota errors
-DATAFORSEO_LOGIN=your_dataforseo_email
-DATAFORSEO_PASSWORD=your_dataforseo_password
-
-# Optional - for Google Drive integration
-GOOGLE_SERVICE_ACCOUNT_JSON='{"type":"service_account",...}'
-GOOGLE_DELEGATION_SUBJECT=user@domain.com
+export GEMINI_API_KEY=your-gemini-api-key
 ```
 
-### API Usage
+Or create a `.env` file:
+```
+GEMINI_API_KEY=your-gemini-api-key
+```
+
+### 3. Run the Pipeline
 
 ```bash
-# Start the server
-uvicorn service.api:app --reload
+# Basic usage
+python run_pipeline.py --url https://example.com --keywords "keyword 1" "keyword 2" --output results/
 
-# Generate a blog
-curl -X POST http://localhost:8000/blog/write \
-  -H "Content-Type: application/json" \
-  -d '{
-    "primary_keyword": "AI in customer service",
-    "company_url": "https://example.com"
-  }'
+# With all export formats
+python run_pipeline.py --url https://example.com --keywords "topic" \
+    --output results/ --export-formats html markdown json csv xlsx pdf
+
+# Skip images, limit parallelism
+python run_pipeline.py --url https://example.com --keywords "topic" \
+    --output results/ --skip-images --max-parallel 2
 ```
 
-### Python Usage
-
-```python
-from pipeline.core.workflow_engine import WorkflowEngine
-from pipeline.core.execution_context import ExecutionContext
-
-engine = WorkflowEngine()
-context = ExecutionContext(
-    job_id="test-123",
-    job_config={
-        "primary_keyword": "AI adoption in customer service",
-        "company_url": "https://example.com",
-    },
-)
-
-result = await engine.execute(context)
-print(result.final_article["Headline"])
-```
-
-## 🏗️ Project Structure
+## Command Line Options
 
 ```
-openblog/
-├── pipeline/
-│   ├── blog_generation/    # 12 stages (stage_00 to stage_11)
-│   ├── core/               # Workflow engine, execution context
-│   ├── models/             # Data models, AI clients
-│   ├── processors/         # HTML, citations, sitemap
-│   ├── prompts/            # Prompt templates
-│   └── utils/              # AEO scorer, helpers
-├── service/
-│   ├── api.py              # FastAPI endpoints
-│   └── image_generator.py  # Image generation
-├── tests/                  # Test suite
-├── docs/                   # Documentation
-├── modal_deploy.py         # Modal deployment
+--url               Company website URL (required)
+--keywords          List of keywords to generate articles for (required)
+--output            Output directory for generated files
+--export-formats    Formats to export (html, markdown, json, csv, xlsx, pdf)
+--skip-images       Skip image generation
+--max-parallel      Maximum parallel article processing (default: 3)
+--language          Content language (default: en)
+--market            Target market (default: US)
+--word-count        Target word count per article (default: 2000)
+```
+
+## Project Structure
+
+```
+openblog-neo/
+├── shared/                 # Shared components
+│   ├── gemini_client.py    # Unified Gemini client
+│   ├── models.py           # ArticleOutput schema (40+ fields)
+│   ├── html_renderer.py    # Render article to HTML
+│   ├── article_exporter.py # Export to multiple formats
+│   └── constants.py        # Model configuration
+├── stage 1/                # Set Context (company, authors, sitemap)
+├── stage 2/                # Blog Gen + Images
+├── stage 3/                # Quality Check
+├── stage 4/                # URL Verify
+├── stage 5/                # Internal Links
+├── run_pipeline.py         # Main orchestrator
 └── requirements.txt
 ```
 
-## 📊 Output Quality
+## Output Schema
 
-- **AEO Score**: 70-85+ / 100
-- **Generation Time**: 60-90 seconds
-- **Citation Validation**: Automatic URL checking
-- **HTML Output**: Clean, semantic markup
+Each article includes 40+ fields:
 
-## 🔧 Deployment
+- **Headlines**: Headline, Subtitle, Teaser, Meta Title, Meta Description
+- **Content**: Intro, 4-9 sections with HTML content
+- **SEO**: Direct Answer (featured snippets), Key Takeaways
+- **Q&A**: 4 People Also Ask, 5-6 FAQs
+- **Media**: 3 image slots with URLs, alt text, credits
+- **Sources**: Verified URLs from Google Search grounding
+- **Optional**: Tables, Pros/Cons, CTA, Related Keywords, Video embed
 
-### Modal (Recommended)
+## License
 
-```bash
-pip install modal
-modal deploy modal_deploy.py
-```
-
-### Docker
-
-```bash
-docker build -t openblog .
-docker run -p 8000:8000 openblog
-```
-
-## 📖 Documentation
-
-- [Architecture Overview](ARCHITECTURE_OVERVIEW.md)
-- [Detailed Architecture](docs/ARCHITECTURE.md)
-- [Input Requirements](docs/INPUT_REQUIREMENTS.md)
-- [Async Architecture](docs/ASYNC_ARCHITECTURE.md)
-
-## 🧪 Testing
-
-```bash
-pytest tests/ -v
-pytest tests/stages/test_stage_00.py -v  # Test specific stage
-```
-
-## 📝 License
-
-MIT License - see [LICENSE](LICENSE) for details.
-
-## 🤝 Contributing
-
-Contributions welcome! Please read the contributing guidelines before submitting PRs.
-
----
-
-Built with ❤️ by [SCAILE](https://scaile.tech)
+MIT
