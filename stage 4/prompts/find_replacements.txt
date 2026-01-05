@@ -4,7 +4,10 @@ These URLs are dead/broken and need replacements:
 
 Topic: {keyword}
 
-Use Google Search to find working replacement URLs for each.
+CRITICAL: You MUST use Google Search to find REAL, WORKING replacement URLs.
+- Search for each topic and ONLY return URLs that appear in your search results
+- DO NOT make up or guess URLs - they will be verified and rejected if they don't exist
+- If you cannot find a working replacement via search, OMIT that URL from the response
 
 IMPORTANT - Source preferences (in order):
 1. Industry blogs and publications (TechCrunch, Wired, The Verge, company blogs)
