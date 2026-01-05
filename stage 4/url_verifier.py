@@ -247,9 +247,19 @@ class URLVerifier:
                 response_schema=response_schema,
                 use_url_context=False,
                 use_google_search=True,
+                extract_sources=True,  # Get real URLs from grounding metadata
                 temperature=0.1,
                 timeout=self.TIMEOUT * 2,
             )
+
+            # Get real URLs from grounding metadata
+            grounding_urls = set()
+            for source in result.get("_grounding_sources", []):
+                if source.get("url"):
+                    grounding_urls.add(source["url"])
+
+            if grounding_urls:
+                logger.info(f"Found {len(grounding_urls)} real URLs from Google Search grounding")
 
             replacements = {}
 
@@ -258,6 +268,12 @@ class URLVerifier:
                 new_url = item.get("new_url", "")
 
                 if old_url and new_url:
+                    # Validate: only accept URLs that appear in grounding sources
+                    # (or if no grounding sources found, accept all - fallback)
+                    if grounding_urls and new_url not in grounding_urls:
+                        logger.warning(f"Skipping hallucinated URL (not in grounding): {new_url[:60]}...")
+                        continue
+
                     replacements[old_url] = {
                         "new_url": new_url,
                         "source_name": item.get("source_name", ""),
