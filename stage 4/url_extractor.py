@@ -96,6 +96,15 @@ class URLExtractor:
                 if cleaned and not self._should_skip(cleaned) and cleaned not in img_urls:
                     urls.add(cleaned)
 
+        # Extract from Sources field (list of {title, url} dicts)
+        sources = article.get("Sources", [])
+        if isinstance(sources, list):
+            for source in sources:
+                if isinstance(source, dict):
+                    url = source.get("url")
+                    if url and not self._should_skip(url):
+                        urls.add(url)
+
         logger.info(f"Extracted {len(urls)} unique URLs from article")
         return urls
 
@@ -124,6 +133,18 @@ class URLExtractor:
 
             if cleaned_urls:
                 field_urls[field] = cleaned_urls
+
+        # Extract from Sources field (list of {title, url} dicts)
+        sources = article.get("Sources", [])
+        if isinstance(sources, list):
+            source_urls = []
+            for source in sources:
+                if isinstance(source, dict):
+                    url = source.get("url")
+                    if url and not self._should_skip(url):
+                        source_urls.append(url)
+            if source_urls:
+                field_urls["Sources"] = source_urls
 
         total = sum(len(urls) for urls in field_urls.values())
         logger.info(f"Extracted {total} URLs from {len(field_urls)} fields")
@@ -154,6 +175,18 @@ class URLExtractor:
                         url_fields[cleaned] = []
                     if field not in url_fields[cleaned]:
                         url_fields[cleaned].append(field)
+
+        # Extract from Sources field (list of {title, url} dicts)
+        sources = article.get("Sources", [])
+        if isinstance(sources, list):
+            for source in sources:
+                if isinstance(source, dict):
+                    url = source.get("url")
+                    if url and not self._should_skip(url):
+                        if url not in url_fields:
+                            url_fields[url] = []
+                        if "Sources" not in url_fields[url]:
+                            url_fields[url].append("Sources")
 
         return url_fields
 

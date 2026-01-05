@@ -25,12 +25,19 @@ Usage:
 import asyncio
 import json
 import logging
+import re
 import sys
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
 from pydantic import BaseModel, Field
 import uuid
+
+# Pattern to validate YouTube URLs
+YOUTUBE_URL_PATTERN = re.compile(
+    r'^https?://(?:www\.)?(?:youtube\.com/watch\?v=|youtu\.be/)[\w-]{11}',
+    re.IGNORECASE
+)
 
 # Add parent to path for imports
 _parent = Path(__file__).parent.parent
@@ -188,6 +195,13 @@ async def run_stage_2(input_data: Stage2Input) -> Stage2Output:
 
     logger.info(f"  Article generated: {article.Headline[:50]}...")
     logger.info(f"  Sections: {article.count_sections()}, FAQs: {article.count_faqs()}")
+
+    # Validate video_url - clear if not a valid YouTube URL
+    if article.video_url:
+        if not YOUTUBE_URL_PATTERN.match(article.video_url):
+            logger.info(f"  Clearing invalid video_url: {article.video_url[:50]}...")
+            article.video_url = ""
+            article.video_title = ""
 
     # -----------------------------------------
     # Step 2: Generate Images (parallel)

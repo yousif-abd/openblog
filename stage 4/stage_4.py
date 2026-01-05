@@ -247,6 +247,7 @@ def smart_remove_dead_url(content: str, field_name: str, dead_url: str) -> str:
 
     - For HTML fields: Remove anchor tag, keep text
     - For Sources: Remove citation line
+    - For video_url/video_title: Clear to empty string
     - For other fields: Replace URL with [removed]
     """
     if is_html_field(field_name):
@@ -254,6 +255,10 @@ def smart_remove_dead_url(content: str, field_name: str, dead_url: str) -> str:
 
     elif field_name == "Sources":
         return remove_source_citation(content, dead_url)
+
+    elif field_name in ("video_url", "video_title"):
+        # Video fields should be cleared, not replaced with [removed]
+        return ""
 
     else:
         return content.replace(dead_url, "[removed]")
@@ -452,6 +457,28 @@ async def run_stage_4(input_data: Stage4Input) -> Stage4Output:
                 anchor_text = repl_data.get("anchor_text", "")
 
                 for field in fields:
+                    # Skip video_url - should only contain YouTube URLs, not replacements
+                    if field == "video_url":
+                        continue
+
+                    # Special handling for Sources (list of dicts)
+                    if field == "Sources":
+                        sources = article.get("Sources", [])
+                        if isinstance(sources, list):
+                            for source in sources:
+                                if isinstance(source, dict) and source.get("url") == old_url:
+                                    source["url"] = new_url
+                                    source["title"] = source_name
+                                    replacements.append(URLReplacement(
+                                        field_name=field,
+                                        old_url=old_url,
+                                        new_url=new_url,
+                                        source_name=source_name,
+                                        reason=repl_data.get("reason", "URL replaced"),
+                                    ))
+                                    logger.info(f"    Replaced: {old_url[:50]}... -> {new_url[:50]}... in Sources")
+                        continue
+
                     content = article.get(field, "")
                     if old_url in content:
                         # Smart replacement: natural anchor text for HTML, source name for Sources
@@ -507,11 +534,26 @@ async def run_stage_4(input_data: Stage4Input) -> Stage4Output:
                 fields = url_field_map.get(bad_url, [])
 
                 for field in fields:
+                    # Special handling for Sources (list of dicts)
+                    if field == "Sources":
+                        sources = article.get("Sources", [])
+                        if isinstance(sources, list):
+                            original_len = len(sources)
+                            article["Sources"] = [s for s in sources if not (isinstance(s, dict) and s.get("url") == bad_url)]
+                            if len(article["Sources"]) < original_len:
+                                removed_count += 1
+                                logger.info(f"    Removed: {bad_url[:50]}... from Sources")
+                        continue
+
                     content = article.get(field, "")
                     if bad_url in content:
                         article[field] = smart_remove_dead_url(content, field, bad_url)
                         removed_count += 1
                         logger.info(f"    Removed: {bad_url[:50]}... from {field}")
+
+                        # Also clear video_title when clearing video_url
+                        if field == "video_url":
+                            article["video_title"] = ""
 
                 # Update verification result
                 for result in url_results:
