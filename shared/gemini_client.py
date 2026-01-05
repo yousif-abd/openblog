@@ -413,6 +413,7 @@ class GeminiClient:
         response_schema: Any,
         use_url_context: bool = True,
         use_google_search: bool = True,
+        extract_sources: bool = False,
         temperature: float = 0.3,
         timeout: int = 120,
     ) -> Dict[str, Any]:
@@ -424,11 +425,13 @@ class GeminiClient:
             response_schema: Pydantic model or dict schema for response
             use_url_context: Enable URL Context tool
             use_google_search: Enable Google Search tool
+            extract_sources: Extract real URLs from grounding metadata
             temperature: Generation temperature
             timeout: Request timeout in seconds
 
         Returns:
-            Dict matching the response schema
+            Dict matching the response schema.
+            If extract_sources=True, adds "_grounding_sources" key with real URLs.
         """
         self._ensure_initialized()
 
@@ -460,7 +463,16 @@ class GeminiClient:
                     timeout=timeout,
                 )
 
-                return self._parse_json(response.text.strip())
+                result = self._parse_json(response.text.strip())
+
+                # Extract real sources from grounding metadata
+                if extract_sources and use_google_search:
+                    grounding_sources = await self._extract_grounding_sources(response)
+                    if grounding_sources:
+                        result["_grounding_sources"] = grounding_sources
+                        logger.info(f"Extracted {len(grounding_sources)} verified sources from grounding")
+
+                return result
 
             except json.JSONDecodeError as e:
                 # Schema doesn't guarantee valid JSON - let caller handle gracefully
