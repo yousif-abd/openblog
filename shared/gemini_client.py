@@ -296,12 +296,13 @@ class GeminiClient:
         Extract real URLs from Gemini grounding metadata.
 
         Follows Vertex AI redirect URLs to get actual source URLs.
+        Validates each URL returns HTTP 200-299 before including.
 
         Args:
             response: Gemini API response object
 
         Returns:
-            List of dicts with 'url' and 'title' keys
+            List of dicts with 'url' and 'title' keys (only validated URLs)
         """
         try:
             if not hasattr(response, 'candidates') or not response.candidates:
@@ -318,29 +319,40 @@ class GeminiClient:
                 logger.debug("No grounding_chunks in metadata")
                 return []
 
-            logger.debug(f"Found {len(gm.grounding_chunks)} grounding chunks")
+            total_chunks = len(gm.grounding_chunks)
+            logger.debug(f"Found {total_chunks} grounding chunks")
 
             sources = []
             seen_urls = set()
+            skipped_invalid = 0
 
             async with httpx.AsyncClient(
                 timeout=10.0,
                 follow_redirects=True,
                 limits=httpx.Limits(max_connections=10, max_keepalive_connections=5)
             ) as client:
-                for chunk in gm.grounding_chunks[:5]:  # Max 5 sources
+                for chunk in gm.grounding_chunks[:10]:  # Check up to 10 to get 5 valid
                     if not hasattr(chunk, 'web') or not chunk.web or not chunk.web.uri:
                         continue
 
                     redirect_url = chunk.web.uri
                     title = chunk.web.title if hasattr(chunk.web, 'title') and chunk.web.title else ""
 
-                    # Follow redirect to get real URL (GET with follow_redirects)
+                    # Follow redirect to get real URL and validate status
                     try:
                         resp = await client.get(redirect_url)
                         real_url = str(resp.url)
-                    except Exception:
-                        # If redirect fails, skip this source
+
+                        # Only include URLs that return 200-299 (success)
+                        if resp.status_code < 200 or resp.status_code >= 300:
+                            logger.debug(f"Skipping grounding source (HTTP {resp.status_code}): {real_url[:60]}...")
+                            skipped_invalid += 1
+                            continue
+
+                    except Exception as e:
+                        # If request fails, skip this source
+                        logger.debug(f"Skipping grounding source (request failed): {redirect_url[:60]}... - {e}")
+                        skipped_invalid += 1
                         continue
 
                     # Skip duplicates and Vertex redirect URLs (shouldn't happen now)
@@ -354,6 +366,13 @@ class GeminiClient:
                         "url": real_url,
                         "title": title or self._extract_domain(real_url),
                     })
+
+                    # Stop after 5 valid sources
+                    if len(sources) >= 5:
+                        break
+
+            if skipped_invalid > 0:
+                logger.info(f"Grounding sources: {len(sources)} valid, {skipped_invalid} skipped (invalid HTTP status)")
 
             return sources
 
