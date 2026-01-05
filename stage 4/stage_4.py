@@ -122,6 +122,64 @@ def remove_dead_link(content: str, dead_url: str) -> str:
     return re.sub(pattern, strip_tags, content, flags=re.IGNORECASE)
 
 
+def extract_link_context(content: str, url: str) -> Dict[str, str]:
+    """
+    Extract the sentence containing a link and the anchor text.
+
+    Returns:
+        Dict with 'sentence' and 'anchor_text' keys
+    """
+    # Find the anchor tag with this URL
+    anchor_pattern = rf'<a\s+[^>]*href=["\']({re.escape(url)})["\'][^>]*>(.*?)</a>'
+    anchor_match = re.search(anchor_pattern, content, re.IGNORECASE | re.DOTALL)
+
+    if not anchor_match:
+        return {"sentence": "", "anchor_text": ""}
+
+    anchor_text = anchor_match.group(2)
+    # Strip any nested HTML tags from anchor text
+    anchor_text = re.sub(r'<[^>]+>', '', anchor_text)
+
+    # Find the sentence containing the anchor
+    # Look for text between <p> tags or sentence boundaries
+    anchor_start = anchor_match.start()
+    anchor_end = anchor_match.end()
+
+    # Try to find paragraph boundaries first
+    p_start = content.rfind('<p>', 0, anchor_start)
+    p_end = content.find('</p>', anchor_end)
+
+    if p_start != -1 and p_end != -1:
+        sentence = content[p_start:p_end + 4]  # Include </p>
+    else:
+        # Fall back to finding sentence boundaries (. ! ?)
+        # Look backwards for sentence start
+        text_before = content[:anchor_start]
+        sentence_start = max(
+            text_before.rfind('. ') + 2,
+            text_before.rfind('! ') + 2,
+            text_before.rfind('? ') + 2,
+            text_before.rfind('<p>') + 3,
+            0
+        )
+
+        # Look forwards for sentence end
+        text_after = content[anchor_end:]
+        sentence_end_rel = min(
+            (text_after.find('. ') + 1) if text_after.find('. ') != -1 else len(text_after),
+            (text_after.find('! ') + 1) if text_after.find('! ') != -1 else len(text_after),
+            (text_after.find('? ') + 1) if text_after.find('? ') != -1 else len(text_after),
+            (text_after.find('</p>')) if text_after.find('</p>') != -1 else len(text_after),
+        )
+
+        sentence = content[sentence_start:anchor_end + sentence_end_rel]
+
+    return {
+        "sentence": sentence.strip(),
+        "anchor_text": anchor_text.strip(),
+    }
+
+
 def replace_source_citation(content: Any, old_url: str, new_url: str, source_name: str) -> Any:
     """
     Replace URL in Sources field.
@@ -530,6 +588,10 @@ async def run_stage_4(input_data: Stage4Input) -> Stage4Output:
         if unreplaceable_urls:
             logger.info(f"  Removing {len(unreplaceable_urls)} unreplaceable URLs...")
 
+            # Collect HTML field removals for AI rewriting
+            html_removals = []
+            non_html_removals = []
+
             for bad_url in unreplaceable_urls:
                 fields = url_field_map.get(bad_url, [])
 
@@ -547,15 +609,84 @@ async def run_stage_4(input_data: Stage4Input) -> Stage4Output:
 
                     content = article.get(field, "")
                     if bad_url in content:
-                        article[field] = smart_remove_dead_url(content, field, bad_url)
+                        if is_html_field(field):
+                            # Collect for AI rewriting
+                            context = extract_link_context(content, bad_url)
+                            if context["sentence"]:
+                                html_removals.append({
+                                    "field": field,
+                                    "url": bad_url,
+                                    "sentence": context["sentence"],
+                                    "anchor_text": context["anchor_text"],
+                                })
+                            else:
+                                # Fallback: just strip the link
+                                non_html_removals.append((field, bad_url))
+                        else:
+                            non_html_removals.append((field, bad_url))
+
+            # AI-assisted rewriting for HTML fields
+            if html_removals and verifier:
+                logger.info(f"    AI rewriting {len(html_removals)} sentences with dead links...")
+                try:
+                    rewrites = await verifier.rewrite_for_removals_batch(
+                        removals=html_removals,
+                        keyword=input_data.keyword,
+                    )
+                    ai_calls += 1
+
+                    # Apply rewrites
+                    for removal in html_removals:
+                        url = removal["url"]
+                        field = removal["field"]
+                        original_sentence = removal["sentence"]
+
+                        rewrite = rewrites.get(url, {})
+                        rewritten = rewrite.get("rewritten_sentence", "")
+
+                        content = article.get(field, "")
+                        if rewritten and original_sentence in content:
+                            article[field] = content.replace(original_sentence, rewritten)
+                            removed_count += 1
+                            logger.info(f"    Rewrote: {url[:50]}... in {field}")
+                        else:
+                            # Fallback: just strip the link
+                            article[field] = smart_remove_dead_url(content, field, url)
+                            removed_count += 1
+                            logger.info(f"    Stripped: {url[:50]}... from {field}")
+
+                except Exception as e:
+                    logger.warning(f"    AI rewrite failed, falling back to strip: {e}")
+                    # Fallback: strip all HTML removals
+                    for removal in html_removals:
+                        content = article.get(removal["field"], "")
+                        if removal["url"] in content:
+                            article[removal["field"]] = smart_remove_dead_url(content, removal["field"], removal["url"])
+                            removed_count += 1
+                            logger.info(f"    Stripped: {removal['url'][:50]}... from {removal['field']}")
+            elif html_removals:
+                # No verifier, just strip
+                for removal in html_removals:
+                    content = article.get(removal["field"], "")
+                    if removal["url"] in content:
+                        article[removal["field"]] = smart_remove_dead_url(content, removal["field"], removal["url"])
                         removed_count += 1
-                        logger.info(f"    Removed: {bad_url[:50]}... from {field}")
+                        logger.info(f"    Stripped: {removal['url'][:50]}... from {removal['field']}")
 
-                        # Also clear video_title when clearing video_url
-                        if field == "video_url":
-                            article["video_title"] = ""
+            # Handle non-HTML removals (video_url, etc.)
+            for field, bad_url in non_html_removals:
+                content = article.get(field, "")
+                if bad_url in content:
+                    article[field] = smart_remove_dead_url(content, field, bad_url)
+                    removed_count += 1
+                    logger.info(f"    Removed: {bad_url[:50]}... from {field}")
 
-                # Update verification result
+                    # Also clear video_title when clearing video_url
+                    if field == "video_url":
+                        article["video_title"] = ""
+
+            # Update verification results
+            for bad_url in unreplaceable_urls:
                 for result in url_results:
                     if result.url == bad_url:
                         result.status = URLStatus.REMOVED

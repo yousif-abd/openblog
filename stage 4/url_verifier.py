@@ -270,3 +270,102 @@ class URLVerifier:
         except Exception as e:
             logger.warning(f"Batch replacement search failed: {e}")
             return {}
+
+    async def rewrite_for_removals_batch(
+        self,
+        removals: List[Dict[str, str]],
+        keyword: str,
+    ) -> Dict[str, Dict[str, str]]:
+        """
+        Ask AI to rewrite text around dead links that couldn't be replaced.
+
+        Instead of just stripping the anchor tag (leaving awkward text),
+        AI rewrites the sentence to flow naturally without the link.
+
+        Args:
+            removals: List of dicts with:
+                - field: Field name containing the link
+                - url: The dead URL
+                - sentence: The sentence containing the link
+                - anchor_text: The text inside the anchor tag
+            keyword: Primary keyword for context
+
+        Returns:
+            Dict mapping url -> {original_sentence, rewritten_sentence}
+        """
+        if not removals:
+            return {}
+
+        # Build list of sentences to rewrite
+        items_list = []
+        for i, item in enumerate(removals[:10], 1):  # Max 10
+            items_list.append(
+                f"{i}. Sentence: \"{item.get('sentence', '')}\"\n"
+                f"   Dead link anchor text: \"{item.get('anchor_text', '')}\"\n"
+                f"   URL being removed: {item.get('url', '')}"
+            )
+        items_str = "\n\n".join(items_list)
+
+        prompt = f"""These sentences contain links to dead URLs that must be removed.
+Rewrite each sentence to flow naturally WITHOUT the link reference.
+
+Topic context: {keyword}
+
+Sentences to rewrite:
+
+{items_str}
+
+Rules:
+- Remove the link reference entirely, don't just strip the anchor tag
+- Keep the sentence meaning intact
+- Make it flow naturally without referencing the now-dead source
+- If the sentence was citing a stat/fact from the dead link, generalize it (e.g., "industry research shows" instead of "Forbes 2024 report shows")
+- Keep the same tone and style
+- Return the EXACT original sentence and the rewritten version"""
+
+        try:
+            rewrite_schema = types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "url": types.Schema(type=types.Type.STRING, description="The dead URL"),
+                    "original_sentence": types.Schema(type=types.Type.STRING, description="Original sentence with link"),
+                    "rewritten_sentence": types.Schema(type=types.Type.STRING, description="Rewritten sentence without link reference"),
+                },
+                required=["url", "original_sentence", "rewritten_sentence"],
+            )
+
+            response_schema = types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "rewrites": types.Schema(
+                        type=types.Type.ARRAY,
+                        items=rewrite_schema,
+                        description="List of sentence rewrites",
+                    ),
+                },
+                required=["rewrites"],
+            )
+
+            result = await self._client.generate_with_schema(
+                prompt=prompt,
+                response_schema=response_schema,
+                use_url_context=False,
+                use_google_search=False,
+                temperature=0.3,
+                timeout=self.TIMEOUT,
+            )
+
+            rewrites = {}
+            for item in result.get("rewrites", []):
+                url = item.get("url", "")
+                if url:
+                    rewrites[url] = {
+                        "original_sentence": item.get("original_sentence", ""),
+                        "rewritten_sentence": item.get("rewritten_sentence", ""),
+                    }
+
+            return rewrites
+
+        except Exception as e:
+            logger.warning(f"Batch rewrite for removals failed: {e}")
+            return {}
