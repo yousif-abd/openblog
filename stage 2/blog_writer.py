@@ -214,13 +214,14 @@ async def write_article(
             max_tokens=16384,  # Reasonable limit for blog articles
         )
 
-        # Use grounding sources if AI didn't provide any
+        # Always use grounding sources (real URLs from Google Search) instead of AI-generated ones
+        # AI tends to hallucinate URLs that look real but return 404/403
         if "_grounding_sources" in result:
             grounding_sources = result.pop("_grounding_sources")
-            # If AI returned empty Sources, use grounding sources
-            if not result.get("Sources") or result.get("Sources") == []:
+            if grounding_sources:
+                ai_sources = result.get("Sources", [])
                 result["Sources"] = grounding_sources
-                logger.info(f"Using {len(grounding_sources)} grounding sources as article Sources")
+                logger.info(f"Using {len(grounding_sources)} grounding sources (replaced {len(ai_sources) if ai_sources else 0} AI-generated)")
 
         logger.info(f"Article generated: {result.get('Headline', 'Unknown')[:50]}...")
 
