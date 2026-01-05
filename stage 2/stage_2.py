@@ -28,16 +28,154 @@ import logging
 import re
 import sys
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Set, Tuple
 from datetime import datetime, timezone
 from pydantic import BaseModel, Field
 import uuid
+
+import httpx
 
 # Pattern to validate YouTube URLs
 YOUTUBE_URL_PATTERN = re.compile(
     r'^https?://(?:www\.)?(?:youtube\.com/watch\?v=|youtu\.be/)[\w-]{11}',
     re.IGNORECASE
 )
+
+# Pattern to extract anchor tags with href
+ANCHOR_TAG_PATTERN = re.compile(
+    r'<a\s+[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>',
+    re.IGNORECASE | re.DOTALL
+)
+
+# HTML content fields that may contain external links
+HTML_CONTENT_FIELDS = [
+    "Intro", "Direct_Answer",
+    "section_01_content", "section_02_content", "section_03_content",
+    "section_04_content", "section_05_content", "section_06_content",
+    "section_07_content", "section_08_content", "section_09_content",
+    "paa_01_answer", "paa_02_answer", "paa_03_answer", "paa_04_answer",
+    "faq_01_answer", "faq_02_answer", "faq_03_answer",
+    "faq_04_answer", "faq_05_answer", "faq_06_answer",
+]
+
+
+# =============================================================================
+# Body URL Validation (Root-level fix for inline links)
+# =============================================================================
+
+def extract_urls_from_html(html: str) -> Set[str]:
+    """Extract all URLs from anchor tags in HTML content."""
+    urls = set()
+    for match in ANCHOR_TAG_PATTERN.finditer(html):
+        url = match.group(1)
+        # Only include external HTTP(S) URLs
+        if url.startswith(("http://", "https://")):
+            urls.add(url)
+    return urls
+
+
+async def validate_urls_parallel(urls: Set[str], timeout: float = 5.0) -> Set[str]:
+    """
+    Validate URLs in parallel, return set of invalid URLs.
+
+    Args:
+        urls: Set of URLs to validate
+        timeout: Timeout per request in seconds
+
+    Returns:
+        Set of invalid URLs (non-200 status or failed request)
+    """
+    if not urls:
+        return set()
+
+    invalid_urls = set()
+
+    async def check_url(url: str) -> Tuple[str, bool]:
+        """Check if URL returns 200-299."""
+        try:
+            async with httpx.AsyncClient(
+                timeout=timeout,
+                follow_redirects=True,
+                limits=httpx.Limits(max_connections=10)
+            ) as client:
+                resp = await client.head(url)
+                # Some servers don't support HEAD, try GET if 405
+                if resp.status_code == 405:
+                    resp = await client.get(url)
+                is_valid = 200 <= resp.status_code < 300
+                return url, is_valid
+        except Exception:
+            return url, False
+
+    # Run all checks in parallel
+    results = await asyncio.gather(*[check_url(url) for url in urls])
+
+    for url, is_valid in results:
+        if not is_valid:
+            invalid_urls.add(url)
+
+    return invalid_urls
+
+
+def strip_invalid_links(html: str, invalid_urls: Set[str]) -> str:
+    """
+    Remove invalid links from HTML, keeping the anchor text.
+
+    <a href="bad-url">click here</a> → click here
+    """
+    if not invalid_urls:
+        return html
+
+    def replace_link(match):
+        url = match.group(1)
+        anchor_text = match.group(2)
+        if url in invalid_urls:
+            return anchor_text  # Keep text, remove link
+        return match.group(0)  # Keep original
+
+    return ANCHOR_TAG_PATTERN.sub(replace_link, html)
+
+
+async def validate_and_strip_body_urls(article: "ArticleOutput") -> int:
+    """
+    Validate all URLs in article body content and strip invalid ones.
+
+    This is a root-level fix: invalid URLs are removed at generation time,
+    not left for Stage 4 to clean up.
+
+    Args:
+        article: ArticleOutput to validate (mutated in place)
+
+    Returns:
+        Number of invalid URLs stripped
+    """
+    # Collect all URLs from body content
+    all_urls = set()
+    for field in HTML_CONTENT_FIELDS:
+        content = getattr(article, field, "") or ""
+        if content:
+            urls = extract_urls_from_html(content)
+            all_urls.update(urls)
+
+    if not all_urls:
+        return 0
+
+    # Validate URLs in parallel
+    invalid_urls = await validate_urls_parallel(all_urls)
+
+    if not invalid_urls:
+        return 0
+
+    # Strip invalid links from all fields
+    for field in HTML_CONTENT_FIELDS:
+        content = getattr(article, field, "") or ""
+        if content:
+            cleaned = strip_invalid_links(content, invalid_urls)
+            if cleaned != content:
+                setattr(article, field, cleaned)
+
+    return len(invalid_urls)
+
 
 # Add parent to path for imports
 _parent = Path(__file__).parent.parent
@@ -202,6 +340,16 @@ async def run_stage_2(input_data: Stage2Input) -> Stage2Output:
             logger.info(f"  Clearing invalid video_url: {article.video_url[:50]}...")
             article.video_url = ""
             article.video_title = ""
+
+    # -----------------------------------------
+    # Step 1b: Validate body URLs (root-level fix)
+    # -----------------------------------------
+    logger.info("  Validating body content URLs...")
+    stripped_count = await validate_and_strip_body_urls(article)
+    if stripped_count > 0:
+        logger.info(f"  Stripped {stripped_count} invalid URLs from body content")
+    else:
+        logger.info("  All body URLs valid")
 
     # -----------------------------------------
     # Step 2: Generate Images (parallel)
