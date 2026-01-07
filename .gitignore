@@ -43,6 +43,32 @@ test_run/
 test_output/
 output/
 results/
+inspection_output_*/
+
+# Test files in root (generated during testing)
+test_*.html
+test_*.json
+test_*.py
+batch_*.html
+batch_*.json
+*_TEST*.html
+*_OUTPUT*.html
+*_BLOG*.html
+preview_*.html
+*_test_*.json
+variance_test_results.json
+
+# Pipeline output files
+*_pipeline_*.json
+*_result*.json
+*_output*.json
+*_audit*.json
+railway*.json
+simple_*.json
+
+# Generated artifacts
+*.db
+debug_*.png
 
 # Logs
 *.log
