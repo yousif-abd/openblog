@@ -64,7 +64,7 @@ Or create a `.env` file:
 GEMINI_API_KEY=your-gemini-api-key
 ```
 
-### 3. Run the Pipeline
+### 3. Run the Pipeline (CLI)
 
 ```bash
 # Basic usage
@@ -77,6 +77,70 @@ python run_pipeline.py --url https://example.com --keywords "topic" \
 # Skip images, limit parallelism
 python run_pipeline.py --url https://example.com --keywords "topic" \
     --output results/ --skip-images --max-parallel 2
+```
+
+### 4. Run the API Server
+
+```bash
+# Start the FastAPI server
+uvicorn api:app --reload --port 8000
+
+# Or run directly
+python api.py
+```
+
+**API Documentation:**
+- Swagger UI: http://localhost:8000/docs
+- ReDoc: http://localhost:8000/redoc
+- OpenAPI JSON: http://localhost:8000/openapi.json
+
+## REST API
+
+The API provides async job-based processing for blog generation.
+
+### Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/` | Health check |
+| `GET` | `/health` | Health check (alias) |
+| `POST` | `/api/v1/jobs` | Start a new pipeline job (async) |
+| `GET` | `/api/v1/jobs` | List all jobs |
+| `GET` | `/api/v1/jobs/{job_id}` | Get job status and result |
+| `DELETE` | `/api/v1/jobs/{job_id}` | Delete a job |
+| `GET` | `/api/v1/jobs/{job_id}/articles` | List articles for a job |
+| `GET` | `/api/v1/jobs/{job_id}/articles/{keyword}/html` | Get article HTML |
+| `POST` | `/api/v1/generate` | Generate articles (sync, max 3) |
+
+### Example: Create a Job
+
+```bash
+curl -X POST http://localhost:8000/api/v1/jobs \
+  -H "Content-Type: application/json" \
+  -d '{
+    "keywords": ["AI in healthcare", "Machine learning basics"],
+    "company_url": "https://example.com",
+    "language": "en",
+    "market": "US",
+    "skip_images": false,
+    "export_formats": ["html", "json"]
+  }'
+```
+
+Response:
+```json
+{
+  "job_id": "550e8400-e29b-41d4-a716-446655440000",
+  "status": "pending",
+  "message": "Job created. Processing 2 article(s).",
+  "created_at": "2024-01-15T10:30:00Z"
+}
+```
+
+### Example: Check Job Status
+
+```bash
+curl http://localhost:8000/api/v1/jobs/550e8400-e29b-41d4-a716-446655440000
 ```
 
 ## Command Line Options
@@ -108,7 +172,8 @@ openblog-neo/
 ├── stage 3/                # Quality Check
 ├── stage 4/                # URL Verify
 ├── stage 5/                # Internal Links
-├── run_pipeline.py         # Main orchestrator
+├── run_pipeline.py         # Main CLI orchestrator
+├── api.py                  # FastAPI REST API
 └── requirements.txt
 ```
 

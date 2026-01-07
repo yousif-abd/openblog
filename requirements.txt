@@ -16,3 +16,7 @@ defusedxml>=0.7
 # Export formats
 markdownify>=0.11
 openpyxl>=3.1
+
+# API Server
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
