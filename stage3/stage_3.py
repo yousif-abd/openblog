@@ -26,9 +26,9 @@ if str(_parent) not in sys.path:
     sys.path.insert(0, str(_parent))
 
 try:
-    from .stage3_models import Stage3Input, Stage3Output, QualityFix
+    from .stage3_models import Stage3Input, Stage3Output, QualityFix, VoiceContext
 except ImportError:
-    from stage3_models import Stage3Input, Stage3Output, QualityFix
+    from stage3_models import Stage3Input, Stage3Output, QualityFix, VoiceContext
 
 try:
     from google.genai import types as genai_types
@@ -60,12 +60,51 @@ except ImportError:
     _PROMPT_LOADER_AVAILABLE = False
 
 
-def _get_quality_prompt(content: str, keyword: str, language: str) -> str:
+def _format_voice_context_section(voice_context: Optional[VoiceContext]) -> str:
+    """Format voice context into prompt section."""
+    if not voice_context:
+        return ""
+
+    lines = ["\nBRAND VOICE GUIDELINES:"]
+
+    if voice_context.tone:
+        lines.append(f"- Tone: {voice_context.tone}")
+
+    if voice_context.formality:
+        lines.append(f"- Formality: {voice_context.formality}")
+
+    if voice_context.first_person_usage:
+        lines.append(f"- First Person: {voice_context.first_person_usage}")
+
+    if voice_context.banned_words:
+        words = ', '.join(voice_context.banned_words[:10])
+        lines.append(f"- BANNED WORDS (flag if found): {words}")
+
+    if voice_context.do_list:
+        dos = '; '.join(voice_context.do_list[:5])
+        lines.append(f"- Writing Style DO: {dos}")
+
+    if voice_context.dont_list:
+        donts = '; '.join(voice_context.dont_list[:5])
+        lines.append(f"- Writing Style DON'T: {donts}")
+
+    if voice_context.example_phrases:
+        examples = '"; "'.join(voice_context.example_phrases[:3])
+        lines.append(f"- Example Phrases (for tone reference): \"{examples}\"")
+
+    lines.append("")  # Blank line before next section
+    return "\n".join(lines)
+
+
+def _get_quality_prompt(content: str, keyword: str, language: str, voice_context: Optional[VoiceContext] = None) -> str:
     """Load quality check prompt from file or use fallback."""
+    voice_section = _format_voice_context_section(voice_context)
+
     if _PROMPT_LOADER_AVAILABLE:
         try:
-            return load_prompt("stage 3", "quality_check",
-                               content=content, keyword=keyword, language=language)
+            return load_prompt("stage3", "quality_check",
+                               content=content, keyword=keyword, language=language,
+                               voice_context_section=voice_section)
         except FileNotFoundError:
             logger.warning("Prompt file not found, using fallback")
 
@@ -74,6 +113,7 @@ def _get_quality_prompt(content: str, keyword: str, language: str) -> str:
 Content: {content}
 Keyword: {keyword}
 Language: {language}
+{voice_section}
 Find phrases that sound robotic or AI-generated and suggest surgical replacements.'''
 
 
@@ -183,6 +223,7 @@ class QualityFixer:
             content_text,
             input_data.keyword,
             input_data.language,
+            voice_context=input_data.voice_context,
             timeout=effective_timeout,
         )
 
@@ -227,6 +268,7 @@ class QualityFixer:
         content_text: str,
         keyword: str,
         language: str,
+        voice_context: Optional[VoiceContext] = None,
         timeout: int = 120,
     ) -> List[Dict[str, Any]]:
         """Call Gemini to get quality fix suggestions using structured schema."""
@@ -234,6 +276,7 @@ class QualityFixer:
             content=content_text,
             keyword=keyword or "(not specified)",
             language=language or "en",
+            voice_context=voice_context,
         )
 
         try:

@@ -38,7 +38,7 @@ def _get_url_verify_prompt(urls_list: str, keyword: str) -> str:
     """Load URL verify prompt from file or use fallback."""
     if _PROMPT_LOADER_AVAILABLE:
         try:
-            return load_prompt("stage 4", "url_verify",
+            return load_prompt("stage4", "url_verify",
                                urls_list=urls_list, keyword=keyword)
         except FileNotFoundError:
             logger.warning("Prompt file not found, using fallback")
@@ -57,7 +57,7 @@ def _get_find_replacements_prompt(urls_list: str, keyword: str) -> str:
     """Load find replacements prompt from file or use fallback."""
     if _PROMPT_LOADER_AVAILABLE:
         try:
-            return load_prompt("stage 4", "find_replacements",
+            return load_prompt("stage4", "find_replacements",
                                urls_list=urls_list, keyword=keyword)
         except FileNotFoundError:
             logger.warning("Prompt file not found, using fallback")

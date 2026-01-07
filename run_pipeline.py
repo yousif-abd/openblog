@@ -74,13 +74,13 @@ def _load_module_from_path(module_name: str, file_path: Path):
 
 # Pre-load all stage modules at import time (thread-safe)
 # Stage 2
-_stage2_path = _BASE_PATH / "stage 2"
+_stage2_path = _BASE_PATH / "stage2"
 if str(_stage2_path) not in sys.path:
     sys.path.insert(0, str(_stage2_path))
 from stage_2 import run_stage_2, Stage2Input, CompanyContext, VisualIdentity
 
 # Stage 3 - uniquely named models file, no collision risk
-_stage3_path = _BASE_PATH / "stage 3"
+_stage3_path = _BASE_PATH / "stage3"
 if str(_stage3_path) not in sys.path:
     sys.path.insert(0, str(_stage3_path))
 _stage3_models = _load_module_from_path("stage3_models", _stage3_path / "stage3_models.py")
@@ -89,7 +89,7 @@ _stage3_module = _load_module_from_path("stage_3_module", _stage3_path / "stage_
 run_stage_3 = _stage3_module.run_stage_3
 
 # Stage 4 - uniquely named models file, no collision risk
-_stage4_path = _BASE_PATH / "stage 4"
+_stage4_path = _BASE_PATH / "stage4"
 if str(_stage4_path) not in sys.path:
     sys.path.insert(0, str(_stage4_path))
 _stage4_models = _load_module_from_path("stage4_models", _stage4_path / "stage4_models.py")
@@ -98,7 +98,7 @@ _stage4_module = _load_module_from_path("stage_4_module", _stage4_path / "stage_
 run_stage_4 = _stage4_module.run_stage_4
 
 # Stage 5 - uniquely named models file, no collision risk
-_stage5_path = _BASE_PATH / "stage 5"
+_stage5_path = _BASE_PATH / "stage5"
 if str(_stage5_path) not in sys.path:
     sys.path.insert(0, str(_stage5_path))
 _stage5_models = _load_module_from_path("stage5_models", _stage5_path / "stage5_models.py")
@@ -186,10 +186,33 @@ async def process_single_article(
         # -----------------------------------------
         logger.info(f"    [Stage 3] Quality check...")
 
+        # Build voice context from Stage 1 for brand-aligned quality fixes
+        voice_context = None
+        voice_persona = context.company_context.voice_persona
+        if voice_persona:
+            # Extract key voice fields for quality checking
+            voice_data = voice_persona if isinstance(voice_persona, dict) else voice_persona.model_dump()
+            lang_style = voice_data.get("language_style", {})
+            if isinstance(lang_style, dict):
+                formality = lang_style.get("formality", "")
+            else:
+                formality = getattr(lang_style, "formality", "")
+
+            voice_context = {
+                "tone": context.company_context.tone,
+                "banned_words": voice_data.get("banned_words", []),
+                "do_list": voice_data.get("do_list", []),
+                "dont_list": voice_data.get("dont_list", []),
+                "example_phrases": voice_data.get("example_phrases", []),
+                "formality": formality,
+                "first_person_usage": voice_data.get("first_person_usage", ""),
+            }
+
         stage3_output = await run_stage_3({
             "article": article_dict,
             "keyword": article.keyword,
             "language": context.language,
+            "voice_context": voice_context,
         })
 
         # Deep copy to prevent mutation side effects
@@ -235,9 +258,13 @@ async def process_single_article(
             if a.keyword != article.keyword
         ]
 
-        # Truncate sitemap URLs with warning if needed
+        # Collect sitemap URLs with truncation warnings if needed
         blog_urls = context.sitemap.blog_urls if context.sitemap else []
         resource_urls = context.sitemap.resource_urls if context.sitemap else []
+        tool_urls = context.sitemap.tool_urls if context.sitemap else []
+        product_urls = context.sitemap.product_urls if context.sitemap else []
+        service_urls = context.sitemap.service_urls if context.sitemap else []
+
         if len(blog_urls) > 50:
             logger.debug(f"    Truncating {len(blog_urls)} blog URLs to 50 for internal linking")
         if len(resource_urls) > 20:
@@ -250,6 +277,9 @@ async def process_single_article(
             "batch_siblings": batch_siblings,
             "sitemap_blog_urls": blog_urls[:50],
             "sitemap_resource_urls": resource_urls[:20],
+            "sitemap_tool_urls": tool_urls[:10],
+            "sitemap_product_urls": product_urls[:10],
+            "sitemap_service_urls": service_urls[:5],
         })
 
         # Deep copy to prevent mutation side effects
@@ -333,7 +363,7 @@ async def run_pipeline(
     logger.info("=" * 60)
 
     # Import Stage 1
-    sys.path.insert(0, str(Path(__file__).parent / "stage 1"))
+    sys.path.insert(0, str(Path(__file__).parent / "stage1"))
     from stage_1 import run_stage_1
     from stage1_models import Stage1Input
 

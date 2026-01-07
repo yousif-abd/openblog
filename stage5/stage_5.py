@@ -71,7 +71,7 @@ def _get_internal_links_prompt(links_text: str, sections_text: str) -> str:
     """Load internal links prompt from file or use fallback."""
     if _PROMPT_LOADER_AVAILABLE:
         try:
-            return load_prompt("stage 5", "internal_links",
+            return load_prompt("stage5", "internal_links",
                                links_text=links_text, sections_text=sections_text)
         except FileNotFoundError:
             # Prompt file doesn't exist - expected, use fallback
@@ -249,6 +249,39 @@ class InternalLinker:
                     url=rel_path,  # Use relative path, not full URL
                     title=self._url_to_title(url),
                     source="sitemap"
+                ))
+                seen_paths.add(rel_path)
+
+        # Add tool/calculator URLs (high value for user engagement)
+        for url in input_data.sitemap_tool_urls[:5]:
+            rel_path = self._normalize_to_path(url)
+            if rel_path and rel_path not in seen_paths and not self._is_current_article(url, current_href):
+                candidates.append(LinkCandidate(
+                    url=rel_path,
+                    title=self._url_to_title(url),
+                    source="tool"
+                ))
+                seen_paths.add(rel_path)
+
+        # Add product URLs
+        for url in input_data.sitemap_product_urls[:5]:
+            rel_path = self._normalize_to_path(url)
+            if rel_path and rel_path not in seen_paths and not self._is_current_article(url, current_href):
+                candidates.append(LinkCandidate(
+                    url=rel_path,
+                    title=self._url_to_title(url),
+                    source="product"
+                ))
+                seen_paths.add(rel_path)
+
+        # Add service URLs
+        for url in input_data.sitemap_service_urls[:3]:
+            rel_path = self._normalize_to_path(url)
+            if rel_path and rel_path not in seen_paths and not self._is_current_article(url, current_href):
+                candidates.append(LinkCandidate(
+                    url=rel_path,
+                    title=self._url_to_title(url),
+                    source="service"
                 ))
                 seen_paths.add(rel_path)
 

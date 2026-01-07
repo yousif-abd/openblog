@@ -5,13 +5,16 @@ Sets up all context for blog generation:
 1. Job Input: Keywords (batch), company URL, language, market
 2. Company Context: From provided data OR OpenContext (Gemini + Google Search)
 3. Sitemap: Crawled and labeled URLs for internal linking
+4. Voice Enhancement: Refine voice_persona by analyzing real blog content
 
 Micro-API Design:
 - Input: JSON with keywords, company_url, language, market, optional company_context
 - Output: JSON with job_id, keywords, company_context, sitemap, metadata
 - Can run as CLI or be imported as a module
 
-AI Calls: 0-1 (OpenContext only if company_context not provided)
+AI Calls: 0-2
+- OpenContext: 0-1 (only if company_context not provided)
+- Voice Enhancement: 0-1 (only if 3+ blog URLs available)
 """
 
 import asyncio
@@ -29,6 +32,8 @@ load_dotenv(Path(__file__).parent.parent / ".env")
 from stage1_models import Stage1Input, Stage1Output, ArticleJob, generate_slug
 from opencontext import get_company_context
 from sitemap_crawler import crawl_sitemap
+from voice_enhancer import sample_and_enhance
+from constants import VOICE_ENHANCEMENT_SAMPLE_SIZE, VOICE_ENHANCEMENT_MIN_BLOGS
 
 # Configure logging
 logging.basicConfig(
@@ -88,7 +93,30 @@ async def run_stage_1(input_data: Stage1Input) -> Stage1Output:
     logger.info(f"  Sitemap: {sitemap_data.total_pages} pages, {len(sitemap_data.blog_urls)} blog URLs")
 
     # -----------------------------------------
-    # Step 3: Generate Article Jobs with Slugs
+    # Step 3: Enhance Voice Persona from Blog Content (1 AI call)
+    # -----------------------------------------
+    voice_enhanced = False
+    voice_enhancement_urls = []
+
+    if sitemap_data.blog_urls and len(sitemap_data.blog_urls) >= VOICE_ENHANCEMENT_MIN_BLOGS:
+        logger.info(f"  Enhancing voice persona from {VOICE_ENHANCEMENT_SAMPLE_SIZE} blog samples...")
+        enhanced_persona, voice_enhancement_urls, voice_enhanced = await sample_and_enhance(
+            initial_persona=company_context.voice_persona,
+            blog_urls=sitemap_data.blog_urls,
+            sample_size=VOICE_ENHANCEMENT_SAMPLE_SIZE,
+            min_blogs_required=VOICE_ENHANCEMENT_MIN_BLOGS,
+        )
+        if voice_enhanced:
+            company_context.voice_persona = enhanced_persona
+            ai_calls += 1
+            logger.info(f"  Voice persona enhanced using {len(voice_enhancement_urls)} blog URLs")
+        else:
+            logger.info("  Voice enhancement skipped or failed, using initial persona")
+    else:
+        logger.info(f"  Not enough blog URLs ({len(sitemap_data.blog_urls)}) for voice enhancement, skipping")
+
+    # -----------------------------------------
+    # Step 4: Generate Article Jobs with Slugs
     # -----------------------------------------
     articles = []
     keyword_configs = input_data.get_keyword_configs()
@@ -115,6 +143,8 @@ async def run_stage_1(input_data: Stage1Input) -> Stage1Output:
         sitemap=sitemap_data,
         opencontext_called=opencontext_called,
         ai_calls=ai_calls,
+        voice_enhanced=voice_enhanced,
+        voice_enhancement_urls=voice_enhancement_urls,
     )
 
     logger.info(f"Stage 1 complete. Job ID: {output.job_id}")

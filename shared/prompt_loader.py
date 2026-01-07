@@ -8,10 +8,10 @@ Usage:
     from shared.prompt_loader import load_prompt
 
     # Load and format prompt
-    prompt = load_prompt("stage 1", "opencontext", url="https://example.com")
+    prompt = load_prompt("stage1", "opencontext", url="https://example.com")
 
     # Or load raw without formatting
-    raw = load_prompt("stage 1", "opencontext", format=False)
+    raw = load_prompt("stage1", "opencontext", format=False)
 """
 
 import logging
@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 _ROOT = Path(__file__).parent.parent
 
 # Valid stage names (whitelist for security)
-_VALID_STAGES = {"stage 1", "stage 2", "stage 3", "stage 4", "stage 5", "stage refresh", "shared"}
+_VALID_STAGES = {"stage1", "stage2", "stage3", "stage4", "stage5", "stage_refresh", "shared"}
 
 
 def _validate_path_component(name: str, component_type: str) -> str:
@@ -53,7 +53,7 @@ def _validate_path_component(name: str, component_type: str) -> str:
     if "/" in name or "\\" in name:
         raise ValueError(f"Invalid {component_type}: path separators not allowed")
 
-    # Only allow alphanumeric, underscore, hyphen, space (for "stage 1" etc)
+    # Only allow alphanumeric, underscore, hyphen
     if not re.match(r'^[\w\s\-]+$', name):
         raise ValueError(f"Invalid {component_type}: contains invalid characters")
 
@@ -70,7 +70,7 @@ def load_prompt(
     Load a prompt from a text file.
 
     Args:
-        stage: Stage folder name (e.g., "stage 1", "stage 2")
+        stage: Stage folder name (e.g., "stage1", "stage2")
         prompt_name: Prompt file name without extension (e.g., "opencontext", "blog_prompt")
         format: Whether to format placeholders with kwargs
         **kwargs: Placeholder values (e.g., url="...", keyword="...")

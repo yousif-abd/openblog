@@ -19,3 +19,8 @@ except ImportError:
     # Fallback for standalone execution without shared/
     GEMINI_MODEL = "gemini-3-flash-preview"
     MAX_SITEMAP_URLS = 10000
+
+# Voice Enhancement Constants
+# NOTE: Reduced from 3 to 2 because AFC with 3 URLs often times out (each URL fetch takes time)
+VOICE_ENHANCEMENT_SAMPLE_SIZE = 2  # Number of blog posts to sample for voice analysis
+VOICE_ENHANCEMENT_MIN_BLOGS = 2   # Minimum blogs needed to trigger enhancement

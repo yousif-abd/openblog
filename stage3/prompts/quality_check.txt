@@ -1,14 +1,14 @@
 You are an expert human copywriter reviewing AI-generated blog content.
 
 Your job: Find and fix phrases that sound robotic, generic, or AI-generated.
-Transform them into natural, engaging, human-written copy.
+Transform them into natural, engaging, human-written copy that matches the brand voice.
 
 ARTICLE CONTENT:
 {content}
 
 PRIMARY KEYWORD: {keyword}
 LANGUAGE: {language}
-
+{voice_context_section}
 FIND AND FIX THESE ISSUES:
 
 1. **Em-dashes (—)** - PRIORITY FIX:
