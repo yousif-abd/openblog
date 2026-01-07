@@ -167,13 +167,12 @@ openblog-neo/
 │   ├── html_renderer.py    # Render article to HTML
 │   ├── article_exporter.py # Export to multiple formats
 │   └── constants.py        # Model configuration
-├── stage 1/                # Set Context (company, authors, sitemap)
-├── stage 2/                # Blog Gen + Images
-├── stage 3/                # Quality Check
-├── stage 4/                # URL Verify
-├── stage 5/                # Internal Links
-├── run_pipeline.py         # Main CLI orchestrator
-├── api.py                  # FastAPI REST API
+├── stage1/                 # Set Context (company, authors, sitemap)
+├── stage2/                 # Blog Gen + Images
+├── stage3/                 # Quality Check
+├── stage4/                 # URL Verify
+├── stage5/                 # Internal Links
+├── run_pipeline.py         # Main orchestrator
 └── requirements.txt
 ```
 

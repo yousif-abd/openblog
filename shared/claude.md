@@ -219,7 +219,7 @@ Load prompts from text files with variable substitution:
 from shared.prompt_loader import load_prompt
 
 prompt = load_prompt(
-    "stage 3",
+    "stage3",
     "quality_check",
     content=content_text,
     keyword=keyword,

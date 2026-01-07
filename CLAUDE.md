@@ -31,7 +31,7 @@ Export    Export    Export    ← HTML/MD/JSON/CSV/XLSX/PDF
 
 | Stage | Name | AI Calls | Purpose |
 |-------|------|----------|---------|
-| 1 | Set Context | 0-1 | Company context + authors + sitemap (runs once per batch) |
+| 1 | Set Context | 0-2 | Company context + voice enhancement + sitemap (runs once per batch) |
 | 2 | Blog Gen + Images | 1-4 | Generate article with Gemini + 3 images with Imagen |
 | 3 | Quality Check | 1 | Surgical find/replace fixes (uses structured schema) |
 | 4 | URL Verify | 0-2 | Validate/replace dead URLs (uses structured schema) |
@@ -56,11 +56,11 @@ openblog-neo/
 │   ├── article_exporter.py # Export to multiple formats
 │   ├── prompt_loader.py    # Load prompts from text files
 │   └── constants.py        # GEMINI_MODEL, MAX_SITEMAP_URLS
-├── stage 1/                # Set Context (company, authors, sitemap)
-├── stage 2/                # Blog Gen + Images
-├── stage 3/                # Quality Check
-├── stage 4/                # URL Verify
-├── stage 5/                # Internal Links
+├── stage1/                 # Set Context (company, authors, sitemap)
+├── stage2/                 # Blog Gen + Images
+├── stage3/                 # Quality Check
+├── stage4/                 # URL Verify
+├── stage5/                 # Internal Links
 ├── run_pipeline.py         # Main orchestrator
 └── requirements.txt
 ```
@@ -96,7 +96,7 @@ python run_pipeline.py --url https://example.com --keywords "topic" \
     --output results/ --skip-images --max-parallel 2
 
 # Run individual stage
-python "stage 1/stage_1.py" --url https://example.com --keywords "keyword 1"
+python stage1/stage_1.py --url https://example.com --keywords "keyword 1"
 ```
 
 ## Dependencies

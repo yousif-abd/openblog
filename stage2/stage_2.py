@@ -52,7 +52,7 @@ from image_prompts import build_image_prompt
 # Import models from stage 1 (single source of truth)
 try:
     from importlib import util as importlib_util
-    _stage1_path = _parent / "stage 1" / "stage1_models.py"
+    _stage1_path = _parent / "stage1" / "stage1_models.py"
     _spec = importlib_util.spec_from_file_location("stage1_models", _stage1_path)
     _stage1_models = importlib_util.module_from_spec(_spec)
     _spec.loader.exec_module(_stage1_models)
@@ -60,7 +60,7 @@ try:
     VisualIdentity = _stage1_models.VisualIdentity
     AuthorInfo = _stage1_models.AuthorInfo
 except (ImportError, FileNotFoundError, AttributeError, ModuleNotFoundError, SyntaxError) as e:
-    logging.warning(f"Could not import stage 1 models, using local definitions: {e}")
+    logging.warning(f"Could not import stage1 models, using local definitions: {e}")
     # Fallback definitions if import fails
     class AuthorInfo(BaseModel):
         """Author information from Stage 1."""
