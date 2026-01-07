@@ -2,9 +2,11 @@
 Sitemap Crawler - Fetch and Label URLs from Company Sitemap
 
 Fetches all URLs from a company's sitemap and auto-labels them by type:
-- blog, product, service, docs, resource, company, legal, contact, landing, other
+- blog, product, service, docs, resource, company, legal, contact, landing, tool, other
 
-No AI calls - pure HTTP fetching + regex pattern matching.
+Uses hybrid smart classifier for sites without standard /blog/ patterns:
+1. Fast path: Standard /blog/ patterns → immediate classification
+2. Smart classifier: URL structure + sitemap metadata + title sampling + AI fallback
 """
 
 import asyncio
@@ -12,6 +14,7 @@ import logging
 import re
 import time
 from collections import OrderedDict
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 from urllib.parse import urlparse
@@ -31,6 +34,19 @@ logger = logging.getLogger(__name__)
 
 
 # =============================================================================
+# URL Entry with Metadata
+# =============================================================================
+
+@dataclass
+class URLEntry:
+    """URL entry with sitemap metadata."""
+    url: str
+    priority: Optional[float] = None
+    changefreq: Optional[str] = None
+    lastmod: Optional[str] = None
+
+
+# =============================================================================
 # URL Pattern Matching
 # =============================================================================
 
@@ -38,6 +54,8 @@ logger = logging.getLogger(__name__)
 URL_PATTERNS: Dict[str, List[str]] = {
     "blog": [
         r"\/blog\/?",
+        r"\/magazine\/?",
+        r"\/magazin\/?",  # German spelling
         r"\/news\/?",
         r"\/articles?\/?",
         r"\/posts?\/?",
@@ -101,11 +119,14 @@ URL_PATTERNS: Dict[str, List[str]] = {
         r"\/impressum\/?",
         r"\/privacy\/?",
         r"\/privacy-policy\/?",
+        r"\/datenschutz\/?",  # German for privacy
         r"\/terms\/?",
+        r"\/agb\/?",  # German for terms (Allgemeine Geschäftsbedingungen)
         r"\/legal\/?",
         r"\/disclaimer\/?",
         r"\/cookies?\/?",
         r"\/gdpr\/?",
+        r"\/dsgvo\/?",  # German for GDPR
     ],
     "contact": [
         r"\/contact\/?",
@@ -153,7 +174,8 @@ class SitemapCrawler:
 
     Features:
     - Handles sitemap.xml and sitemap_index.xml
-    - Auto-labels URLs by type (blog, product, service, etc.)
+    - Auto-labels URLs by type (blog, product, service, tool, etc.)
+    - Smart classifier for sites without standard /blog/ patterns
     - Optional HTTP validation to filter broken links
     - Caching with TTL
     - Configurable URL limit
@@ -168,6 +190,12 @@ class SitemapCrawler:
     # Maximum number of cache entries to prevent memory leaks in long-running processes
     MAX_CACHE_ENTRIES = 100
 
+    # Threshold for triggering smart classifier (ratio of other_urls to total)
+    SMART_CLASSIFIER_THRESHOLD = 0.7
+
+    # Minimum "other" URLs to trigger smart classifier
+    SMART_CLASSIFIER_MIN_OTHER = 50
+
     def __init__(
         self,
         max_urls: int = MAX_SITEMAP_URLS,
@@ -177,6 +205,10 @@ class SitemapCrawler:
         validation_sample_size: int = 50,
         validation_concurrency: int = 10,
         max_cache_entries: int = None,
+        enable_smart_classifier: bool = True,
+        smart_classifier_sample_size: int = 20,
+        enable_ai_fallback: bool = False,
+        gemini_client = None,
     ):
         """
         Initialize crawler.
@@ -189,6 +221,10 @@ class SitemapCrawler:
             validation_sample_size: Max URLs to validate (for performance)
             validation_concurrency: Max concurrent validation requests
             max_cache_entries: Maximum cache entries (default: 100)
+            enable_smart_classifier: Enable smart classifier for non-standard sites
+            smart_classifier_sample_size: URLs to sample for title fetching
+            enable_ai_fallback: Enable AI for pattern discovery (requires gemini_client)
+            gemini_client: GeminiClient for AI fallback
         """
         self.max_urls = max_urls
         self.timeout = Timeout(connect=5.0, read=timeout, write=5.0, pool=5.0)
@@ -197,7 +233,12 @@ class SitemapCrawler:
         self.validation_sample_size = validation_sample_size
         self.validation_concurrency = validation_concurrency
         self.max_cache_entries = max_cache_entries or self.MAX_CACHE_ENTRIES
+        self.enable_smart_classifier = enable_smart_classifier
+        self.smart_classifier_sample_size = smart_classifier_sample_size
+        self.enable_ai_fallback = enable_ai_fallback
+        self.gemini_client = gemini_client
         self._cache: OrderedDict[str, Tuple[SitemapData, float]] = OrderedDict()
+        self._url_metadata: Dict[str, URLEntry] = {}  # Store metadata for smart classifier
 
     async def crawl(self, company_url: str, validate: Optional[bool] = None) -> SitemapData:
         """
@@ -221,7 +262,7 @@ class SitemapCrawler:
         logger.info(f"Crawling sitemap for {company_url}")
 
         # Check cache - include all parameters that affect output
-        cache_key = f"{company_url}:{self.max_urls}:{should_validate}:{self.validation_sample_size}"
+        cache_key = f"{company_url}:{self.max_urls}:{should_validate}:{self.validation_sample_size}:{self.enable_smart_classifier}"
         if cache_key in self._cache:
             data, timestamp = self._cache[cache_key]
             if time.time() - timestamp < self.cache_ttl:
@@ -229,12 +270,16 @@ class SitemapCrawler:
                 return data
 
         try:
-            # Fetch all URLs
-            urls = await self._fetch_all_urls(company_url)
+            # Fetch all URLs with metadata for smart classifier
+            entries = await self._fetch_all_urls_with_metadata(company_url)
 
-            if not urls:
+            if not entries:
                 logger.warning(f"No URLs found in sitemap for {company_url}")
                 return SitemapData()
+
+            # Store metadata for smart classifier
+            self._url_metadata = {e.url: e for e in entries}
+            urls = [e.url for e in entries]
 
             # Limit URLs
             if len(urls) > self.max_urls:
@@ -246,8 +291,11 @@ class SitemapCrawler:
                 urls = await self._validate_urls(urls)
                 logger.info(f"After validation: {len(urls)} valid URLs")
 
-            # Classify and group URLs
-            result = self._classify_urls(urls)
+            # Classify and group URLs (with smart classifier if enabled)
+            if self.enable_smart_classifier:
+                result = await self._classify_urls_smart(urls)
+            else:
+                result = self._classify_urls(urls)
 
             # Cache result with LRU eviction
             self._cache[cache_key] = (result, time.time())
@@ -259,6 +307,9 @@ class SitemapCrawler:
 
             duration = time.time() - start_time
             logger.info(f"Sitemap crawl complete: {result.total_pages} URLs in {duration:.2f}s")
+            if result.smart_classifier_used:
+                logger.info(f"Smart classifier: method={result.classification_method}, "
+                           f"confidence={result.classification_confidence:.2f}")
 
             return result
 
@@ -330,7 +381,17 @@ class SitemapCrawler:
 
         Tries multiple sitemap locations and handles sitemap_index.xml.
         """
-        all_urls: List[str] = []
+        entries = await self._fetch_all_urls_with_metadata(company_url)
+        return [e.url for e in entries]
+
+    async def _fetch_all_urls_with_metadata(self, company_url: str) -> List[URLEntry]:
+        """
+        Fetch all URLs with metadata from sitemap(s).
+
+        Tries multiple sitemap locations and handles sitemap_index.xml.
+        Returns URLEntry objects with priority, changefreq, lastmod.
+        """
+        all_entries: List[URLEntry] = []
 
         # Standard sitemap locations
         sitemap_locations = [
@@ -370,29 +431,35 @@ class SitemapCrawler:
                     if sitemaps:
                         logger.info(f"Found sitemap_index with {len(sitemaps)} sitemaps")
                         # Fetch all sub-sitemaps concurrently
-                        # Ensure elem.text is not empty (empty string passes 'if elem.text')
                         tasks = [
-                            self._fetch_sub_sitemap(client, elem.text.strip())
+                            self._fetch_sub_sitemap_with_metadata(client, elem.text.strip())
                             for elem in sitemaps if elem.text and elem.text.strip()
                         ]
                         results = await asyncio.gather(*tasks, return_exceptions=True)
                         for result in results:
                             if isinstance(result, list):
-                                all_urls.extend(result)
+                                all_entries.extend(result)
                         break
                     else:
                         # Regular sitemap
-                        urls = self._extract_urls(response.content)
-                        all_urls.extend(urls)
-                        logger.info(f"Found {len(urls)} URLs in {sitemap_url}")
+                        entries = self._extract_urls_with_metadata(response.content)
+                        all_entries.extend(entries)
+                        logger.info(f"Found {len(entries)} URLs in {sitemap_url}")
                         break
 
                 except Exception as e:
                     logger.debug(f"Failed to fetch {sitemap_url}: {e}")
                     continue
 
-        # Deduplicate
-        return list(set(all_urls))
+        # Deduplicate by URL
+        seen = set()
+        unique_entries = []
+        for entry in all_entries:
+            if entry.url not in seen:
+                seen.add(entry.url)
+                unique_entries.append(entry)
+
+        return unique_entries
 
     async def _fetch_sub_sitemap(self, client: httpx.AsyncClient, url: str) -> List[str]:
         """Fetch URLs from a sub-sitemap."""
@@ -401,6 +468,17 @@ class SitemapCrawler:
             response = await client.get(url)
             if response.status_code == 200:
                 return self._extract_urls(response.content)
+        except Exception as e:
+            logger.debug(f"Failed to fetch sub-sitemap {url}: {e}")
+        return []
+
+    async def _fetch_sub_sitemap_with_metadata(self, client: httpx.AsyncClient, url: str) -> List[URLEntry]:
+        """Fetch URLs with metadata from a sub-sitemap."""
+        try:
+            await asyncio.sleep(0.2)  # Rate limiting
+            response = await client.get(url)
+            if response.status_code == 200:
+                return self._extract_urls_with_metadata(response.content)
         except Exception as e:
             logger.debug(f"Failed to fetch sub-sitemap {url}: {e}")
         return []
@@ -419,6 +497,54 @@ class SitemapCrawler:
             logger.warning(f"Failed to parse XML: {e}")
         return urls
 
+    def _extract_urls_with_metadata(self, content: bytes) -> List[URLEntry]:
+        """Extract URLs with full metadata from sitemap XML content."""
+        entries = []
+        try:
+            root = ET.fromstring(content)
+            ns = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
+
+            for url_elem in root.findall(".//sm:url", ns):
+                loc_elem = url_elem.find("sm:loc", ns)
+                # Use 'is None' check - Element with no children evaluates to falsy
+                if loc_elem is None or not loc_elem.text or not loc_elem.text.strip():
+                    continue
+
+                url = loc_elem.text.strip()
+                if not self._is_valid_url(url):
+                    continue
+
+                # Extract optional metadata
+                priority = None
+                priority_elem = url_elem.find("sm:priority", ns)
+                if priority_elem is not None and priority_elem.text:
+                    try:
+                        priority = float(priority_elem.text.strip())
+                    except ValueError:
+                        pass
+
+                changefreq = None
+                changefreq_elem = url_elem.find("sm:changefreq", ns)
+                if changefreq_elem is not None and changefreq_elem.text:
+                    changefreq = changefreq_elem.text.strip().lower()
+
+                lastmod = None
+                lastmod_elem = url_elem.find("sm:lastmod", ns)
+                if lastmod_elem is not None and lastmod_elem.text:
+                    lastmod = lastmod_elem.text.strip()
+
+                entries.append(URLEntry(
+                    url=url,
+                    priority=priority,
+                    changefreq=changefreq,
+                    lastmod=lastmod,
+                ))
+
+        except ET.ParseError as e:
+            logger.warning(f"Failed to parse XML: {e}")
+
+        return entries
+
     def _is_valid_url(self, url: str) -> bool:
         """Validate URL - reject dangerous protocols."""
         if not url or not isinstance(url, str):
@@ -433,12 +559,13 @@ class SitemapCrawler:
             return False
 
     def _classify_urls(self, urls: List[str]) -> SitemapData:
-        """Classify all URLs and return SitemapData."""
+        """Classify all URLs and return SitemapData (sync version)."""
         blog_urls = []
         product_urls = []
         service_urls = []
         resource_urls = []
         docs_urls = []
+        tool_urls = []
         other_urls = []
 
         for url in urls:
@@ -463,7 +590,118 @@ class SitemapCrawler:
             service_urls=service_urls,
             resource_urls=resource_urls,
             docs_urls=docs_urls,
+            tool_urls=tool_urls,
             other_urls=other_urls,
+        )
+
+    async def _classify_urls_smart(self, urls: List[str]) -> SitemapData:
+        """
+        Classify URLs with smart classifier fallback.
+
+        Uses pattern matching first, then smart classifier if too many URLs
+        end up in "other" category.
+        """
+        # First pass: pattern-based classification
+        blog_urls = []
+        product_urls = []
+        service_urls = []
+        resource_urls = []
+        docs_urls = []
+        tool_urls = []
+        other_urls = []
+
+        for url in urls:
+            label = classify_url(url)
+            if label == "blog":
+                blog_urls.append(url)
+            elif label == "product":
+                product_urls.append(url)
+            elif label == "service":
+                service_urls.append(url)
+            elif label == "resource":
+                resource_urls.append(url)
+            elif label == "docs":
+                docs_urls.append(url)
+            else:
+                other_urls.append(url)
+
+        total = len(urls)
+        other_ratio = len(other_urls) / total if total > 0 else 0
+
+        # Check if smart classifier should be triggered
+        should_use_smart = (
+            self.enable_smart_classifier and
+            len(other_urls) >= self.SMART_CLASSIFIER_MIN_OTHER and
+            other_ratio >= self.SMART_CLASSIFIER_THRESHOLD
+        )
+
+        classification_method = "pattern"
+        classification_confidence = 1.0
+        smart_classifier_used = False
+
+        if should_use_smart:
+            logger.info(f"Triggering smart classifier: {len(other_urls)} other URLs "
+                       f"({other_ratio:.1%} of total)")
+
+            try:
+                from smart_classifier import SmartClassifier, SitemapEntry
+
+                # Build entries with metadata
+                entries = []
+                for url in other_urls:
+                    meta = self._url_metadata.get(url)
+                    if meta:
+                        entries.append(SitemapEntry(
+                            url=url,
+                            priority=meta.priority,
+                            changefreq=meta.changefreq,
+                            lastmod=meta.lastmod,
+                        ))
+                    else:
+                        entries.append(SitemapEntry(url=url))
+
+                classifier = SmartClassifier(
+                    sample_size=self.smart_classifier_sample_size,
+                    enable_ai_fallback=self.enable_ai_fallback,
+                    gemini_client=self.gemini_client,
+                )
+
+                result = await classifier.classify(
+                    entries=entries,
+                    known_blog_urls=blog_urls,
+                )
+
+                # Update classification with smart results
+                # Keep existing blog_urls and add newly discovered ones
+                new_blogs = [u for u in result.blog_urls if u not in blog_urls]
+                blog_urls.extend(new_blogs)
+                tool_urls.extend(result.tool_urls)
+                other_urls = result.other_urls
+
+                classification_method = result.method_used
+                classification_confidence = result.confidence
+                smart_classifier_used = True
+
+                logger.info(f"Smart classifier found {len(new_blogs)} additional blogs, "
+                           f"{len(tool_urls)} tools")
+
+            except ImportError as e:
+                logger.warning(f"Smart classifier not available: {e}")
+            except Exception as e:
+                logger.warning(f"Smart classifier failed: {e}")
+
+        return SitemapData(
+            total_pages=len(urls),
+            blog_urls=blog_urls,
+            product_urls=product_urls,
+            service_urls=service_urls,
+            resource_urls=resource_urls,
+            docs_urls=docs_urls,
+            tool_urls=tool_urls,
+            other_urls=other_urls,
+            classification_method=classification_method,
+            classification_confidence=classification_confidence,
+            smart_classifier_used=smart_classifier_used,
         )
 
 
@@ -476,6 +714,10 @@ async def crawl_sitemap(
     max_urls: int = MAX_SITEMAP_URLS,
     validate_urls: bool = False,
     validation_sample_size: int = 50,
+    enable_smart_classifier: bool = True,
+    smart_classifier_sample_size: int = 20,
+    enable_ai_fallback: bool = False,
+    gemini_client = None,
 ) -> SitemapData:
     """
     Crawl company sitemap and return labeled URLs.
@@ -485,6 +727,10 @@ async def crawl_sitemap(
         max_urls: Maximum URLs to return
         validate_urls: If True, validate URLs with HEAD requests (filters broken links)
         validation_sample_size: Max URLs to validate when validate_urls=True
+        enable_smart_classifier: Enable smart classifier for non-standard sites
+        smart_classifier_sample_size: URLs to sample for title fetching
+        enable_ai_fallback: Enable AI for pattern discovery
+        gemini_client: GeminiClient for AI fallback
 
     Returns:
         SitemapData with categorized URLs
@@ -493,6 +739,10 @@ async def crawl_sitemap(
         max_urls=max_urls,
         validate_urls=validate_urls,
         validation_sample_size=validation_sample_size,
+        enable_smart_classifier=enable_smart_classifier,
+        smart_classifier_sample_size=smart_classifier_sample_size,
+        enable_ai_fallback=enable_ai_fallback,
+        gemini_client=gemini_client,
     )
     return await crawler.crawl(company_url)
 

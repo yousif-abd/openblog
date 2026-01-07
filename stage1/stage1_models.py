@@ -59,6 +59,8 @@ class LanguageStyle(BaseModel):
     complexity: Optional[str] = Field(default="moderate", description="simple/moderate/technical/expert")
     sentence_length: Optional[str] = Field(default="mixed", description="short and punchy / mixed / detailed")
     perspective: Optional[str] = Field(default="expert-to-learner", description="peer-to-peer / expert-to-learner / consultant-to-executive")
+    avg_words_per_sentence: Optional[int] = Field(default=None, description="Average words per sentence observed")
+    reading_level: Optional[str] = Field(default="", description="Estimated reading level (e.g., '8th grade', 'college', 'expert')")
 
 
 class VoicePersona(BaseModel):
@@ -73,6 +75,22 @@ class VoicePersona(BaseModel):
     dont_list: List[str] = Field(default_factory=list, description="Anti-patterns to avoid")
     example_phrases: List[str] = Field(default_factory=list, description="Phrases that capture tone")
     opening_styles: List[str] = Field(default_factory=list, description="Section openers that engage")
+
+    # Enhanced fields from blog content analysis
+    transition_phrases: List[str] = Field(default_factory=list, description="Phrases used to transition between sections")
+    closing_styles: List[str] = Field(default_factory=list, description="How articles typically end/conclude")
+    headline_patterns: List[str] = Field(default_factory=list, description="Patterns observed in headlines/titles")
+    subheading_styles: List[str] = Field(default_factory=list, description="How subheadings are written")
+    cta_phrases: List[str] = Field(default_factory=list, description="Call-to-action phrases used")
+    technical_terms: List[str] = Field(default_factory=list, description="Domain-specific terms frequently used")
+    power_words: List[str] = Field(default_factory=list, description="Impactful words that appear frequently")
+    banned_words: List[str] = Field(default_factory=list, description="Words/phrases to never use")
+    paragraph_length: Optional[str] = Field(default="", description="Typical paragraph length (short/medium/long)")
+    uses_questions: Optional[bool] = Field(default=None, description="Whether rhetorical questions are common")
+    uses_lists: Optional[bool] = Field(default=None, description="Whether bullet/numbered lists are common")
+    uses_statistics: Optional[bool] = Field(default=None, description="Whether data/statistics are frequently cited")
+    first_person_usage: Optional[str] = Field(default="", description="How first person is used (we/I/avoided)")
+    content_structure_pattern: Optional[str] = Field(default="", description="Common article structure (e.g., problem-solution, how-to, listicle)")
 
 
 # =============================================================================
@@ -94,10 +112,16 @@ class AuthorInfo(BaseModel):
 # =============================================================================
 
 class BlogImageExample(BaseModel):
-    """Example image from existing blog posts for style reference."""
-    url: str = Field(..., description="Image URL")
+    """Example image from existing blog posts for style reference.
+
+    Note: url is optional because AI models often hallucinate image URLs.
+    The description is the primary value - it informs image generation style.
+    URLs are only populated if they pass HTTP validation.
+    """
+    url: str = Field(default="", description="Image URL (optional - only populated if validated)")
     description: str = Field(default="", description="AI-generated description of the image style/content")
     image_type: str = Field(default="hero", description="Type: hero, inline, infographic, etc.")
+    validated: bool = Field(default=False, description="Whether the URL was validated via HTTP")
 
 
 class VisualIdentity(BaseModel):
@@ -202,7 +226,13 @@ class SitemapData(BaseModel):
     service_urls: List[str] = Field(default_factory=list, description="URLs labeled as service pages")
     resource_urls: List[str] = Field(default_factory=list, description="URLs labeled as resources (whitepapers, case studies)")
     docs_urls: List[str] = Field(default_factory=list, description="URLs labeled as documentation")
+    tool_urls: List[str] = Field(default_factory=list, description="URLs labeled as tools/calculators")
     other_urls: List[str] = Field(default_factory=list, description="URLs with other/unknown labels")
+
+    # Smart classification metadata
+    classification_method: str = Field(default="pattern", description="Method used: pattern, url_analysis, title_sampling, ai_assisted")
+    classification_confidence: float = Field(default=1.0, description="Classification confidence (0-1)")
+    smart_classifier_used: bool = Field(default=False, description="Whether smart classifier was triggered")
 
 
 # =============================================================================
@@ -318,3 +348,7 @@ class Stage1Output(BaseModel):
     # Metadata
     opencontext_called: bool = Field(default=False, description="Whether OpenContext was called (vs provided)")
     ai_calls: int = Field(default=0, description="Number of AI calls made")
+
+    # Voice Enhancement Metadata
+    voice_enhanced: bool = Field(default=False, description="Whether voice was enhanced from blog samples")
+    voice_enhancement_urls: List[str] = Field(default_factory=list, description="Blog URLs used for voice enhancement")

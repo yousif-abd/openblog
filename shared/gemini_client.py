@@ -23,10 +23,10 @@ import httpx
 
 from dotenv import load_dotenv
 
-from .constants import GEMINI_MODEL
+from .constants import GEMINI_MODEL, GEMINI_TIMEOUT_GROUNDING, GEMINI_TIMEOUT_DEFAULT
 
 # Default retry configuration
-DEFAULT_MAX_RETRIES = 3
+DEFAULT_MAX_RETRIES = 4  # Increased for grounding operations that may take longer
 DEFAULT_BASE_DELAY = 1.0  # seconds
 DEFAULT_MAX_DELAY = 30.0  # seconds
 
@@ -117,7 +117,7 @@ class GeminiClient:
         extract_sources: bool = False,
         temperature: float = 0.3,
         max_tokens: int = 8192,
-        timeout: int = 120,
+        timeout: Optional[int] = None,
     ) -> Union[Dict[str, Any], str]:
         """
         Generate content using Gemini 3.
@@ -131,7 +131,7 @@ class GeminiClient:
             extract_sources: Extract real URLs from grounding metadata and add to result
             temperature: Generation temperature (0-1)
             max_tokens: Maximum output tokens
-            timeout: Request timeout in seconds
+            timeout: Request timeout in seconds (auto-selected based on grounding tools if None)
 
         Returns:
             Dict if json_output=True, otherwise raw string.
@@ -145,6 +145,11 @@ class GeminiClient:
             tools.append(self._types.Tool(url_context=self._types.UrlContext()))
         if use_google_search:
             tools.append(self._types.Tool(google_search=self._types.GoogleSearch()))
+
+        # Auto-select timeout based on grounding tools (AFC makes external calls)
+        if timeout is None:
+            timeout = GEMINI_TIMEOUT_GROUNDING if tools else GEMINI_TIMEOUT_DEFAULT
+            logger.debug(f"Auto-selected timeout: {timeout}s (grounding={bool(tools)})")
 
         # Build config
         config = self._types.GenerateContentConfig(
@@ -415,7 +420,7 @@ class GeminiClient:
         use_google_search: bool = True,
         extract_sources: bool = False,
         temperature: float = 0.3,
-        timeout: int = 120,
+        timeout: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         Generate content with a specific response schema.
@@ -427,7 +432,7 @@ class GeminiClient:
             use_google_search: Enable Google Search tool
             extract_sources: Extract real URLs from grounding metadata
             temperature: Generation temperature
-            timeout: Request timeout in seconds
+            timeout: Request timeout in seconds (auto-selected based on grounding tools if None)
 
         Returns:
             Dict matching the response schema.
@@ -441,6 +446,11 @@ class GeminiClient:
             tools.append(self._types.Tool(url_context=self._types.UrlContext()))
         if use_google_search:
             tools.append(self._types.Tool(google_search=self._types.GoogleSearch()))
+
+        # Auto-select timeout based on grounding tools (AFC makes external calls)
+        if timeout is None:
+            timeout = GEMINI_TIMEOUT_GROUNDING if tools else GEMINI_TIMEOUT_DEFAULT
+            logger.debug(f"Auto-selected timeout: {timeout}s (grounding={bool(tools)})")
 
         config = self._types.GenerateContentConfig(
             temperature=temperature,

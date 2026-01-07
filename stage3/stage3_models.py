@@ -4,7 +4,7 @@ Stage 3: Quality Check - Data Models
 Pydantic models for input/output JSON schemas.
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -24,6 +24,20 @@ class QualityFix(BaseModel):
         return f"QualityFix(field={self.field!r}, find={find_preview!r}, replace={replace_preview!r})"
 
 
+class VoiceContext(BaseModel):
+    """Voice context from Stage 1 for brand-aligned quality fixes."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    tone: str = Field(default="professional", description="Brand tone")
+    banned_words: List[str] = Field(default_factory=list, description="Words to never use")
+    do_list: List[str] = Field(default_factory=list, description="Writing behaviors to follow")
+    dont_list: List[str] = Field(default_factory=list, description="Writing behaviors to avoid")
+    example_phrases: List[str] = Field(default_factory=list, description="Example phrases for tone")
+    formality: str = Field(default="", description="Formality level")
+    first_person_usage: str = Field(default="", description="How to use first person (we/I/avoided)")
+
+
 class Stage3Input(BaseModel):
     """Input for Stage 3: Quality Check."""
 
@@ -33,6 +47,12 @@ class Stage3Input(BaseModel):
     keyword: str = Field(default="", description="Primary keyword for context")
     language: str = Field(default="en", description="Target language (en, de, fr, etc.)")
     enabled: bool = Field(default=True, description="Set to False to skip quality check")
+
+    # Voice context from Stage 1 for brand-aligned fixes
+    voice_context: Optional[VoiceContext] = Field(
+        default=None,
+        description="Voice context for brand-aligned quality fixes"
+    )
 
 
 class Stage3Output(BaseModel):

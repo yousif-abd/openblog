@@ -233,7 +233,12 @@ async def write_article(
 
 
 def _format_company_context(context: Dict[str, Any]) -> str:
-    """Format company context dict into readable string."""
+    """
+    Format company context dict into readable string for Gemini prompt.
+
+    Includes full voice persona, pain points, value propositions, and competitors
+    to guide content generation aligned with brand voice.
+    """
     # Warn about missing critical fields
     if not context.get('company_name'):
         logger.warning("Missing company_name in context - using 'Unknown'")
@@ -257,23 +262,129 @@ def _format_company_context(context: Dict[str, Any]) -> str:
     products = context.get('products', [])
     if products:
         if isinstance(products, list):
-            lines.append(f"Products: {', '.join(str(p) for p in products)}")
+            lines.append(f"Products/Services: {', '.join(str(p) for p in products)}")
         else:
-            lines.append(f"Products: {products}")
+            lines.append(f"Products/Services: {products}")
 
+    # Add pain points - helps content address real customer problems
+    pain_points = context.get('pain_points', [])
+    if pain_points:
+        if isinstance(pain_points, list):
+            lines.append(f"Customer Pain Points: {'; '.join(str(p) for p in pain_points)}")
+        else:
+            lines.append(f"Customer Pain Points: {pain_points}")
+
+    # Add value propositions - helps frame solutions and CTAs
+    value_props = context.get('value_propositions', [])
+    if value_props:
+        if isinstance(value_props, list):
+            lines.append(f"Value Propositions: {'; '.join(str(v) for v in value_props)}")
+        else:
+            lines.append(f"Value Propositions: {value_props}")
+
+    # Add competitors to AVOID mentioning
+    competitors = context.get('competitors', [])
+    if competitors:
+        if isinstance(competitors, list):
+            lines.append(f"COMPETITORS (NEVER mention these): {', '.join(str(c) for c in competitors)}")
+        else:
+            lines.append(f"COMPETITORS (NEVER mention these): {competitors}")
+
+    # Add use cases if available
+    use_cases = context.get('use_cases', [])
+    if use_cases:
+        if isinstance(use_cases, list):
+            lines.append(f"Common Use Cases: {'; '.join(str(u) for u in use_cases)}")
+        else:
+            lines.append(f"Common Use Cases: {use_cases}")
+
+    # Full voice persona section
     voice = context.get('voice_persona', {})
     if voice:
+        lines.append("")
+        lines.append("=== VOICE & WRITING STYLE ===")
+
+        # ICP profile - who we're writing for
+        icp = voice.get('icp_profile', '')
+        if icp:
+            lines.append(f"Ideal Reader: {icp}")
+
         voice_style = voice.get('voice_style', '')
         if voice_style:
             lines.append(f"Voice Style: {voice_style}")
+
+        # Language style details
         lang_style = voice.get('language_style', {})
         if lang_style:
-            formality = lang_style.get('formality', '')
-            perspective = lang_style.get('perspective', '')
-            if formality:
-                lines.append(f"Formality: {formality}")
-            if perspective:
-                lines.append(f"Perspective: {perspective}")
+            style_parts = []
+            if lang_style.get('formality'):
+                style_parts.append(f"Formality: {lang_style['formality']}")
+            if lang_style.get('complexity'):
+                style_parts.append(f"Complexity: {lang_style['complexity']}")
+            if lang_style.get('perspective'):
+                style_parts.append(f"Perspective: {lang_style['perspective']}")
+            if lang_style.get('sentence_length'):
+                style_parts.append(f"Sentences: {lang_style['sentence_length']}")
+            if style_parts:
+                lines.append(f"Language Style: {', '.join(style_parts)}")
+
+        # DO list - behaviors that resonate
+        do_list = voice.get('do_list', [])
+        if do_list:
+            lines.append(f"DO: {'; '.join(str(d) for d in do_list[:5])}")
+
+        # DON'T list - anti-patterns to avoid
+        dont_list = voice.get('dont_list', [])
+        if dont_list:
+            lines.append(f"DON'T: {'; '.join(str(d) for d in dont_list[:5])}")
+
+        # Banned words - critical for avoiding AI-sounding phrases
+        banned = voice.get('banned_words', [])
+        if banned:
+            lines.append(f"BANNED WORDS (never use): {', '.join(str(b) for b in banned[:10])}")
+
+        # Technical terms to use correctly
+        tech_terms = voice.get('technical_terms', [])
+        if tech_terms:
+            lines.append(f"Technical Terms (use correctly): {', '.join(str(t) for t in tech_terms[:8])}")
+
+        # Power words that resonate
+        power_words = voice.get('power_words', [])
+        if power_words:
+            lines.append(f"Power Words: {', '.join(str(p) for p in power_words[:8])}")
+
+        # Example phrases for tone reference
+        examples = voice.get('example_phrases', [])
+        if examples:
+            lines.append(f"Example Phrases: \"{'\"; \"'.join(str(e) for e in examples[:3])}\"")
+
+        # CTA phrases
+        cta_phrases = voice.get('cta_phrases', [])
+        if cta_phrases:
+            lines.append(f"CTA Style: {'; '.join(str(c) for c in cta_phrases[:3])}")
+
+        # Headline patterns
+        headline_patterns = voice.get('headline_patterns', [])
+        if headline_patterns:
+            lines.append(f"Headline Patterns: {'; '.join(str(h) for h in headline_patterns[:3])}")
+
+        # Content structure hints
+        structure = voice.get('content_structure_pattern', '')
+        if structure:
+            lines.append(f"Preferred Structure: {structure}")
+
+        # Formatting preferences
+        format_hints = []
+        if voice.get('uses_questions'):
+            format_hints.append("Use rhetorical questions")
+        if voice.get('uses_lists'):
+            format_hints.append("Use bullet/numbered lists")
+        if voice.get('uses_statistics'):
+            format_hints.append("Include data/statistics")
+        if voice.get('first_person_usage'):
+            format_hints.append(f"First person: {voice['first_person_usage']}")
+        if format_hints:
+            lines.append(f"Formatting: {', '.join(format_hints)}")
 
     # Add authors if available (for byline/credibility)
     authors = context.get('authors', [])

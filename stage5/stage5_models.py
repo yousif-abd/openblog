@@ -31,6 +31,9 @@ class Stage5Input(BaseModel):
     # From Stage 1
     sitemap_blog_urls: List[str] = Field(default_factory=list, description="Blog URLs from sitemap")
     sitemap_resource_urls: List[str] = Field(default_factory=list, description="Resource URLs from sitemap")
+    sitemap_tool_urls: List[str] = Field(default_factory=list, description="Tool/calculator URLs from sitemap")
+    sitemap_product_urls: List[str] = Field(default_factory=list, description="Product URLs from sitemap")
+    sitemap_service_urls: List[str] = Field(default_factory=list, description="Service URLs from sitemap")
     batch_siblings: List[Dict[str, str]] = Field(default_factory=list, description="Other articles in batch [{keyword, slug, href}]")
     company_url: str = Field(default="", description="Base company URL")
 

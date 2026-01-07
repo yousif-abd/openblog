@@ -13,7 +13,9 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, Tuple, List
+
+import httpx
 
 # Add parent to path for shared imports
 _parent = Path(__file__).parent.parent
@@ -45,7 +47,7 @@ def _get_opencontext_prompt(url: str) -> str:
     """Load OpenContext prompt from file or use fallback."""
     if _PROMPT_LOADER_AVAILABLE:
         try:
-            return load_prompt("stage 1", "opencontext", url=url)
+            return load_prompt("stage1", "opencontext", url=url)
         except FileNotFoundError:
             logger.warning("Prompt file not found, using fallback")
 
@@ -54,6 +56,109 @@ def _get_opencontext_prompt(url: str) -> str:
 Return JSON with: company_name, company_url, industry, description, products,
 target_audience, competitors, tone, voice_persona, visual_identity.
 Analyze: {url}'''
+
+
+# =============================================================================
+# Image URL Validation
+# =============================================================================
+
+# Common image content types
+IMAGE_CONTENT_TYPES = {
+    "image/jpeg", "image/jpg", "image/png", "image/gif",
+    "image/webp", "image/svg+xml", "image/avif", "image/heic"
+}
+
+
+async def validate_image_url(url: str, timeout: float = 5.0) -> bool:
+    """
+    Validate that a URL points to an actual image.
+
+    Args:
+        url: Image URL to validate
+        timeout: Request timeout in seconds
+
+    Returns:
+        True if URL returns 200 with image content-type, False otherwise
+    """
+    if not url or not url.startswith("http"):
+        return False
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+            # Use HEAD request first (faster, less bandwidth)
+            response = await client.head(url)
+
+            # Check status code
+            if response.status_code < 200 or response.status_code >= 300:
+                logger.debug(f"Image URL validation failed (HTTP {response.status_code}): {url[:60]}...")
+                return False
+
+            # Check content type
+            content_type = response.headers.get("content-type", "").lower().split(";")[0].strip()
+            if content_type in IMAGE_CONTENT_TYPES:
+                return True
+
+            # Some servers don't return content-type on HEAD, try GET with range
+            if not content_type or content_type == "application/octet-stream":
+                response = await client.get(url, headers={"Range": "bytes=0-0"})
+                content_type = response.headers.get("content-type", "").lower().split(";")[0].strip()
+                if content_type in IMAGE_CONTENT_TYPES:
+                    return True
+
+            logger.debug(f"Image URL has non-image content-type ({content_type}): {url[:60]}...")
+            return False
+
+    except Exception as e:
+        logger.debug(f"Image URL validation error: {url[:60]}... - {e}")
+        return False
+
+
+async def validate_blog_image_examples(context: CompanyContext) -> CompanyContext:
+    """
+    Validate blog_image_examples URLs and clear invalid ones.
+
+    Keeps the description (useful for style reference) but clears URL if invalid.
+
+    Args:
+        context: CompanyContext with potentially invalid image URLs
+
+    Returns:
+        CompanyContext with validated image URLs (invalid URLs cleared)
+    """
+    if not context.visual_identity or not context.visual_identity.blog_image_examples:
+        return context
+
+    examples = context.visual_identity.blog_image_examples
+    validated_count = 0
+    cleared_count = 0
+
+    # Validate all URLs in parallel
+    tasks = [validate_image_url(ex.url) for ex in examples]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    for i, (example, is_valid) in enumerate(zip(examples, results)):
+        if isinstance(is_valid, Exception):
+            is_valid = False
+
+        if is_valid:
+            example.validated = True
+            validated_count += 1
+        else:
+            # Clear invalid URL but keep description (still useful for style)
+            if example.url:
+                logger.info(f"Clearing invalid image URL: {example.url[:60]}...")
+                example.url = ""
+                cleared_count += 1
+            example.validated = False
+
+    if cleared_count > 0:
+        logger.warning(
+            f"Blog image URL validation: {validated_count} valid, {cleared_count} cleared (hallucinated/broken)"
+        )
+    elif validated_count > 0:
+        logger.info(f"Blog image URL validation: {validated_count} valid URLs")
+
+    return context
 
 
 # =============================================================================
@@ -105,7 +210,12 @@ async def run_opencontext(url: str, api_key: Optional[str] = None) -> CompanyCon
         logger.info(f"OpenContext complete: {result.get('company_name', 'Unknown')}")
 
         # Convert to CompanyContext
-        return CompanyContext.from_dict(result)
+        context = CompanyContext.from_dict(result)
+
+        # Validate blog image URLs (clears hallucinated/broken URLs)
+        context = await validate_blog_image_examples(context)
+
+        return context
 
     except Exception as e:
         logger.error(f"OpenContext failed for {url}: {e}")
