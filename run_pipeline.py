@@ -334,6 +334,27 @@ async def process_single_article(
         logger.info(f"    [Stage 5] ✓ Added {stage5_output['links_added']} internal links")
 
         # -----------------------------------------
+        # Add Beck-Online Data Summary to Result
+        # -----------------------------------------
+        if legal_context:
+            court_decisions = legal_context.get("court_decisions", [])
+            result["beck_online_data_used"] = {
+                "rechtsgebiet": legal_context.get("rechtsgebiet", ""),
+                "court_decisions_count": len(court_decisions),
+                "decisions": [
+                    {
+                        "gericht": d.get("gericht", ""),
+                        "aktenzeichen": d.get("aktenzeichen", ""),
+                        "datum": d.get("datum", ""),
+                        "url": d.get("url", ""),
+                    }
+                    for d in court_decisions
+                ],
+                "research_date": legal_context.get("stand_der_rechtsprechung", ""),
+                "keywords_researched": legal_context.get("keywords_researched", []),
+            }
+
+        # -----------------------------------------
         # Export (if output_dir provided)
         # -----------------------------------------
         if output_dir:

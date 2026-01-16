@@ -1,0 +1,353 @@
+{
+  "job_id": "2f77b483-e098-4f5b-8d20-263c6f1740c0",
+  "company": "Braun & Kollegen Rechtsanw\u00e4lte",
+  "language": "de",
+  "market": "US",
+  "duration_seconds": 136.098153,
+  "articles_total": 1,
+  "articles_successful": 0,
+  "articles_failed": 1,
+  "context": {
+    "job_id": "2f77b483-e098-4f5b-8d20-263c6f1740c0",
+    "articles": [
+      {
+        "keyword": "K\u00fcndigung",
+        "slug": "kndigung",
+        "href": "/magazine/kndigung",
+        "word_count": 2000,
+        "keyword_instructions": null
+      }
+    ],
+    "language": "de",
+    "market": "US",
+    "company_context": {
+      "company_name": "Braun & Kollegen Rechtsanw\u00e4lte",
+      "company_url": "https://www.braun-kollegen.de/",
+      "industry": "Legal Services",
+      "description": "A specialized Munich-based law firm providing strategic legal and tax advice with a focus on inheritance law, commercial law, and business succession for private individuals and medium-sized enterprises.",
+      "products": [
+        "Erbrecht & Nachfolgeplanung (Inheritance Law)",
+        "Wirtschaftsrecht (Commercial Law)",
+        "Erbschaftssteuerrecht (Inheritance Tax Law)",
+        "Gesellschaftsrecht (Corporate Law)",
+        "Testamentsvollstreckung (Execution of Wills)",
+        "Arbeitsrecht (Labor Law)"
+      ],
+      "target_audience": "High-net-worth individuals, families planning estate transitions, and SME owners (Mittelstand) seeking interdisciplinary legal and economic counsel.",
+      "competitors": [
+        "Rose & Partner",
+        "G\u00f6rg Rechtsanw\u00e4lte",
+        "Heuking K\u00fchn L\u00fcer Wojtek",
+        "PwC Legal (Succession practice)"
+      ],
+      "tone": "Professional, strategic, authoritative, and empathetic.",
+      "pain_points": [
+        "High tax burdens on inherited assets",
+        "Complex family disputes during estate distribution",
+        "Legal risks in business succession and management handover",
+        "Uncertainty regarding digital estate management"
+      ],
+      "value_propositions": [
+        "Over 25 years of specialized expertise in Munich",
+        "Interdisciplinary approach combining law and tax optimization",
+        "Focus on economic interests and conflict avoidance",
+        "Digital-forward services including webinars and online checklists"
+      ],
+      "use_cases": [
+        "Drafting a tax-optimized 'Berliner Testament'",
+        "Structuring a legally secure business succession plan",
+        "Managing complex inheritance disputes out of court",
+        "Setting up family foundations for asset protection"
+      ],
+      "content_themes": [
+        "Inheritance Tax Optimization Strategies",
+        "Succession Planning for SMEs",
+        "Digital Estate and Digital Wills",
+        "Current Legal Rulings in Commercial Law",
+        "Webinars for Legal Education"
+      ],
+      "voice_persona": {
+        "icp_profile": "High-net-worth individuals, business owners, and legacy-focused families who value financial security, proactive legal protection ('Vorsorge'), and social responsibility over abstract theory.",
+        "voice_style": "The voice of a 'Trusted Strategic Advisor' and recognized public authority. It is precise, authoritative, and community-minded, instilling confidence through 25+ years of expertise and a strong media presence.",
+        "language_style": {
+          "formality": "Professional",
+          "complexity": "Moderate",
+          "sentence_length": "Mixed",
+          "perspective": "Expert-to-client",
+          "avg_words_per_sentence": null,
+          "reading_level": ""
+        },
+        "sentence_patterns": [
+          "Start with a direct benefit or a statement of professional standing.",
+          "Use 'Wir' (We) to emphasize the firm's collective expertise and partnership.",
+          "Follow a 'Context-Expertise-Action' structure."
+        ],
+        "vocabulary_level": "Professional legal and economic terminology (e.g., 'Vorsorgevollmacht', 'Patientenverf\u00fcgung') presented as essential tools for family security.",
+        "authority_signals": [
+          "References to 25+ years of cooperation with organizations like Volksbund",
+          "Mention of the highest civilian awards from the Bundeswehr",
+          "Regular appearances on public radio (BR1) and specialized 'Vorsorge-TV'"
+        ],
+        "do_list": [
+          "Emphasize the human aspect of 'Vorsorge' (precaution) to protect loved ones",
+          "Highlight long-term institutional partnerships as proof of stability",
+          "Use the 'Sie fragen, wir antworten' approach to signal accessibility",
+          "Mention social and charitable engagement to build trust"
+        ],
+        "dont_list": [
+          "Avoid being purely transactional; maintain a sense of social duty",
+          "Do not use overly complex legal structures without explaining the family benefit",
+          "Avoid generic AI filler like 'In today's fast-paced world'"
+        ],
+        "example_phrases": [
+          "Einmal anmelden und informiert bleiben.",
+          "Streit kann nur dort entstehen, wo Dinge nicht oder falsch geregelt sind.",
+          "Fr\u00fchzeitig handeln entlastet im Ernstfall."
+        ],
+        "opening_styles": [
+          "Einmal anmelden und informiert bleiben.",
+          "F\u00fcr die Kanzlei Braun & Kollegen ist sowohl Presseresonanz als auch \u00d6ffentlichkeitsarbeit ein wichtiges Thema."
+        ],
+        "transition_phrases": [
+          "Dar\u00fcber hinaus",
+          "In exklusiver Kooperation mit",
+          "Unsere Erfahrung nach"
+        ],
+        "closing_styles": [
+          "Jetzt kostenlos anmelden.",
+          "F\u00fcr mehr Informationen stehen wir Ihnen jederzeit gerne zur Verf\u00fcgung."
+        ],
+        "headline_patterns": [
+          "Benefit-driven (e.g., 'Gut vorgesorgt?!')",
+          "Authority-based (e.g., 'Braun & Kollegen in der Presse')"
+        ],
+        "subheading_styles": [
+          "Descriptive and benefit-oriented",
+          "Project-specific (e.g., 'Vorsorge-TV')"
+        ],
+        "cta_phrases": [
+          "Jetzt kostenlos anmelden",
+          "Kontaktieren Sie uns f\u00fcr Medienanfragen",
+          "Sichern Sie sich Ihren Platz im Webinar"
+        ],
+        "technical_terms": [
+          "Vorsorgevollmacht",
+          "Patientenverf\u00fcgung",
+          "Erbschaftsinformation",
+          "Stiftungsrecht",
+          "Unternehmensnachfolge"
+        ],
+        "power_words": [
+          "Exklusiv",
+          "Praxisnah",
+          "Expertenmeinung",
+          "Engagement",
+          "Sicherheit"
+        ],
+        "banned_words": [
+          "Clickbait",
+          "Generic AI filler",
+          "Unexplained legalese"
+        ],
+        "paragraph_length": "Short to medium, optimized for readability and quick scanning.",
+        "uses_questions": true,
+        "uses_lists": true,
+        "uses_statistics": true,
+        "first_person_usage": "Frequent use of 'Wir' and 'Unsere' to denote firm-wide expertise.",
+        "content_structure_pattern": "Context/Problem -> Expert Intervention/Media Presence -> Solution/Call to Action"
+      },
+      "visual_identity": {
+        "brand_colors": [
+          "#003366",
+          "#FFFFFF"
+        ],
+        "secondary_colors": [
+          "#D4AF37",
+          "#F4F4F4"
+        ],
+        "visual_style": "Corporate, clean, and modern with a focus on high-end professional photography.",
+        "design_elements": [
+          "Professional studio portraits",
+          "Clean sans-serif typography",
+          "Webinar-style video overlays",
+          "Minimalist icons for checklists"
+        ],
+        "typography_style": "Modern sans-serif (clean, high readability)",
+        "image_style_prompt": "High-end professional corporate photography, soft natural lighting, modern office setting with glass and dark wood elements, navy blue and subtle gold accents, clean minimalist composition, focus on trust and expertise, no stock photo clich\u00e9s like gavels.",
+        "blog_image_examples": [
+          {
+            "url": "",
+            "description": "A professional hero image for a legal webinar featuring a lawyer in a modern studio setting, clean background with subtle brand colors, and clear typography overlaying the title.",
+            "image_type": "hero",
+            "validated": false
+          },
+          {
+            "url": "",
+            "description": "A symbolic, high-quality photograph for inheritance law showing a family tree or a set of keys on a polished wooden desk, using shallow depth of field and warm, natural lighting.",
+            "image_type": "inline",
+            "validated": false
+          }
+        ],
+        "mood": "Trustworthy, professional, and high-end",
+        "avoid_in_images": [
+          "Gavel and scales clich\u00e9s",
+          "Low-quality or generic stock photos",
+          "Cluttered or messy office backgrounds",
+          "Aggressive or bright red colors"
+        ]
+      },
+      "authors": [
+        {
+          "name": "Alexander Braun",
+          "title": "Rechtsanwalt",
+          "bio": "Specialist in inheritance and commercial law with over 25 years of experience in strategic succession planning.",
+          "image_url": "",
+          "linkedin_url": "https://www.linkedin.com/in/alexander-braun-muenchen/",
+          "twitter_url": ""
+        },
+        {
+          "name": "Stefan Sch\u00f6n",
+          "title": "Rechtsanwalt",
+          "bio": "Expert in labor law, commercial tenancy law, and general commercial law, focusing on medium-sized businesses.",
+          "image_url": "",
+          "linkedin_url": "",
+          "twitter_url": ""
+        },
+        {
+          "name": "Timo Mehr",
+          "title": "Rechtsanwalt",
+          "bio": "Specialized in inheritance law and the legal structuring of private and business succession.",
+          "image_url": "",
+          "linkedin_url": "",
+          "twitter_url": ""
+        },
+        {
+          "name": "Miriam Wester",
+          "title": "Rechtsanw\u00e4ltin",
+          "bio": "Versed in inheritance law and the execution of complex wills (Testamentsvollstreckung).",
+          "image_url": "",
+          "linkedin_url": "",
+          "twitter_url": ""
+        }
+      ]
+    },
+    "sitemap": {
+      "total_pages": 41,
+      "blog_urls": [
+        "https://www.braun-kollegen.de/presse/",
+        "https://www.braun-kollegen.de/newsletter-anmeldung/"
+      ],
+      "product_urls": [],
+      "service_urls": [],
+      "resource_urls": [
+        "https://www.braun-kollegen.de/videos/",
+        "https://www.braun-kollegen.de/webinare/",
+        "https://www.braun-kollegen.de/webinare-wochinger-immobilien/",
+        "https://www.braun-kollegen.de/webinare-agnes-wilhelm-vermoegensberatung/",
+        "https://www.braun-kollegen.de/webinare-stiftung-helfen/",
+        "https://www.braun-kollegen.de/webinar/testamente-unter-ehegatten-richtig-gemacht-typische-irrtuemer-und-ihre-verheerenden-folgen/",
+        "https://www.braun-kollegen.de/webinar/der-notfallkoffer-die-vorsorgevollmacht-und-patientenverfuegung/",
+        "https://www.braun-kollegen.de/webinar/so-gestalte-ich-mein-testament-diese-dinge-sind-bei-der-gestaltung-zu-beachten/",
+        "https://www.braun-kollegen.de/webinar/das-pflichtteilsrecht-bekommt-jeder-was-vom-kuchen-copy/",
+        "https://www.braun-kollegen.de/webinar/testamentsvollstrecker-wer-ist-das-und-sollte-ich-hierzu-etwas-in-meinem-testament-regeln-copy/",
+        "https://www.braun-kollegen.de/webinar/die-immobilie-im-erbfall-copy/",
+        "https://www.braun-kollegen.de/webinar/die-gesetzliche-erbfolge-copy/",
+        "https://www.braun-kollegen.de/webinar/erben-und-vererben-copy/",
+        "https://www.braun-kollegen.de/webinar/erben-und-vererben-copy-2/",
+        "https://www.braun-kollegen.de/webinar/vermoegenssicherung-testamentsgestaltung-copy/",
+        "https://www.braun-kollegen.de/webinar/testamente-unter-ehegatten-richtig-gemacht-typische-irrtuemer-und-ihre-verheerenden-folgen-copy/"
+      ],
+      "docs_urls": [],
+      "tool_urls": [],
+      "other_urls": [
+        "https://www.braun-kollegen.de/anwalt-erbrecht-in-munchen-nachlassplanung-testamentsvollstreckung/",
+        "https://www.braun-kollegen.de/25-jahre-kanzleizugehorigkeit-wir-sagen-danke/",
+        "https://www.braun-kollegen.de/erwachsenenadoption-in-munchen-ablauf-kosten-voraussetzungen/",
+        "https://www.braun-kollegen.de/",
+        "https://www.braun-kollegen.de/kontakt/",
+        "https://www.braun-kollegen.de/karriere/",
+        "https://www.braun-kollegen.de/aktuelles/",
+        "https://www.braun-kollegen.de/kanzlei/",
+        "https://www.braun-kollegen.de/rechtsgebiete/",
+        "https://www.braun-kollegen.de/impressum/",
+        "https://www.braun-kollegen.de/datenschutz/",
+        "https://www.braun-kollegen.de/corona/",
+        "https://www.braun-kollegen.de/vorsorge/",
+        "https://www.braun-kollegen.de/danke-fuer-ihre-teilnahme/",
+        "https://www.braun-kollegen.de/checkliste-fuer-den-erbfall/",
+        "https://www.braun-kollegen.de/checklisten/",
+        "https://www.braun-kollegen.de/5073-2/",
+        "https://www.braun-kollegen.de/rechtsgebiete/wirtschaftsrecht/",
+        "https://www.braun-kollegen.de/rechtsgebiete/stiftungsrecht/",
+        "https://www.braun-kollegen.de/rechtsgebiete/erbrecht/",
+        "https://www.braun-kollegen.de/rechtsgebiete/unternehmensnachfolge/",
+        "https://www.braun-kollegen.de/rechtsgebiete/erwachsenenadoption/",
+        "https://www.braun-kollegen.de/category/allgemein/"
+      ],
+      "classification_method": "pattern",
+      "classification_confidence": 1.0,
+      "smart_classifier_used": false
+    },
+    "created_at": "2026-01-16T22:58:32.660543",
+    "opencontext_called": true,
+    "ai_calls": 2,
+    "voice_enhanced": true,
+    "voice_enhancement_urls": [
+      "https://www.braun-kollegen.de/newsletter-anmeldung/",
+      "https://www.braun-kollegen.de/presse/"
+    ],
+    "legal_context": {
+      "rechtsgebiet": "Arbeitsrecht",
+      "court_decisions": [
+        {
+          "gericht": "BAG",
+          "aktenzeichen": "6 AZR 148/22",
+          "datum": "2025-07-20",
+          "leitsatz": "Die K\u00fcndigung eines Arbeitsverh\u00e4ltnisses bedarf zu ihrer Wirksamkeit der Schriftform (\u00a7 623 BGB). Eine m\u00fcndliche K\u00fcndigung ist unwirksam.",
+          "relevante_normen": [
+            "\u00a7 623 BGB"
+          ],
+          "url": "https://www.beck-online.beck.de/Dokument/mock-bag-6-azr-148-22",
+          "rechtsgebiet": "Arbeitsrecht"
+        },
+        {
+          "gericht": "BAG",
+          "aktenzeichen": "2 AZR 235/23",
+          "datum": "2025-09-18",
+          "leitsatz": "Eine au\u00dferordentliche K\u00fcndigung nach \u00a7 626 BGB setzt einen wichtigen Grund voraus. Die Pflichtverletzung muss so schwerwiegend sein, dass eine Fortsetzung des Arbeitsverh\u00e4ltnisses unzumutbar ist.",
+          "relevante_normen": [
+            "\u00a7 626 BGB",
+            "\u00a7 626 Abs. 1 BGB"
+          ],
+          "url": "https://www.beck-online.beck.de/Dokument/mock-bag-2-azr-235-23",
+          "rechtsgebiet": "Arbeitsrecht"
+        }
+      ],
+      "statutes": [],
+      "disclaimer_template": "Rechtlicher Hinweis: Dieser Artikel dient ausschlie\u00dflich der allgemeinen Information und stellt keine Rechtsberatung dar. Die rechtliche Beurteilung arbeitsrechtlicher Sachverhalte h\u00e4ngt immer von den konkreten Umst\u00e4nden des Einzelfalls ab. F\u00fcr eine individuelle rechtliche Beratung zu Ihrer arbeitsrechtlichen Situation wenden Sie sich bitte an einen Fachanwalt f\u00fcr Arbeitsrecht.",
+      "stand_der_rechtsprechung": "2026-01-16",
+      "keywords_researched": [
+        "K\u00fcndigung"
+      ]
+    },
+    "legal_research_enabled": true
+  },
+  "results": [
+    {
+      "keyword": "K\u00fcndigung",
+      "slug": "kndigung",
+      "href": "/magazine/kndigung",
+      "article": null,
+      "images": [],
+      "reports": {
+        "stage2": {
+          "ai_calls": 1,
+          "images_generated": 0
+        }
+      },
+      "exported_files": {},
+      "error": "'LegalClaim' object has no attribute 'supporting_decisions'"
+    }
+  ],
+  "created_at": "2026-01-16T22:57:21.230827"
+}

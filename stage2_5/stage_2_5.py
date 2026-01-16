@@ -129,9 +129,31 @@ async def run(input_dict: Dict[str, Any]) -> Dict[str, Any]:
         verification_skipped=(legal_context is None)
     )
 
-    # Log summary
+    # Enhanced logging: Beck-Online Decision Matching
+    logger.info("=" * 80)
+    logger.info("BECK-ONLINE CLAIM VERIFICATION RESULTS")
+    logger.info("=" * 80)
+
+    if legal_context and legal_context.get("court_decisions"):
+        court_decisions_count = len(legal_context.get("court_decisions", []))
+        logger.info(f"  Court Decisions Available: {court_decisions_count}")
+
+        # Log claim-decision matching details
+        for i, claim in enumerate(claims, 1):
+            claim_text = claim.claim_text[:60] + "..." if len(claim.claim_text) > 60 else claim.claim_text
+            if claim.supported:
+                logger.info(f"  ✓ Claim {i}: {claim_text}")
+                if claim.matching_decision:
+                    logger.info(f"      Supported by: {claim.matching_decision}")
+            else:
+                logger.info(f"  ✗ Claim {i}: {claim_text}")
+                logger.info(f"      (No supporting Beck-Online decision found)")
+    else:
+        logger.info("  Court Decisions Available: 0")
+        logger.info("  (All claims marked as unsupported - no Beck-Online data to verify against)")
+
     logger.info("-" * 80)
-    logger.info("STAGE 2.5 COMPLETE")
+    logger.info("STAGE 2.5 VERIFICATION SUMMARY")
     logger.info(f"  Claims Extracted: {len(claims)}")
     logger.info(f"  Claims Supported: {claims_supported}")
     logger.info(f"  Claims Unsupported: {claims_unsupported}")

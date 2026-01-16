@@ -58,7 +58,7 @@ async def conduct_legal_research(
 
     if use_mock:
         logger.info("Using mock legal data (development mode)")
-        return await generate_mock_legal_context(
+        context = await generate_mock_legal_context(
             keywords=keywords,
             rechtsgebiet=rechtsgebiet
         )
@@ -66,24 +66,43 @@ async def conduct_legal_research(
         logger.info("Using Beck-Online browser agent (production mode)")
         try:
             from browser_agent import research_via_beck_online
-            return await research_via_beck_online(
+            context = await research_via_beck_online(
                 keywords=keywords,
                 rechtsgebiet=rechtsgebiet
             )
         except ImportError as e:
             logger.error(f"Beck-Online scraper not available: {e}")
             logger.warning("Falling back to mock data")
-            return await generate_mock_legal_context(
+            context = await generate_mock_legal_context(
                 keywords=keywords,
                 rechtsgebiet=rechtsgebiet
             )
         except Exception as e:
             logger.error(f"Beck-Online scraping failed: {e}")
             logger.warning("Falling back to mock data")
-            return await generate_mock_legal_context(
+            context = await generate_mock_legal_context(
                 keywords=keywords,
                 rechtsgebiet=rechtsgebiet
             )
+
+    # Enhanced logging: Beck-Online Research Summary
+    logger.info("=" * 80)
+    logger.info("BECK-ONLINE RESEARCH SUMMARY")
+    logger.info("=" * 80)
+    logger.info(f"  Rechtsgebiet: {context.rechtsgebiet}")
+    logger.info(f"  Court Decisions Found: {len(context.court_decisions)}")
+    if context.court_decisions:
+        for i, decision in enumerate(context.court_decisions, 1):
+            logger.info(f"    {i}. {decision.gericht} {decision.aktenzeichen} ({decision.datum})")
+            if decision.leitsatz:
+                logger.info(f"       Leitsatz: {decision.leitsatz[:80]}...")
+    else:
+        logger.info("    (No court decisions available)")
+    logger.info(f"  Research Date: {context.stand_der_rechtsprechung}")
+    logger.info(f"  Keywords Researched: {', '.join(context.keywords_researched)}")
+    logger.info("=" * 80)
+
+    return context
 
 
 def format_decisions_for_prompt(legal_context: LegalContext) -> str:
