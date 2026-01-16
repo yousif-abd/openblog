@@ -29,6 +29,7 @@ env/
 # IDE
 .vscode/
 .idea/
+.claude/
 *.swp
 *.swo
 *~
@@ -44,6 +45,18 @@ test_output/
 output/
 results/
 inspection_output_*/
+
+# Beck-Online test artifacts
+beck_*_test/
+beck_*.png
+beck_*.html
+
+# Schema/validation test artifacts
+test_schema*/
+test_normalized*/
+test_final*/
+test_stage2_5*/
+test_results/
 
 # Test files in root (generated during testing)
 test_*.html
@@ -76,6 +89,7 @@ debug_*.png
 # OS
 .DS_Store
 Thumbs.db
+nul
 
 # Jupyter
 .ipynb_checkpoints/

@@ -122,6 +122,7 @@ class Stage2Input(BaseModel):
     keyword_instructions: Optional[str] = Field(default=None, description="Keyword-specific instructions")
     skip_images: bool = Field(default=False, description="Skip image generation")
     job_id: Optional[str] = Field(default=None, description="Job ID from Stage 1")
+    legal_context: Optional[Dict[str, Any]] = Field(default=None, description="Legal context from Stage 1 (for law firm content)")
 
 
 class ImageResult(BaseModel):
@@ -190,6 +191,7 @@ async def run_stage_2(input_data: Stage2Input) -> Stage2Output:
         country=input_data.country,
         batch_instructions=input_data.custom_instructions,
         keyword_instructions=input_data.keyword_instructions,
+        legal_context=input_data.legal_context,
     )
     ai_calls += 1
 

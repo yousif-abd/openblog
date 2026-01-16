@@ -1,0 +1,129 @@
+Schreiben Sie einen rechtlichen Fachartikel für die Kanzlei Braun & Kollegen zum Thema:
+
+KEYWORD: {keyword}
+RECHTSGEBIET: {rechtsgebiet}
+ZIEL-WORTANZAHL: {word_count} Wörter
+SPRACHE: Deutsch
+ZIELGRUPPE: {target_audience}
+
+BEREITGESTELLTE GERICHTSENTSCHEIDUNGEN:
+{court_decisions_summary}
+
+DISCLAIMER-TEXT (verwenden Sie diesen im legal_disclaimer-Feld):
+{disclaimer_template}
+
+KANZLEI-KONTEXT:
+{company_name} - {company_description}
+
+VOICE PERSONA:
+{voice_persona}
+
+AUFGABE:
+Erstellen Sie einen umfassenden, rechtlich fundierten Artikel, der:
+
+1. RECHTLICHE FUNDIERUNG:
+   - Basiert auf den oben bereitgestellten Gerichtsentscheidungen
+   - Zitiert mindestens 2 Entscheidungen im korrekten Format (z.B., "BAG, Urt. v. 12.05.2024 – 6 AZR 123/23")
+   - Verweist auf relevante Gesetzesnormen (z.B., "§ 623 BGB")
+   - Erklärt die Leitsätze verständlich für Nicht-Juristen
+
+2. PRAKTISCHER NUTZEN:
+   - Beantwortet die Kernfrage des Keywords direkt und präzise
+   - Erklärt praktische Konsequenzen für Mandanten
+   - Nennt konkrete Handlungsschritte
+   - Warnt vor häufigen Fehlern
+
+3. STRUKTUR (ArticleOutput JSON Schema):
+WICHTIG: Geben Sie ALLE Felder zurück (auch wenn einige leer sind):
+
+{{
+  "Headline": "Prägnanter Titel mit Keyword (max 100 Zeichen)",
+  "Subtitle": "",
+  "Teaser": "2-3 Sätze Hook (Schmerzpunkt oder Nutzen)",
+  "Direct_Answer": "40-60 Wörter direkte Antwort auf Kernfrage",
+  "Intro": "<p>80-120 Wörter Einleitung mit Problemstellung</p>",
+  "Meta_Title": "SEO-Titel (max 55 Zeichen)",
+  "Meta_Description": "SEO-Beschreibung mit CTA (max 160 Zeichen)",
+  "section_01_title": "Erster Abschnitt Überschrift",
+  "section_01_content": "<p>HTML Inhalt 300-600 Wörter...</p>",
+  "section_02_title": "Zweiter Abschnitt Überschrift",
+  "section_02_content": "<p>HTML Inhalt...</p>",
+  "section_03_title": "Dritter Abschnitt Überschrift",
+  "section_03_content": "<p>HTML Inhalt...</p>",
+  "section_04_title": "Vierter Abschnitt Überschrift",
+  "section_04_content": "<p>HTML Inhalt...</p>",
+  "section_05_title": "Fünfter Abschnitt Überschrift",
+  "section_05_content": "<p>HTML Inhalt...</p>",
+  "section_06_title": "",
+  "section_06_content": "",
+  "section_07_title": "",
+  "section_07_content": "",
+  "faq_question_01": "Häufige Frage 1?",
+  "faq_answer_01": "<p>Antwort...</p>",
+  "faq_question_02": "Häufige Frage 2?",
+  "faq_answer_02": "<p>Antwort...</p>",
+  "faq_question_03": "Häufige Frage 3?",
+  "faq_answer_03": "<p>Antwort...</p>",
+  "faq_question_04": "Häufige Frage 4?",
+  "faq_answer_04": "<p>Antwort...</p>",
+  "paa_question_01": "People Also Ask Frage 1?",
+  "paa_answer_01": "<p>Antwort...</p>",
+  "paa_question_02": "People Also Ask Frage 2?",
+  "paa_answer_02": "<p>Antwort...</p>",
+  "paa_question_03": "People Also Ask Frage 3?",
+  "paa_answer_03": "<p>Antwort...</p>",
+  "key_takeaway_01": "Wichtiger Punkt 1",
+  "key_takeaway_02": "Wichtiger Punkt 2",
+  "key_takeaway_03": "Wichtiger Punkt 3",
+  "TLDR": "2-3 Sätze Zusammenfassung",
+  "Sources": [
+    {{"title": "Quellenname", "url": "https://echte-url.de"}},
+    {{"title": "Quellenname 2", "url": "https://echte-url2.de"}}
+  ],
+  "rechtsgebiet": "{rechtsgebiet}",
+  "rechtliche_grundlagen": ["BAG, Urt. v. DD.MM.YYYY – AZ", "OLG XYZ, Urt. v. DD.MM.YYYY – AZ"],
+  "legal_disclaimer": "(Verwenden Sie den bereitgestellten Disclaimer-Text)",
+  "stand_der_rechtsprechung": "2026-01-16"
+}}
+
+4. INHALTLICHE ANFORDERUNGEN:
+   - Verwenden Sie echte Statistiken via Google Search (mit Quellenangabe)
+   - Integrieren Sie die Gerichtsentscheidungen natürlich in den Fließtext
+   - Erklären Sie juristische Fachbegriffe beim ersten Auftreten
+   - Nutzen Sie Beispiele und Szenarien zur Veranschaulichung
+   - Bieten Sie praktische Checklisten oder Entscheidungshilfen
+
+5. TONALITÄT:
+   - Professionell, aber zugänglich
+   - Keine Juristensprache - verständlich für Laien
+   - Sachlich und vertrauenswürdig
+   - Hilfreich und lösungsorientiert
+   - Folgen Sie exakt der voice_persona der Kanzlei
+
+6. PFLICHTFELDER FÜR LEGALE ARTIKEL:
+   - rechtsgebiet: "{rechtsgebiet}"
+   - legal_disclaimer: (Verwenden Sie den oben bereitgestellten Disclaimer-Text)
+   - rechtliche_grundlagen: [Liste der zitierten Entscheidungen im Format "Gericht, Urt. v. DD.MM.YYYY – AZ"]
+   - Sources: 3-5 Quellen (Gerichtsentscheidungen + externe Quellen mit echten URLs)
+
+7. FORMATIERUNG:
+   - HTML-Tags: <p>, <ul>, <li>, <ol>, <strong>, <em>
+   - Fetten Sie: rechtliche Fachbegriffe, Gesetzesverweise, wichtige Aussagen
+   - Strukturieren Sie mit Listen, Beispielen, Zitaten
+   - Keine langen Textblöcke - visuelle Vielfalt
+
+8. QUALITÄTSKRITERIEN:
+   - Alle rechtlichen Behauptungen durch Gerichtsentscheidungen gestützt
+   - Korrekte Zitierweise durchgehend
+   - Verständlich für Nicht-Juristen
+   - Praktisch anwendbar für Mandanten
+   - SEO-optimiert mit natürlicher Keyword-Integration
+
+WICHTIG:
+- NIEMALS rechtliche Aussagen ohne Quellenangabe
+- NIEMALS Gerichtsentscheidungen erfinden
+- Verwenden Sie NUR die oben bereitgestellten Entscheidungen
+- Alle URLs müssen echt sein (von Google Search oder den Entscheidungs-URLs)
+- Der Artikel muss auch für juristische Laien verständlich sein
+
+Erstellen Sie jetzt den vollständigen Artikel als ArticleOutput JSON.

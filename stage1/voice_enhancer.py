@@ -15,6 +15,14 @@ import sys
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 
+# Fix Windows console encoding for Unicode characters
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    except Exception:
+        pass  # Silently ignore if reconfigure fails
+
 # Add parent to path for shared imports
 _parent = Path(__file__).parent.parent
 if str(_parent) not in sys.path:
@@ -209,7 +217,7 @@ def _print_enhanced_persona(persona: VoicePersona, result: Dict[str, Any]) -> No
             print(f"   • {item}")
 
     if persona.dont_list:
-        print(f"\n❌ DON'T LIST ({len(persona.dont_list)}):")
+        print(f"\n[DONT] DON'T LIST ({len(persona.dont_list)}):")
         for item in persona.dont_list:
             print(f"   • {item}")
 
@@ -275,12 +283,12 @@ async def enhance_voice_persona(
 
     if verbose:
         print("\n" + "=" * 80)
-        print("🔍 VOICE ENHANCEMENT - ANALYZING BLOG CONTENT")
+        print("[VOICE ENHANCEMENT] Analyzing blog content")
         print("=" * 80)
-        print(f"\n📌 Analyzing {sample_count} blog articles:")
+        print(f"\nAnalyzing {sample_count} blog articles:")
         for i, url in enumerate(sampled_urls, 1):
             print(f"   {i}. {url}")
-        print("\n⏳ Fetching and analyzing content with Gemini...")
+        print("\nFetching and analyzing content with Gemini...")
 
     # Create client if not provided
     if gemini_client is None:
@@ -336,7 +344,7 @@ async def enhance_voice_persona(
         logger.warning("Returning initial voice persona unchanged")
 
         if verbose:
-            print(f"\n❌ ERROR: Failed to parse enhanced persona: {e}")
+            print(f"\n[ERROR] Failed to parse enhanced persona: {e}")
             print("   Returning initial voice persona unchanged")
 
         return initial_persona
@@ -400,7 +408,7 @@ async def sample_and_enhance(
         logger.warning("Continuing with initial voice persona")
 
         if verbose:
-            print(f"\n❌ Voice enhancement failed: {e}")
+            print(f"\n[ERROR] Voice enhancement failed: {e}")
             print("   Continuing with initial voice persona")
 
         return initial_persona, sampled_urls, False

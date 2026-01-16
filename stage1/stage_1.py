@@ -6,15 +6,17 @@ Sets up all context for blog generation:
 2. Company Context: From provided data OR OpenContext (Gemini + Google Search)
 3. Sitemap: Crawled and labeled URLs for internal linking
 4. Voice Enhancement: Refine voice_persona by analyzing real blog content
+5. Legal Research: (Optional) German court decisions via Beck-Online or mock data
 
 Micro-API Design:
-- Input: JSON with keywords, company_url, language, market, optional company_context
-- Output: JSON with job_id, keywords, company_context, sitemap, metadata
+- Input: JSON with keywords, company_url, language, market, optional company_context, legal flags
+- Output: JSON with job_id, keywords, company_context, sitemap, legal_context, metadata
 - Can run as CLI or be imported as a module
 
-AI Calls: 0-2
+AI Calls: 0-2 (3 with legal research via Beck-Online)
 - OpenContext: 0-1 (only if company_context not provided)
 - Voice Enhancement: 0-1 (only if 3+ blog URLs available)
+- Legal Research: 0 (mock data) or 1 (Beck-Online browser agent)
 """
 
 import asyncio
@@ -34,6 +36,7 @@ from opencontext import get_company_context
 from sitemap_crawler import crawl_sitemap
 from voice_enhancer import sample_and_enhance
 from constants import VOICE_ENHANCEMENT_SAMPLE_SIZE, VOICE_ENHANCEMENT_MIN_BLOGS
+from legal_researcher import conduct_legal_research
 
 # Configure logging
 logging.basicConfig(
@@ -116,6 +119,28 @@ async def run_stage_1(input_data: Stage1Input) -> Stage1Output:
         logger.info(f"  Not enough blog URLs ({len(sitemap_data.blog_urls)}) for voice enhancement, skipping")
 
     # -----------------------------------------
+    # Step 3.5: Legal Research (if enabled)
+    # -----------------------------------------
+    legal_context = None
+    legal_research_enabled = False
+
+    if input_data.enable_legal_research:
+        logger.info(f"  Conducting legal research: rechtsgebiet={input_data.rechtsgebiet}, use_mock={input_data.use_mock_legal_data}")
+        try:
+            legal_context = await conduct_legal_research(
+                keywords=input_data.keywords,
+                rechtsgebiet=input_data.rechtsgebiet,
+                use_mock=input_data.use_mock_legal_data
+            )
+            legal_research_enabled = True
+            logger.info(f"  Legal research complete: {len(legal_context.court_decisions)} court decisions found")
+        except Exception as e:
+            logger.error(f"  Legal research failed: {e}")
+            logger.warning("  Continuing without legal context")
+    else:
+        logger.info("  Legal research disabled (enable_legal_research=False)")
+
+    # -----------------------------------------
     # Step 4: Generate Article Jobs with Slugs
     # -----------------------------------------
     articles = []
@@ -145,6 +170,8 @@ async def run_stage_1(input_data: Stage1Input) -> Stage1Output:
         ai_calls=ai_calls,
         voice_enhanced=voice_enhanced,
         voice_enhancement_urls=voice_enhancement_urls,
+        legal_context=legal_context.model_dump() if legal_context else None,
+        legal_research_enabled=legal_research_enabled,
     )
 
     logger.info(f"Stage 1 complete. Job ID: {output.job_id}")

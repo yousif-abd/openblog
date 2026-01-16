@@ -233,6 +233,32 @@ class ArticleOutput(BaseModel):
     quality_score: Optional[int] = Field(default=None, description="Quality score 0-100")
     quality_failed: Optional[bool] = Field(default=False, description="True if quality score < 60")
 
+    # Legal content fields (set by Stage 1, verified by Stage 2.5)
+    rechtsgebiet: Optional[str] = Field(
+        default=None,
+        description="Legal area (e.g., Arbeitsrecht, Mietrecht, Vertragsrecht, Familienrecht, Erbrecht)"
+    )
+    rechtliche_grundlagen: List[str] = Field(
+        default_factory=list,
+        description="Legal sources cited (court decisions with Aktenzeichen, e.g., 'BAG, Urt. v. 12.05.2024 – 6 AZR 123/23')"
+    )
+    stand_der_rechtsprechung: Optional[str] = Field(
+        default=None,
+        description="ISO date of legal research (YYYY-MM-DD)"
+    )
+    legal_disclaimer: Optional[str] = Field(
+        default="",
+        description="German legal disclaimer text (e.g., 'Dies ist keine Rechtsberatung...')"
+    )
+    legal_verification_status: str = Field(
+        default="pending",
+        description="Verification status: 'pending', 'verified', 'issues_found', 'skipped'"
+    )
+    legal_issues: List[str] = Field(
+        default_factory=list,
+        description="Unsupported legal claims flagged by Stage 2.5 verification"
+    )
+
     model_config = ConfigDict(extra="ignore")
 
     @field_validator("Headline", "Teaser", "Direct_Answer", "Intro", "Meta_Title", "Meta_Description", "section_01_title", "section_01_content")

@@ -277,6 +277,20 @@ class Stage1Input(BaseModel):
     default_word_count: int = Field(default=2000, description="Default word count for all articles")
     batch_instructions: Optional[str] = Field(default=None, description="Instructions for all articles in batch")
 
+    # Legal research flags (for law firm content)
+    enable_legal_research: bool = Field(
+        default=False,
+        description="Enable legal research in Stage 1 (for law firms)"
+    )
+    rechtsgebiet: str = Field(
+        default="Arbeitsrecht",
+        description="German legal area (Arbeitsrecht, Mietrecht, Vertragsrecht, etc.)"
+    )
+    use_mock_legal_data: bool = Field(
+        default=True,
+        description="Use mock legal data instead of Beck-Online (default: True)"
+    )
+
     def get_keyword_configs(self) -> List[KeywordConfig]:
         """
         Parse keywords into KeywordConfig objects with resolved values.
@@ -352,3 +366,13 @@ class Stage1Output(BaseModel):
     # Voice Enhancement Metadata
     voice_enhanced: bool = Field(default=False, description="Whether voice was enhanced from blog samples")
     voice_enhancement_urls: List[str] = Field(default_factory=list, description="Blog URLs used for voice enhancement")
+
+    # Legal research results (for law firm content)
+    legal_context: Optional[Any] = Field(
+        default=None,
+        description="Legal research context (LegalContext object from legal_models.py)"
+    )
+    legal_research_enabled: bool = Field(
+        default=False,
+        description="Whether legal research was performed"
+    )
