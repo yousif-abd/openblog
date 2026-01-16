@@ -86,25 +86,87 @@ async def _execute_beck_research_internal(
 
     # Build search task for Beck-Online
     keywords_str = ", ".join(normalized_keywords)
-    task = f"""
-    Go to beck-online.beck.de and log in with username '{beck_username}' and password (use the password field).
 
+    # CRITICAL: Pass the password directly in the task since browser-use needs it
+    task = f"""
+    STEP 1: HANDLE COOKIE POPUP AND NAVIGATE
+    -----------------------------------------
+    1. Navigate to https://beck-online.beck.de
+    2. Wait 2 seconds for the page to fully load
+    3. FIRST: Look for a cookie consent popup or banner
+    4. If you see a cookie popup, click "Akzeptieren", "Alle akzeptieren", or "OK" to dismiss it
+    5. Wait 1 second after dismissing the cookie popup
+
+    STEP 2: ACCESS LOGIN PAGE
+    --------------------------
+    6. Look in the top right corner of the page for "Mein beck-online" text
+    7. Under or near "Mein beck-online", you will see "Anmelden" (Login)
+    8. Click on "Anmelden" to go to the login page
+    9. Wait for the login page to load completely
+
+    STEP 3: LOGIN WITH CREDENTIALS
+    -------------------------------
+    10. You are now on the login page with a login form
+    11. CRITICAL: Do NOT type into any search bars - only use the login form fields
+    12. Find the input field labeled "Benutzername" or "E-Mail" (username field)
+    13. Click inside the username field to focus it
+    14. Clear any existing text in the field
+    15. Type this username exactly: {beck_username}
+    16. Press Tab or click to move to the next field
+    17. Find the input field labeled "Passwort" or "Password" (password field)
+    18. Click inside the password field to focus it
+    19. Clear any existing text in the field
+    20. Type the password that was provided (do NOT type it into the search bar)
+    21. Look for the "Anmelden" or "Login" button in the login form
+    22. Click the login button to submit the credentials
+    23. Wait 3 seconds for login to complete
+    24. Verify you are logged in by looking for your username or "Abmelden" (Logout) in the top right
+
+    STEP 4: SEARCH FOR COURT DECISIONS
+    -----------------------------------
     For each of these keywords: {keywords_str}
 
-    Search for recent court decisions in {rechtsgebiet}.
+    1. NOW you can use the search bar at the top of beck-online.beck.de
+    2. Click in the search bar to focus it
+    3. Type: [keyword] {rechtsgebiet}
+       For example: "Kündigung Arbeitsrecht"
+    4. Press Enter or click the search button
+    5. Wait for search results to load
+    6. Look for a filter option for "Rechtsprechung" or "Urteile" (court decisions)
+    7. Click to filter results to show only court decisions
+    8. Look for a sort option and sort by date (newest first / "Datum absteigend")
+    9. From the top 3 most recent results, click on each decision to view details
+    10. For each decision, extract these exact fields:
+        - Gericht (court name, e.g., BGH, BAG, OLG München)
+        - Aktenzeichen (case reference, e.g., 6 AZR 123/23)
+        - Datum (decision date in DD.MM.YYYY format)
+        - Leitsatz (core legal principle - usually the first bold paragraph)
+        - Relevante Normen (cited statutes, e.g., § 623 BGB, § 626 BGB)
+        - URL (copy the full beck-online.beck.de URL from the address bar)
 
-    For each search result, extract:
-    - Gericht (court name, e.g., BGH, BAG, OLG München)
-    - Aktenzeichen (case reference, e.g., 6 AZR 123/23)
-    - Datum (decision date)
-    - Leitsatz (core legal principle/holding)
-    - Relevante Normen (cited statutes, e.g., § 623 BGB)
-    - URL (direct link to decision on beck-online.beck.de)
+    STEP 5: OUTPUT FORMAT
+    ---------------------
+    For each decision found, output in this exact format:
 
-    Extract up to 3 relevant decisions per keyword (max 15 total).
-    Focus on recent decisions from the last 2 years.
+    Decision 1:
+    Gericht: [court name]
+    Aktenzeichen: [case reference]
+    Datum: [DD.MM.YYYY]
+    Leitsatz: [main legal principle]
+    Relevante Normen: [statute citations separated by commas]
+    URL: [full URL]
 
-    Return the extracted data in a structured format.
+    Decision 2:
+    [same format]
+
+    Extract up to 3 decisions per keyword (maximum 15 total across all keywords).
+    Focus on decisions from the last 2 years (2024-2026).
+
+    IMPORTANT REMINDERS:
+    - ALWAYS dismiss the cookie popup first
+    - Click "Anmelden" under "Mein beck-online" to access login
+    - Type credentials ONLY in the login form fields, NEVER in the search bar
+    - Use the search bar ONLY after successfully logging in
     """
 
     logger.info("Starting browser agent...")
@@ -285,15 +347,14 @@ async def research_via_beck_online(
     )
 
 
-def _parse_beck_online_results(browser_output: str, rechtsgebiet: str) -> List[CourtDecision]:
+def _parse_beck_online_results(browser_output, rechtsgebiet: str) -> List[CourtDecision]:
     """
     Parse browser agent output into CourtDecision objects.
 
-    The browser agent returns an AgentHistoryList, but we convert it to string.
-    The final result contains extracted decisions in a structured text format.
+    The browser agent returns an AgentHistoryList containing extracted decisions.
 
     Args:
-        browser_output: Raw output from browser agent (AgentHistoryList as string)
+        browser_output: AgentHistoryList from browser agent
         rechtsgebiet: Legal area
 
     Returns:
@@ -303,9 +364,24 @@ def _parse_beck_online_results(browser_output: str, rechtsgebiet: str) -> List[C
     from datetime import datetime
 
     decisions = []
-    output_str = str(browser_output)
 
     logger.info("Parsing browser agent output for court decisions...")
+
+    # Extract all content from AgentHistoryList
+    try:
+        content_items = browser_output.extracted_content()
+        if not content_items:
+            logger.warning("No extracted content from browser agent")
+            return decisions
+
+        # Combine all extracted content chunks
+        output_str = '\n'.join(content_items)
+        logger.info(f"Extracted {len(content_items)} content item(s) from browser agent")
+    except Exception as e:
+        logger.error(f"Failed to extract content from browser output: {e}")
+        # Fallback to string conversion if extraction fails
+        output_str = str(browser_output)
+        logger.warning("Falling back to string conversion of browser output")
 
     # Extract decision blocks (each starts with "Decision N:" or "Gericht:")
     # The browser agent returns text like:

@@ -210,6 +210,9 @@ async def write_article(
     """
     logger.info(f"Writing article for: {keyword} ({language}/{country})")
 
+    # Log Beck-Online data usage
+    _log_legal_context_usage(legal_context)
+
     try:
         # Use shared GeminiClient
         if GeminiClient is None:
@@ -663,6 +666,39 @@ def _format_court_decisions(court_decisions: list) -> str:
         )
 
     return "\n\n".join(parts)
+
+
+def _log_legal_context_usage(legal_context: Optional[dict]) -> None:
+    """
+    Log which Beck-Online court decisions are being used in article generation.
+
+    Args:
+        legal_context: Legal context with court_decisions list
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    if not legal_context:
+        return
+
+    court_decisions = legal_context.get("court_decisions", [])
+
+    if court_decisions:
+        logger.info("=" * 80)
+        logger.info("BECK-ONLINE DATA USED IN ARTICLE GENERATION")
+        logger.info("=" * 80)
+        logger.info(f"  Injecting {len(court_decisions)} court decision(s) into article prompt:")
+        for i, decision in enumerate(court_decisions, 1):
+            aktenzeichen = decision.get("aktenzeichen", "Unknown")
+            gericht = decision.get("gericht", "Unknown")
+            datum = decision.get("datum", "Unknown")
+            leitsatz = decision.get("leitsatz", "")
+            logger.info(f"    {i}. {gericht} {aktenzeichen} ({datum})")
+            if leitsatz:
+                logger.info(f"       Leitsatz: {leitsatz[:80]}...")
+        logger.info("=" * 80)
+    else:
+        logger.info("Beck-Online: No court decisions available for article generation")
 
 
 # =============================================================================
