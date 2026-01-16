@@ -5,10 +5,13 @@ AI-powered blog generation pipeline using Gemini 3 Flash Preview with Google Sea
 ## Features
 
 - **5-Stage Pipeline**: Context → Generation → Quality → URL Verify → Internal Links
+- **Legal Content Engine**: Automated German legal research with Beck-Online integration
+- **Legal Verification (Stage 2.5)**: Automatic claim verification against court decisions
 - **Google Search Grounding**: Real-time web research for accurate, sourced content
 - **Parallel Processing**: Generate multiple articles simultaneously
 - **Multiple Export Formats**: HTML, Markdown, JSON, CSV, XLSX, PDF
 - **Image Generation**: Optional hero, mid, and bottom images via Google Imagen
+- **Voice Enhancement**: Analyzes existing blog content to match company writing style
 
 ## Architecture
 
@@ -21,6 +24,9 @@ Stage 1 (once per batch)
   │         │         │
   ▼         ▼         ▼
 Stage 2   Stage 2   Stage 2   ← Blog Gen + Images
+  │         │         │
+  ▼         ▼         ▼
+Stage 2.5 Stage 2.5 Stage 2.5 ← Legal Verification (optional)
   │         │         │
   ▼         ▼         ▼
 Stage 3   Stage 3   Stage 3   ← Quality Check
@@ -39,8 +45,9 @@ Export    Export    Export    ← HTML/MD/JSON/CSV/XLSX/PDF
 
 | Stage | Name | AI Calls | Purpose |
 |-------|------|----------|---------|
-| 1 | Set Context | 0-1 | Company context + authors + sitemap (runs once per batch) |
+| 1 | Set Context | 0-2 | Company context + voice enhancement + sitemap + legal research (runs once per batch) |
 | 2 | Blog Gen + Images | 1-4 | Generate article with Gemini + 3 images with Imagen |
+| 2.5 | Legal Verification | 1 | Verify legal claims against court decisions (optional, legal mode only) |
 | 3 | Quality Check | 1 | Surgical find/replace fixes (uses structured schema) |
 | 4 | URL Verify | 0-2 | Validate/replace dead URLs (uses structured schema) |
 | 5 | Internal Links | 1 | Embed internal links from sitemap (uses structured schema) |
@@ -62,6 +69,10 @@ export GEMINI_API_KEY=your-gemini-api-key
 Or create a `.env` file:
 ```
 GEMINI_API_KEY=your-gemini-api-key
+
+# Optional: For German legal content generation
+BECK_USERNAME=your-beck-username
+BECK_PASSWORD=your-beck-password
 ```
 
 ### 3. Run the Pipeline (CLI)
@@ -77,6 +88,15 @@ python run_pipeline.py --url https://example.com --keywords "topic" \
 # Skip images, limit parallelism
 python run_pipeline.py --url https://example.com --keywords "topic" \
     --output results/ --skip-images --max-parallel 2
+
+# German legal content with Beck-Online research
+python run_pipeline.py \
+    --url https://www.lawfirm.de/ \
+    --keywords "Kündigung im Arbeitsrecht" \
+    --language de \
+    --enable-legal-research \
+    --rechtsgebiet Arbeitsrecht \
+    --output results/
 ```
 
 ### 4. Run the API Server
@@ -146,16 +166,117 @@ curl http://localhost:8000/api/v1/jobs/550e8400-e29b-41d4-a716-446655440000
 ## Command Line Options
 
 ```
---url               Company website URL (required)
---keywords          List of keywords to generate articles for (required)
---output            Output directory for generated files
---export-formats    Formats to export (html, markdown, json, csv, xlsx, pdf)
---skip-images       Skip image generation
---max-parallel      Maximum parallel article processing (default: 3)
---language          Content language (default: en)
---market            Target market (default: US)
---word-count        Target word count per article (default: 2000)
+--url                      Company website URL (required)
+--keywords                 List of keywords to generate articles for (required)
+--output                   Output directory for generated files
+--export-formats           Formats to export (html, markdown, json, csv, xlsx, pdf)
+--skip-images              Skip image generation
+--max-parallel             Maximum parallel article processing (default: 3)
+--language                 Content language (default: en)
+--market                   Target market (default: US)
+--word-count               Target word count per article (default: 2000)
+
+# Legal Content Options
+--enable-legal-research    Enable German legal research (requires Beck-Online credentials)
+--rechtsgebiet             Legal area (Arbeitsrecht, Mietrecht, Familienrecht, etc.)
+--use-mock-legal-data      Use mock data instead of Beck-Online (for testing)
 ```
+
+## Legal Content Engine
+
+OpenBlog Neo includes a specialized **Legal Content Engine** for generating high-quality German legal articles with automatic claim verification.
+
+### Features
+
+- **Beck-Online Integration**: Automated browser-based research on beck-online.beck.de
+- **Court Decision Extraction**: Automatically extracts relevant court decisions (Gericht, Aktenzeichen, Datum, Leitsatz, Normen)
+- **Legal Verification (Stage 2.5)**: Verifies every legal claim against extracted court decisions
+- **API Quota Optimization**: Optimized to minimize Gemini API usage (80% reduction)
+- **Automatic Retry Logic**: Exponential backoff on quota errors
+- **German Legal Disclaimers**: Automatic generation of rechtsgebiet-specific disclaimers
+
+### Setup
+
+1. **Install browser-use dependencies**:
+```bash
+pip install browser-use playwright
+playwright install chromium
+```
+
+2. **Set Beck-Online credentials** in `.env`:
+```bash
+BECK_USERNAME=your-username
+BECK_PASSWORD=your-password
+GEMINI_API_KEY=your-api-key
+```
+
+3. **Run with legal research enabled**:
+```bash
+python run_pipeline.py \
+    --url https://www.lawfirm.de/ \
+    --keywords "Kündigung im Arbeitsrecht" "Mietminderung" \
+    --language de \
+    --enable-legal-research \
+    --rechtsgebiet Arbeitsrecht \
+    --output results/
+```
+
+### Supported Rechtsgebiete
+
+- Arbeitsrecht (Employment Law)
+- Mietrecht (Tenancy Law)
+- Familienrecht (Family Law)
+- Vertragsrecht (Contract Law)
+- Erbrecht (Inheritance Law)
+
+### Legal Verification System
+
+Every article generated in legal mode goes through **Stage 2.5: Legal Verification**:
+
+1. **Extract Claims**: Identifies all legal claims in the article
+2. **Verify Against Court Decisions**: Checks each claim against Beck-Online court decisions
+3. **Flag Unsupported Claims**: Marks claims without legal backing for review
+4. **Report Status**: Provides detailed verification report in pipeline output
+
+Example verification output:
+```json
+{
+  "stage2_5": {
+    "claims_extracted": 10,
+    "claims_supported": 8,
+    "claims_unsupported": 2,
+    "verification_status": "issues_found",
+    "ai_calls": 1
+  }
+}
+```
+
+### API Quota Optimization
+
+Beck-Online scraping is optimized to minimize Gemini API usage:
+
+- **Vision Disabled**: Reduces API calls by ~80%
+- **Stable Model**: Uses `gemini-2.0-flash` (60 RPM vs 10 RPM for experimental)
+- **Action Limiting**: Prevents runaway browser loops
+- **Automatic Retry**: Exponential backoff on quota errors (60s, 120s delays)
+
+Expected API usage: **~10-18 calls per keyword** (well under 60 RPM limit)
+
+### Mock Data Mode
+
+For testing without Beck-Online access:
+```bash
+python run_pipeline.py \
+    --url https://www.lawfirm.de/ \
+    --keywords "Kündigung" \
+    --enable-legal-research \
+    --rechtsgebiet Arbeitsrecht \
+    --use-mock-legal-data
+```
+
+### Documentation
+
+For detailed implementation documentation, see [LEGAL_ENGINE_IMPLEMENTATION.md](LEGAL_ENGINE_IMPLEMENTATION.md)
 
 ## Project Structure
 
@@ -166,13 +287,23 @@ openblog-neo/
 │   ├── models.py           # ArticleOutput schema (40+ fields)
 │   ├── html_renderer.py    # Render article to HTML
 │   ├── article_exporter.py # Export to multiple formats
+│   ├── field_utils.py      # DRY field derivation
 │   └── constants.py        # Model configuration
-├── stage1/                 # Set Context (company, authors, sitemap)
+├── stage1/                 # Set Context
+│   ├── stage_1.py          # Company context + sitemap
+│   ├── browser_agent.py    # Beck-Online browser automation
+│   ├── legal_researcher.py # Legal research orchestrator
+│   ├── legal_models.py     # Legal data models
+│   └── mock_legal_data.py  # Mock data for testing
 ├── stage2/                 # Blog Gen + Images
+│   └── prompts/            # Legal-specific prompts
+├── stage2_5/               # Legal Verification
+│   └── stage_2_5.py        # Claim verification
 ├── stage3/                 # Quality Check
 ├── stage4/                 # URL Verify
 ├── stage5/                 # Internal Links
 ├── run_pipeline.py         # Main orchestrator
+├── api.py                  # FastAPI REST API
 └── requirements.txt
 ```
 
