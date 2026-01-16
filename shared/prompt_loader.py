@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 _ROOT = Path(__file__).parent.parent
 
 # Valid stage names (whitelist for security)
-_VALID_STAGES = {"stage1", "stage2", "stage3", "stage4", "stage5", "stage_refresh", "shared"}
+_VALID_STAGES = {"stage1", "stage2", "stage2_5", "stage3", "stage4", "stage5", "stage_refresh", "shared"}
 
 
 def _validate_path_component(name: str, component_type: str) -> str:

@@ -20,3 +20,8 @@ openpyxl>=3.1
 # API Server
 fastapi>=0.109.0
 uvicorn[standard]>=0.27.0
+
+# Legal Engine (for law firm content)
+browser-use>=0.1.0
+playwright>=1.40.0
+langchain-google-genai>=1.0.0

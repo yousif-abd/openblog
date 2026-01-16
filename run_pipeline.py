@@ -18,16 +18,19 @@ Architecture:
   [Art 1]  [Art 2]  [Art 3]  ← parallel
     │         │         │
     ▼         ▼         ▼
-  Stage 2   Stage 2   Stage 2
+  Stage 2   Stage 2   Stage 2  ← Blog Gen + Images
     │         │         │
     ▼         ▼         ▼
-  Stage 3   Stage 3   Stage 3  ← sequential per article
+  Stage 2.5 Stage 2.5 Stage 2.5  ← Legal Verification (optional)
     │         │         │
     ▼         ▼         ▼
-  Stage 4   Stage 4   Stage 4
+  Stage 3   Stage 3   Stage 3  ← Quality Check
     │         │         │
     ▼         ▼         ▼
-  Stage 5   Stage 5   Stage 5
+  Stage 4   Stage 4   Stage 4  ← URL Verify
+    │         │         │
+    ▼         ▼         ▼
+  Stage 5   Stage 5   Stage 5  ← Internal Links
     │         │         │
     ▼         ▼         ▼
   [Out 1]  [Out 2]  [Out 3]
@@ -105,6 +108,13 @@ _stage5_models = _load_module_from_path("stage5_models", _stage5_path / "stage5_
 _stage5_module = _load_module_from_path("stage_5_module", _stage5_path / "stage_5.py")
 run_stage_5 = _stage5_module.run_stage_5
 
+# Stage 2.5 - Legal Verification (optional, runs when legal_research_enabled)
+_stage25_path = _BASE_PATH / "stage2_5"
+if str(_stage25_path) not in sys.path:
+    sys.path.insert(0, str(_stage25_path))
+_stage25_module = _load_module_from_path("stage_2_5_module", _stage25_path / "stage_2_5.py")
+run_stage_25 = _stage25_module.run
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -123,6 +133,7 @@ async def process_single_article(
     skip_images: bool = False,
     output_dir: Optional[Path] = None,
     export_formats: Optional[List[str]] = None,
+    legal_research_enabled: bool = False,
 ) -> dict:
     """
     Process one article through stages 2-5 sequentially.
@@ -135,6 +146,7 @@ async def process_single_article(
         skip_images: Skip image generation in Stage 2
         output_dir: Directory for exported files
         export_formats: List of export formats (html, markdown, json, csv, xlsx, pdf)
+        legal_research_enabled: Whether legal research was performed in Stage 1
 
     Returns:
         Dict with article output and metadata
@@ -162,6 +174,11 @@ async def process_single_article(
         company_ctx = context.company_context.model_dump()
         visual_identity_data = company_ctx.pop("visual_identity", None)
 
+        # Include legal_context if legal research was enabled
+        legal_context = None
+        if legal_research_enabled and hasattr(context, "legal_context") and context.legal_context:
+            legal_context = context.legal_context
+
         stage2_input = Stage2Input(
             keyword=article.keyword,
             company_context=CompanyContext(**company_ctx),
@@ -169,6 +186,7 @@ async def process_single_article(
             language=context.language,
             job_id=context.job_id,
             skip_images=skip_images,
+            legal_context=legal_context,
         )
 
         stage2_output = await run_stage_2(stage2_input)
@@ -180,6 +198,32 @@ async def process_single_article(
             "images_generated": stage2_output.images_generated,
         }
         logger.info(f"    [Stage 2] ✓ Generated: {stage2_output.article.Headline[:50]}...")
+
+        # -----------------------------------------
+        # Stage 2.5: Legal Verification (if legal research enabled)
+        # -----------------------------------------
+        if legal_research_enabled and legal_context:
+            logger.info(f"    [Stage 2.5] Legal verification...")
+
+            stage25_output = await run_stage_25({
+                "article": article_dict,
+                "legal_context": legal_context,
+            })
+
+            # Deep copy to prevent mutation side effects
+            article_dict = copy.deepcopy(stage25_output["article"])
+            result["reports"]["stage2_5"] = {
+                "claims_extracted": stage25_output["claims_extracted"],
+                "claims_supported": stage25_output["claims_supported"],
+                "claims_unsupported": stage25_output["claims_unsupported"],
+                "verification_status": stage25_output["article"].get("legal_verification_status", "unknown"),
+                "ai_calls": stage25_output["ai_calls"],
+            }
+
+            logger.info(
+                f"    [Stage 2.5] ✓ Verified {stage25_output['claims_extracted']} claims "
+                f"({stage25_output['claims_supported']} supported, {stage25_output['claims_unsupported']} unsupported)"
+            )
 
         # -----------------------------------------
         # Stage 3: Quality Check
@@ -336,6 +380,9 @@ async def run_pipeline(
     max_parallel: Optional[int] = None,
     output_dir: Optional[Path] = None,
     export_formats: Optional[List[str]] = None,
+    enable_legal_research: bool = False,
+    rechtsgebiet: str = "Arbeitsrecht",
+    use_mock_legal_data: bool = True,
 ) -> dict:
     """
     Run full pipeline: Stage 1 once, then Stages 2-5 for each article in parallel.
@@ -349,6 +396,9 @@ async def run_pipeline(
         max_parallel: Limit concurrent article processing (None = unlimited)
         output_dir: Directory for exported files
         export_formats: List of export formats (html, markdown, json, csv, xlsx, pdf)
+        enable_legal_research: Enable legal research in Stage 1 (for law firms)
+        rechtsgebiet: German legal area (Arbeitsrecht, Mietrecht, etc.)
+        use_mock_legal_data: Use mock legal data instead of Beck-Online
 
     Returns:
         Dict with pipeline results
@@ -377,6 +427,9 @@ async def run_pipeline(
         company_url=company_url,
         language=language,
         market=market,
+        enable_legal_research=enable_legal_research,
+        rechtsgebiet=rechtsgebiet,
+        use_mock_legal_data=use_mock_legal_data,
     )
 
     context = await run_stage_1(input_data)
@@ -384,6 +437,14 @@ async def run_pipeline(
     logger.info(f"  Company: {context.company_context.company_name}")
     logger.info(f"  Articles: {len(context.articles)}")
     logger.info(f"  Sitemap: {context.sitemap.total_pages} pages")
+
+    # Log legal research status
+    legal_research_enabled = getattr(context, "legal_research_enabled", False)
+    if legal_research_enabled:
+        legal_context = getattr(context, "legal_context", None)
+        if legal_context:
+            num_decisions = len(legal_context.get("court_decisions", []))
+            logger.info(f"  Legal Research: {rechtsgebiet} ({num_decisions} court decisions)")
 
     # -----------------------------------------
     # Stages 2-5: Per article (parallel)
@@ -398,6 +459,7 @@ async def run_pipeline(
             skip_images=skip_images,
             output_dir=output_dir,
             export_formats=export_formats,
+            legal_research_enabled=legal_research_enabled,
         )
         for article in context.articles
     ]
@@ -522,6 +584,29 @@ def main():
         default=["html", "json"],
         help="Export formats: html, markdown, json, csv, xlsx, pdf (default: html json)"
     )
+    parser.add_argument(
+        "--enable-legal-research",
+        action="store_true",
+        help="Enable legal research in Stage 1 (for law firms)"
+    )
+    parser.add_argument(
+        "--rechtsgebiet",
+        type=str,
+        default="Arbeitsrecht",
+        help="German legal area (Arbeitsrecht, Mietrecht, Vertragsrecht, Familienrecht, Erbrecht) (default: Arbeitsrecht)"
+    )
+    parser.add_argument(
+        "--use-mock-legal-data",
+        action="store_true",
+        default=True,
+        help="Use mock legal data instead of Beck-Online (default: True)"
+    )
+    parser.add_argument(
+        "--no-use-mock-legal-data",
+        dest="use_mock_legal_data",
+        action="store_false",
+        help="Use real Beck-Online (requires BECK_USERNAME/BECK_PASSWORD in .env)"
+    )
 
     args = parser.parse_args()
 
@@ -561,6 +646,9 @@ def main():
         max_parallel=args.max_parallel,
         output_dir=output_dir,
         export_formats=args.export_formats,
+        enable_legal_research=args.enable_legal_research,
+        rechtsgebiet=args.rechtsgebiet,
+        use_mock_legal_data=args.use_mock_legal_data,
     ))
 
     # Save output

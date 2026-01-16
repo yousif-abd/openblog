@@ -34,8 +34,51 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# Build field name mapping from lowercase/snake_case to ArticleOutput field names
+_FIELD_NAME_MAPPING = {}
+for field_name in ArticleOutput.model_fields.keys():
+    # Map lowercase version to correct casing
+    _FIELD_NAME_MAPPING[field_name.lower()] = field_name
+    # Also map snake_case version (e.g., direct_answer -> Direct_Answer)
+    snake_case = field_name.lower()
+    _FIELD_NAME_MAPPING[snake_case] = field_name
+    # Map version without underscores (e.g., directanswer -> Direct_Answer)
+    _FIELD_NAME_MAPPING[snake_case.replace('_', '')] = field_name
+
 # Prompts directory
 PROMPTS_DIR = Path(__file__).parent / "prompts"
+
+
+# =============================================================================
+# Field Name Normalization
+# =============================================================================
+
+def _normalize_field_names(result: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Normalize Gemini API response field names to match ArticleOutput schema.
+
+    Gemini may return lowercase field names (headline, teaser, etc.)
+    but ArticleOutput expects capitalized names (Headline, Teaser, etc.).
+
+    Args:
+        result: Raw dictionary from Gemini API
+
+    Returns:
+        Dictionary with normalized field names matching ArticleOutput
+    """
+    normalized = {}
+
+    for key, value in result.items():
+        # Check if we have a mapping for this key
+        normalized_key = _FIELD_NAME_MAPPING.get(key.lower(), key)
+
+        # If the normalized key differs from original, log it for debugging
+        if normalized_key != key:
+            logger.debug(f"Normalized field name: {key} -> {normalized_key}")
+
+        normalized[normalized_key] = value
+
+    return normalized
 
 
 # =============================================================================
@@ -139,11 +182,13 @@ async def write_article(
     batch_instructions: Optional[str] = None,
     keyword_instructions: Optional[str] = None,
     api_key: Optional[str] = None,
+    legal_context: Optional[Dict[str, Any]] = None,
 ) -> ArticleOutput:
     """
     Generate a complete blog article using Gemini.
 
     Uses shared GeminiClient for consistency.
+    Supports legal mode for German law firm content.
 
     Args:
         keyword: Primary SEO keyword
@@ -154,9 +199,10 @@ async def write_article(
         batch_instructions: Batch-level instructions (applies to all articles)
         keyword_instructions: Keyword-level instructions (adds to batch instructions)
         api_key: Gemini API key (falls back to env var)
+        legal_context: Optional LegalContext dict from Stage 1 (enables legal mode)
 
     Returns:
-        ArticleOutput with all fields populated
+        ArticleOutput with all fields populated (including legal fields if legal_context provided)
 
     Raises:
         ValueError: If no API key
@@ -171,9 +217,19 @@ async def write_article(
 
         client = GeminiClient(api_key=api_key)
 
-        # Load prompts
-        system_instruction = get_system_instruction()
-        user_prompt_template = get_user_prompt()
+        # Detect legal mode
+        is_legal_mode = legal_context is not None
+        if is_legal_mode:
+            logger.info(f"Legal mode enabled: rechtsgebiet={legal_context.get('rechtsgebiet', 'Unknown')}")
+
+        # Load prompts (legal-specific or standard)
+        if is_legal_mode:
+            # For legal mode, format system instruction with legal context
+            system_instruction = _format_legal_system_instruction(legal_context)
+            user_prompt_template = _get_legal_user_prompt()
+        else:
+            system_instruction = get_system_instruction()
+            user_prompt_template = get_user_prompt()
 
         # Build company context string
         company_str = _format_company_context(company_context)
@@ -183,14 +239,25 @@ async def write_article(
 
         # Build prompt with KeyError handling
         try:
-            prompt = user_prompt_template.format(
-                keyword=keyword,
-                company_context=company_str,
-                word_count=word_count,
-                language=language,
-                country=country,
-                custom_instructions_section=custom_instructions_section,
-            )
+            if is_legal_mode:
+                prompt = _build_legal_prompt(
+                    user_prompt_template,
+                    keyword,
+                    legal_context,
+                    company_str,
+                    word_count,
+                    language,
+                    country,
+                )
+            else:
+                prompt = user_prompt_template.format(
+                    keyword=keyword,
+                    company_context=company_str,
+                    word_count=word_count,
+                    language=language,
+                    country=country,
+                    custom_instructions_section=custom_instructions_section,
+                )
         except KeyError as e:
             logger.error(f"Prompt template missing placeholder: {e}. Using fallback.")
             prompt = _FALLBACK_USER_PROMPT.format(
@@ -203,6 +270,8 @@ async def write_article(
             )
 
         # Call with URL Context + Google Search grounding + source extraction
+        # Note: Cannot use generate_with_schema() because ArticleOutput has additionalProperties
+        # which Gemini API doesn't support. Instead, rely on detailed prompt instructions.
         result = await client.generate(
             prompt=prompt,
             system_instruction=system_instruction,
@@ -214,6 +283,9 @@ async def write_article(
             max_tokens=16384,  # Reasonable limit for blog articles
         )
 
+        # Normalize field names (Gemini may return lowercase, but ArticleOutput expects capitalized)
+        result = _normalize_field_names(result)
+
         # Always use grounding sources (real URLs from Google Search) instead of AI-generated ones
         # AI tends to hallucinate URLs that look real but return 404/403
         if "_grounding_sources" in result:
@@ -224,6 +296,16 @@ async def write_article(
                 logger.info(f"Using {len(grounding_sources)} grounding sources (replaced {len(ai_sources) if ai_sources else 0} AI-generated)")
 
         logger.info(f"Article generated: {result.get('Headline', 'Unknown')[:50]}...")
+
+        # Populate legal fields if in legal mode
+        if is_legal_mode and legal_context:
+            if "rechtsgebiet" not in result or not result["rechtsgebiet"]:
+                result["rechtsgebiet"] = legal_context.get("rechtsgebiet")
+            if "stand_der_rechtsprechung" not in result or not result["stand_der_rechtsprechung"]:
+                result["stand_der_rechtsprechung"] = legal_context.get("stand_der_rechtsprechung")
+            if "legal_disclaimer" not in result or not result["legal_disclaimer"]:
+                result["legal_disclaimer"] = legal_context.get("disclaimer_template", "")
+            logger.info(f"Legal fields populated: rechtsgebiet={result.get('rechtsgebiet')}")
 
         return ArticleOutput(**result)
 
@@ -440,6 +522,150 @@ def _build_custom_instructions(
 
 
 # =============================================================================
+# Legal Mode Functions
+# =============================================================================
+
+def _format_legal_system_instruction(legal_context: Dict[str, Any]) -> str:
+    """Format legal-specific system instruction with legal context."""
+    template = _load_prompt("system_instruction_legal.txt", "")
+    if not template:
+        logger.error("Legal system instruction not found, using standard")
+        return get_system_instruction()
+
+    current_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    rechtsgebiet = legal_context.get("rechtsgebiet", "Arbeitsrecht")
+    court_decisions = legal_context.get("court_decisions", [])
+    decisions_summary = _format_court_decisions(court_decisions)
+
+    try:
+        return template.format(
+            current_date=current_date,
+            rechtsgebiet=rechtsgebiet,
+            court_decisions_summary=decisions_summary,
+        )
+    except KeyError as e:
+        logger.error(f"Legal system instruction template has unknown placeholder: {e}")
+        # Fallback with manual replacement
+        result = template
+        result = result.replace("{current_date}", current_date)
+        result = result.replace("{rechtsgebiet}", rechtsgebiet)
+        result = result.replace("{court_decisions_summary}", decisions_summary)
+        return result
+
+
+def _get_legal_user_prompt() -> str:
+    """Get legal-specific user prompt template."""
+    prompt = _load_prompt("user_prompt_legal.txt", "")
+    if not prompt or not prompt.strip():
+        logger.error("Legal user prompt not found, using standard")
+        return get_user_prompt()
+    return prompt
+
+
+def _build_legal_prompt(
+    template: str,
+    keyword: str,
+    legal_context: Dict[str, Any],
+    company_str: str,
+    word_count: int,
+    language: str,
+    country: str,
+) -> str:
+    """
+    Build prompt for legal article generation.
+
+    Args:
+        template: Legal user prompt template
+        keyword: Article keyword
+        legal_context: LegalContext dict from Stage 1
+        company_str: Formatted company context
+        word_count: Target word count
+        language: Article language
+        country: Target country
+
+    Returns:
+        Formatted prompt string
+    """
+    # Format court decisions for prompt injection
+    court_decisions = legal_context.get("court_decisions", [])
+    decisions_summary = _format_court_decisions(court_decisions)
+
+    # Extract rechtsgebiet
+    rechtsgebiet = legal_context.get("rechtsgebiet", "Arbeitsrecht")
+
+    # Extract disclaimer
+    disclaimer_template = legal_context.get("disclaimer_template", "")
+
+    # Extract voice persona from company context
+    voice_persona = "Professionell und verständlich"
+
+    # Extract target audience
+    target_audience = "Mandanten und rechtlich Interessierte"
+
+    # Build prompt
+    try:
+        return template.format(
+            keyword=keyword,
+            rechtsgebiet=rechtsgebiet,
+            word_count=word_count,
+            target_audience=target_audience,
+            court_decisions_summary=decisions_summary,
+            disclaimer_template=disclaimer_template,
+            company_name=company_str.split("\n")[0].replace("Company: ", "") if company_str else "Braun & Kollegen",
+            company_description="Rechtsanwaltskanzlei",
+            voice_persona=voice_persona,
+        )
+    except KeyError as e:
+        logger.error(f"Legal prompt template missing placeholder: {e}")
+        # Fallback with minimal substitution
+        result = template
+        result = result.replace("{keyword}", keyword)
+        result = result.replace("{rechtsgebiet}", rechtsgebiet)
+        result = result.replace("{word_count}", str(word_count))
+        result = result.replace("{court_decisions_summary}", decisions_summary)
+        result = result.replace("{disclaimer_template}", disclaimer_template)
+        return result
+
+
+def _format_court_decisions(court_decisions: list) -> str:
+    """
+    Format court decisions for prompt injection.
+
+    Args:
+        court_decisions: List of CourtDecision dicts
+
+    Returns:
+        Formatted string with all decisions
+    """
+    if not court_decisions:
+        return "Keine Gerichtsentscheidungen bereitgestellt."
+
+    parts = []
+    for i, decision in enumerate(court_decisions, 1):
+        normen = ", ".join(decision.get("relevante_normen", [])) if decision.get("relevante_normen") else "keine Normen angegeben"
+
+        # Format datum from ISO to German format
+        datum = decision.get("datum", "")
+        if datum and len(datum) == 10:  # ISO format YYYY-MM-DD
+            try:
+                parts_date = datum.split("-")
+                datum_german = f"{parts_date[2]}.{parts_date[1]}.{parts_date[0]}"
+            except:
+                datum_german = datum
+        else:
+            datum_german = datum
+
+        parts.append(
+            f"{i}. {decision.get('gericht', 'Unbekannt')}, Urt. v. {datum_german} – {decision.get('aktenzeichen', 'N/A')}\n"
+            f"   Leitsatz: {decision.get('leitsatz', 'N/A')}\n"
+            f"   Relevante Normen: {normen}\n"
+            f"   URL: {decision.get('url', 'N/A')}"
+        )
+
+    return "\n\n".join(parts)
+
+
+# =============================================================================
 # BlogWriter Class (wrapper for compatibility)
 # =============================================================================
 
@@ -466,6 +692,7 @@ class BlogWriter:
         country: str = "United States",
         batch_instructions: Optional[str] = None,
         keyword_instructions: Optional[str] = None,
+        legal_context: Optional[Dict[str, Any]] = None,
     ) -> ArticleOutput:
         """Generate article using write_article function."""
         return await write_article(
@@ -477,6 +704,7 @@ class BlogWriter:
             batch_instructions=batch_instructions,
             keyword_instructions=keyword_instructions,
             api_key=self.api_key,
+            legal_context=legal_context,
         )
 
 

@@ -419,6 +419,7 @@ class GeminiClient:
         use_url_context: bool = True,
         use_google_search: bool = True,
         extract_sources: bool = False,
+        system_instruction: Optional[str] = None,
         temperature: float = 0.3,
         timeout: Optional[int] = None,
     ) -> Dict[str, Any]:
@@ -431,6 +432,7 @@ class GeminiClient:
             use_url_context: Enable URL Context tool
             use_google_search: Enable Google Search tool
             extract_sources: Extract real URLs from grounding metadata
+            system_instruction: Optional system instruction for the model
             temperature: Generation temperature
             timeout: Request timeout in seconds (auto-selected based on grounding tools if None)
 
@@ -458,6 +460,7 @@ class GeminiClient:
             tools=tools if tools else None,
             response_mime_type="application/json",
             response_schema=response_schema,
+            system_instruction=system_instruction if system_instruction else None,
         )
 
         last_error = None
