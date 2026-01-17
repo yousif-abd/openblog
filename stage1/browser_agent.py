@@ -89,54 +89,62 @@ async def _execute_beck_research_internal(
 
     # CRITICAL: Pass the password directly in the task since browser-use needs it
     task = f"""
-    STEP 1: HANDLE COOKIE POPUP AND NAVIGATE
+    CRITICAL WARNING: There is a large search bar in the CENTER of the homepage.
+    DO NOT USE IT until Step 4. You must LOGIN FIRST using the small "Anmelden" link.
+
+    STEP 1: NAVIGATE AND HANDLE COOKIE POPUP
     -----------------------------------------
     1. Navigate to https://beck-online.beck.de
     2. Wait 2 seconds for the page to fully load
-    3. FIRST: Look for a cookie consent popup or banner
-    4. If you see a cookie popup, click "Akzeptieren", "Alle akzeptieren", or "OK" to dismiss it
-    5. Wait 1 second after dismissing the cookie popup
+    3. You will see a large search bar in the middle - IGNORE IT FOR NOW
+    4. Look for a cookie consent popup or banner
+    5. If you see a cookie popup, click "Akzeptieren", "Alle akzeptieren", or "OK" to dismiss it
+    6. Wait 1 second after dismissing the cookie popup
 
-    STEP 2: ACCESS LOGIN PAGE
-    --------------------------
-    6. Look in the top right corner of the page for "Mein beck-online" text
-    7. Under or near "Mein beck-online", you will see "Anmelden" (Login)
-    8. Click on "Anmelden" to go to the login page
-    9. Wait for the login page to load completely
+    STEP 2: FIND AND CLICK THE LOGIN LINK (NOT THE SEARCH BAR!)
+    ------------------------------------------------------------
+    7. IGNORE the large search bar in the center of the page
+    8. Look at the TOP RIGHT CORNER of the page header (near the edge)
+    9. Find the text "Mein beck-online" - it's a small link, NOT the big search bar
+    10. Click on "Mein beck-online" or look for "Anmelden" near it
+    11. If you see a dropdown menu, click "Anmelden" (Login) in that menu
+    12. If "Anmelden" is directly visible as a link, click it
+    13. This will take you to a SEPARATE LOGIN PAGE with a login form
+    14. Wait for the login page to fully load
 
-    STEP 3: LOGIN WITH CREDENTIALS
-    -------------------------------
-    10. You are now on the login page with a login form
-    11. CRITICAL: Do NOT type into any search bars - only use the login form fields
-    12. Find the input field labeled "Benutzername" or "E-Mail" (username field)
-    13. Click inside the username field to focus it
-    14. Clear any existing text in the field
-    15. Type this username exactly: {beck_username}
-    16. Press Tab or click to move to the next field
-    17. Find the input field labeled "Passwort" or "Password" (password field)
-    18. Click inside the password field to focus it
-    19. Clear any existing text in the field
-    20. Type the password that was provided (do NOT type it into the search bar)
-    21. Look for the "Anmelden" or "Login" button in the login form
-    22. Click the login button to submit the credentials
-    23. Wait 3 seconds for login to complete
-    24. Verify you are logged in by looking for your username or "Abmelden" (Logout) in the top right
+    STEP 3: ENTER CREDENTIALS IN THE LOGIN FORM
+    --------------------------------------------
+    15. You are now on the LOGIN PAGE (URL should contain "login" or "anmelden")
+    16. This page has a LOGIN FORM with username and password fields
+    17. DO NOT type in any search bar - use ONLY the login form fields
+    18. Find the input field labeled "Benutzername", "E-Mail", or "Benutzerkennung"
+    19. Click inside this username/email field
+    20. Type this username exactly: {beck_username}
+    21. Press Tab to move to the password field
+    22. Find the input field labeled "Passwort" or "Kennwort"
+    23. Click inside the password field
+    24. Type this password exactly: {beck_password}
+    25. Find the submit button labeled "Anmelden", "Login", or "Einloggen"
+    26. Click the submit button to log in
+    27. Wait 3 seconds for login to complete
+    28. Verify login success: look for your username or "Abmelden" (Logout) in top right
 
-    STEP 4: SEARCH FOR COURT DECISIONS
-    -----------------------------------
+    STEP 4: SEARCH FOR COURT DECISIONS (ONLY AFTER SUCCESSFUL LOGIN)
+    -----------------------------------------------------------------
     For each of these keywords: {keywords_str}
 
-    1. NOW you can use the search bar at the top of beck-online.beck.de
-    2. Click in the search bar to focus it
-    3. Type: [keyword] {rechtsgebiet}
+    1. Only proceed if you confirmed login in step 28 above
+    2. NOW you can use the search bar at beck-online.beck.de
+    3. Find the main search bar and click in it
+    4. Type: [keyword] {rechtsgebiet}
        For example: "Kündigung Arbeitsrecht"
-    4. Press Enter or click the search button
-    5. Wait for search results to load
-    6. Look for a filter option for "Rechtsprechung" or "Urteile" (court decisions)
-    7. Click to filter results to show only court decisions
-    8. Look for a sort option and sort by date (newest first / "Datum absteigend")
-    9. From the top 3 most recent results, click on each decision to view details
-    10. For each decision, extract these exact fields:
+    5. Press Enter or click the search button
+    6. Wait for search results to load
+    7. Look for a filter for "Rechtsprechung" or "Urteile" (court decisions)
+    8. Click to filter results to court decisions only
+    9. Sort by date (newest first / "Datum absteigend") if possible
+    10. Click on the top 3 most recent results to view details
+    11. For each decision, extract:
         - Gericht (court name, e.g., BGH, BAG, OLG München)
         - Aktenzeichen (case reference, e.g., 6 AZR 123/23)
         - Datum (decision date in DD.MM.YYYY format)
@@ -162,11 +170,12 @@ async def _execute_beck_research_internal(
     Extract up to 3 decisions per keyword (maximum 15 total across all keywords).
     Focus on decisions from the last 2 years (2024-2026).
 
-    IMPORTANT REMINDERS:
-    - ALWAYS dismiss the cookie popup first
-    - Click "Anmelden" under "Mein beck-online" to access login
-    - Type credentials ONLY in the login form fields, NEVER in the search bar
-    - Use the search bar ONLY after successfully logging in
+    CRITICAL RULES:
+    1. The homepage has a big search bar in the CENTER - DO NOT USE IT before logging in
+    2. "Mein beck-online" and "Anmelden" are small links in the TOP RIGHT corner
+    3. You MUST click "Anmelden" to go to the login page FIRST
+    4. Enter credentials ONLY in the login form, NEVER in any search bar
+    5. Only search AFTER you see "Abmelden" confirming successful login
     """
 
     logger.info("Starting browser agent...")

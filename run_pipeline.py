@@ -67,6 +67,102 @@ from shared.html_renderer import HTMLRenderer
 from shared.article_exporter import ArticleExporter
 
 
+def _get_next_article_number(output_dir: Path) -> int:
+    """
+    Find the next available article number in the output directory.
+
+    Scans for existing numbered folders (001, 002, etc.) and returns
+    the next available number.
+
+    Args:
+        output_dir: The output directory to scan
+
+    Returns:
+        Next available article number (1 if no existing folders)
+    """
+    if not output_dir.exists():
+        return 1
+
+    max_num = 0
+    for item in output_dir.iterdir():
+        if item.is_dir() and item.name.isdigit():
+            num = int(item.name)
+            if num > max_num:
+                max_num = num
+
+    return max_num + 1
+
+
+def _build_legal_research_log(
+    article_dict: dict,
+    beck_data: dict,
+    stage25_report: dict = None,
+) -> str:
+    """
+    Build a markdown log of legal research sources used in an article.
+
+    Args:
+        article_dict: The article dictionary with legal fields
+        beck_data: Beck-Online data summary from result["beck_online_data_used"]
+        stage25_report: Optional Stage 2.5 verification report
+
+    Returns:
+        Markdown-formatted log content
+    """
+    lines = []
+    lines.append("# Legal Sources Log")
+    lines.append("")
+    lines.append(f"**Article:** {article_dict.get('Headline', 'Untitled')}")
+    lines.append(f"**Rechtsgebiet:** {beck_data.get('rechtsgebiet', 'N/A')}")
+    lines.append(f"**Research Date:** {beck_data.get('research_date', 'N/A')}")
+    lines.append("")
+
+    # Court decisions used
+    decisions = beck_data.get("decisions", [])
+    lines.append(f"## Court Decisions ({len(decisions)})")
+    lines.append("")
+
+    if decisions:
+        for i, d in enumerate(decisions, 1):
+            lines.append(f"### {i}. {d.get('gericht', 'Unknown')} - {d.get('aktenzeichen', 'N/A')}")
+            lines.append(f"- **Date:** {d.get('datum', 'N/A')}")
+            if d.get("url"):
+                lines.append(f"- **Source:** [{d.get('url')}]({d.get('url')})")
+            lines.append("")
+    else:
+        lines.append("*No court decisions were used.*")
+        lines.append("")
+
+    # Verification results (if Stage 2.5 ran)
+    if stage25_report:
+        lines.append("## Verification Summary")
+        lines.append("")
+        lines.append(f"- **Claims Extracted:** {stage25_report.get('claims_extracted', 0)}")
+        lines.append(f"- **Claims Supported:** {stage25_report.get('claims_supported', 0)}")
+        lines.append(f"- **Claims Unsupported:** {stage25_report.get('claims_unsupported', 0)}")
+        lines.append(f"- **Verification Status:** {stage25_report.get('verification_status', 'unknown')}")
+        lines.append("")
+
+    # Legal issues flagged
+    legal_issues = article_dict.get("legal_issues", [])
+    if legal_issues:
+        lines.append("## Issues Flagged")
+        lines.append("")
+        for issue in legal_issues:
+            lines.append(f"- {issue}")
+        lines.append("")
+
+    # Keywords researched
+    keywords = beck_data.get("keywords_researched", [])
+    if keywords:
+        lines.append("## Keywords Researched")
+        lines.append("")
+        lines.append(", ".join(keywords))
+        lines.append("")
+
+    return "\n".join(lines)
+
+
 def _load_module_from_path(module_name: str, file_path: Path):
     """Load a module from a specific file path."""
     spec = importlib.util.spec_from_file_location(module_name, file_path)
@@ -134,6 +230,7 @@ async def process_single_article(
     output_dir: Optional[Path] = None,
     export_formats: Optional[List[str]] = None,
     legal_research_enabled: bool = False,
+    article_number: Optional[int] = None,
 ) -> dict:
     """
     Process one article through stages 2-5 sequentially.
@@ -147,6 +244,7 @@ async def process_single_article(
         output_dir: Directory for exported files
         export_formats: List of export formats (html, markdown, json, csv, xlsx, pdf)
         legal_research_enabled: Whether legal research was performed in Stage 1
+        article_number: Folder number for output (e.g., 1 -> "001/")
 
     Returns:
         Dict with article output and metadata
@@ -369,7 +467,12 @@ async def process_single_article(
 
             # Export all formats
             formats = export_formats or ["html", "json"]
-            article_output_dir = output_dir / article.slug
+            # Use numbered folder (e.g., "001") if article_number provided, otherwise fallback to slug
+            if article_number is not None:
+                folder_name = f"{article_number:03d}"
+            else:
+                folder_name = article.slug
+            article_output_dir = output_dir / folder_name
             exported = ArticleExporter.export_all(
                 article=article_dict,
                 html_content=html_content,
@@ -378,7 +481,20 @@ async def process_single_article(
             )
 
             result["exported_files"] = exported
+            result["output_folder"] = folder_name
             logger.info(f"    [Export] ✓ Exported to {article_output_dir}")
+
+            # Export legal research log if Beck-Online data was used
+            if result.get("beck_online_data_used"):
+                legal_log = _build_legal_research_log(
+                    article_dict=article_dict,
+                    beck_data=result["beck_online_data_used"],
+                    stage25_report=result.get("reports", {}).get("stage2_5"),
+                )
+                legal_log_path = article_output_dir / "legal_sources.md"
+                legal_log_path.write_text(legal_log, encoding="utf-8")
+                result["exported_files"]["legal_sources"] = str(legal_log_path)
+                logger.info(f"    [Export] ✓ Exported legal sources log")
 
         result["article"] = article_dict
         logger.info(f"  ✓ Article complete: {article.keyword}")
@@ -472,7 +588,10 @@ async def run_pipeline(
     # -----------------------------------------
     logger.info("\n[Stages 2-5] Article Processing (parallel)")
 
-    # Create tasks for each article
+    # Calculate starting article number for numbered output folders
+    start_number = _get_next_article_number(output_dir) if output_dir else 1
+
+    # Create tasks for each article with sequential numbering
     tasks = [
         process_single_article(
             context,
@@ -481,8 +600,9 @@ async def run_pipeline(
             output_dir=output_dir,
             export_formats=export_formats,
             legal_research_enabled=legal_research_enabled,
+            article_number=start_number + i,
         )
-        for article in context.articles
+        for i, article in enumerate(context.articles)
     ]
 
     # Run with optional concurrency limit
@@ -677,7 +797,8 @@ def main():
         output_path = Path(args.output)
         if output_path.is_dir() or args.output.endswith("/"):
             output_path.mkdir(parents=True, exist_ok=True)
-            output_file = output_path / f"pipeline_{results['job_id']}.json"
+            # Use fixed filename for streamlined output (job_id still in JSON content)
+            output_file = output_path / "pipeline_results.json"
         else:
             output_path.parent.mkdir(parents=True, exist_ok=True)
             output_file = output_path
