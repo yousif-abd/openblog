@@ -99,6 +99,109 @@ python run_pipeline.py \
     --output results/
 ```
 
+## Full Execution Example
+
+### Running the Pipeline
+
+```bash
+# Generate 3 articles with all export formats
+python run_pipeline.py \
+    --url https://www.example.com \
+    --keywords "AI in Healthcare" "Machine Learning Basics" "Data Science Trends" \
+    --output results/ \
+    --export-formats html markdown json pdf
+
+# German legal content with Beck-Online research
+python run_pipeline.py \
+    --url https://www.kanzlei.de/ \
+    --keywords "Kündigung im Arbeitsrecht" "Abfindung berechnen" \
+    --language de \
+    --enable-legal-research \
+    --rechtsgebiet Arbeitsrecht \
+    --output results/ \
+    --export-formats html json pdf
+```
+
+### Output Structure
+
+All results are stored in a single `results/` folder with numbered subfolders:
+
+```
+results/
+├── 001/                              # First article
+│   ├── ai-in-healthcare-2026.html    # Full HTML article
+│   ├── ai-in-healthcare-2026.json    # Structured article data
+│   ├── ai-in-healthcare-2026.md      # Markdown version
+│   ├── ai-in-healthcare-2026.pdf     # PDF export
+│   └── legal_sources.md              # Legal research log (if legal mode)
+├── 002/                              # Second article
+│   ├── machine-learning-basics.html
+│   ├── machine-learning-basics.json
+│   └── ...
+├── 003/                              # Third article
+│   └── ...
+└── pipeline_results.json             # Full pipeline summary
+```
+
+**Folder numbering auto-increments** - if you already have `001`, `002`, `003`, the next run creates `004`, `005`, etc.
+
+### Accessing Results
+
+**1. View the HTML article:**
+Open `results/001/article-headline.html` in any browser.
+
+**2. Access structured data:**
+The JSON file contains all 40+ article fields:
+```bash
+# View article headline and sections
+cat results/001/article-headline.json | jq '.Headline, .section_01_title'
+```
+
+**3. Check legal sources (legal mode only):**
+```bash
+cat results/001/legal_sources.md
+```
+
+Example `legal_sources.md`:
+```markdown
+# Legal Sources Log
+
+**Article:** Kündigung im Arbeitsrecht: Ihre Rechte und Pflichten
+**Rechtsgebiet:** Arbeitsrecht
+**Research Date:** 2026-01-17
+
+## Court Decisions (5)
+
+### 1. BAG - 6 AZR 123/23
+- **Date:** 2024-03-15
+- **Source:** [https://beck-online.beck.de/...](https://beck-online.beck.de/...)
+
+### 2. LAG Berlin-Brandenburg - 15 Sa 1234/23
+- **Date:** 2024-02-20
+- **Source:** [https://beck-online.beck.de/...](https://beck-online.beck.de/...)
+
+## Verification Summary
+- **Claims Extracted:** 12
+- **Claims Supported:** 10
+- **Claims Unsupported:** 2
+- **Verification Status:** issues_found
+
+## Keywords Researched
+Kündigung im Arbeitsrecht, Abfindung berechnen
+```
+
+**4. Review pipeline summary:**
+```bash
+cat results/pipeline_results.json | jq '.articles_successful, .duration_seconds'
+```
+
+The `pipeline_results.json` contains:
+- Job ID and timestamps
+- Company context extracted
+- Per-article results with stage reports
+- Export file paths
+- Beck-Online data used (if legal mode)
+
 ### 4. Run the API Server
 
 ```bash

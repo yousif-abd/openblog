@@ -296,6 +296,104 @@ class GeminiClient:
 
         return json.loads(text)
 
+    def _repair_json(self, text: str) -> Optional[Dict[str, Any]]:
+        """
+        Attempt to repair malformed JSON from Gemini responses.
+
+        Handles common issues:
+        - Unescaped quotes inside strings (e.g., German legal text with "Schriftform")
+        - Markdown code blocks
+        - Trailing content after JSON
+
+        Args:
+            text: Raw response text that failed initial parsing
+
+        Returns:
+            Parsed JSON dictionary if repair successful, None otherwise
+        """
+        # Extract from markdown if present
+        if "```json" in text:
+            parts = text.split("```json")
+            if len(parts) > 1:
+                text = parts[1].split("```")[0].strip()
+        elif "```" in text:
+            parts = text.split("```")
+            if len(parts) > 1:
+                text = parts[1].split("```")[0].strip()
+
+        # Find JSON start
+        if not text.startswith("{"):
+            match = re.search(r'\{', text)
+            if match:
+                text = text[match.start():]
+            else:
+                return None
+
+        # Strategy 1: Try to fix unescaped quotes in known problematic fields
+        # Pattern matches: "field": "value with "unescaped" quotes"
+        def fix_field_quotes(field_name: str, json_text: str) -> str:
+            """Fix unescaped quotes within a specific JSON field value."""
+            # Find the field and its value
+            pattern = rf'("{field_name}":\s*")([^"]*(?:"[^"]*)*?)("(?:,|\s*\}}|\s*\]))'
+
+            def replacer(m):
+                prefix = m.group(1)  # "field": "
+                content = m.group(2)  # the value content
+                suffix = m.group(3)  # ", or "} or "]
+
+                # Count quotes in content - if odd, we have unescaped quotes
+                quote_count = content.count('"') - content.count('\\"')
+                if quote_count > 0:
+                    # Escape unescaped quotes
+                    fixed = re.sub(r'(?<!\\)"', r'\\"', content)
+                    return prefix + fixed + suffix
+                return m.group(0)
+
+            return re.sub(pattern, replacer, json_text)
+
+        repaired = text
+        for field in ['claim_text', 'cited_source', 'matching_decision', 'leitsatz']:
+            repaired = fix_field_quotes(field, repaired)
+
+        try:
+            return json.loads(repaired)
+        except json.JSONDecodeError:
+            pass
+
+        # Strategy 2: Extract balanced JSON with proper string/escape handling
+        brace_count = 0
+        in_string = False
+        escape_next = False
+        end_idx = 0
+
+        for i, char in enumerate(text):
+            if escape_next:
+                escape_next = False
+                continue
+            if char == '\\' and in_string:
+                escape_next = True
+                continue
+            if char == '"' and not escape_next:
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+            if char == '{':
+                brace_count += 1
+            elif char == '}':
+                brace_count -= 1
+                if brace_count == 0:
+                    end_idx = i + 1
+                    break
+
+        if end_idx > 0:
+            try:
+                return json.loads(text[:end_idx])
+            except json.JSONDecodeError:
+                pass
+
+        return None
+
     async def _extract_grounding_sources(self, response) -> List[Dict[str, str]]:
         """
         Extract real URLs from Gemini grounding metadata.
@@ -476,7 +574,19 @@ class GeminiClient:
                     timeout=timeout,
                 )
 
-                result = self._parse_json(response.text.strip())
+                try:
+                    result = self._parse_json(response.text.strip())
+                except json.JSONDecodeError as parse_error:
+                    # Attempt to repair malformed JSON (common with German legal text)
+                    logger.debug(f"Initial JSON parse failed: {parse_error}, attempting repair...")
+                    repaired = self._repair_json(response.text.strip())
+                    if repaired is not None:
+                        logger.info("Successfully repaired malformed JSON response")
+                        result = repaired
+                    else:
+                        # Repair failed - let caller handle gracefully
+                        logger.debug("JSON repair failed, re-raising original error")
+                        raise parse_error
 
                 # Extract real sources from grounding metadata
                 if extract_sources and use_google_search:
@@ -486,11 +596,6 @@ class GeminiClient:
                         logger.info(f"Extracted {len(grounding_sources)} verified sources from grounding")
 
                 return result
-
-            except json.JSONDecodeError as e:
-                # Schema doesn't guarantee valid JSON - let caller handle gracefully
-                logger.debug(f"Gemini schema response parse issue: {e}")
-                raise
             except asyncio.TimeoutError:
                 last_error = asyncio.TimeoutError(f"Request timed out after {timeout}s")
                 logger.warning(f"Gemini schema request timed out (attempt {attempt + 1}/{self.max_retries + 1})")
