@@ -126,6 +126,13 @@ def _build_legal_research_log(
         for i, d in enumerate(decisions, 1):
             lines.append(f"### {i}. {d.get('gericht', 'Unknown')} - {d.get('aktenzeichen', 'N/A')}")
             lines.append(f"- **Date:** {d.get('datum', 'N/A')}")
+            if d.get("leitsatz"):
+                lines.append(f"- **Leitsatz:** {d.get('leitsatz')}")
+            if d.get("relevante_normen"):
+                normen = d.get("relevante_normen")
+                if isinstance(normen, list):
+                    normen = ", ".join(normen)
+                lines.append(f"- **Relevante Normen:** {normen}")
             if d.get("url"):
                 lines.append(f"- **Source:** [{d.get('url')}]({d.get('url')})")
             lines.append("")
@@ -444,6 +451,8 @@ async def process_single_article(
                         "gericht": d.get("gericht", ""),
                         "aktenzeichen": d.get("aktenzeichen", ""),
                         "datum": d.get("datum", ""),
+                        "leitsatz": d.get("leitsatz", ""),
+                        "relevante_normen": d.get("relevante_normen", []),
                         "url": d.get("url", ""),
                     }
                     for d in court_decisions

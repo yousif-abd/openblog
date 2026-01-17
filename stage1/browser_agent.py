@@ -87,95 +87,51 @@ async def _execute_beck_research_internal(
     # Build search task for Beck-Online
     keywords_str = ", ".join(normalized_keywords)
 
-    # CRITICAL: Pass the password directly in the task since browser-use needs it
+    # Simplified task prompt - detailed login, vague search/extract
     task = f"""
-    CRITICAL WARNING: There is a large search bar in the CENTER of the homepage.
-    DO NOT USE IT until Step 4. You must LOGIN FIRST using the small "Anmelden" link.
+RULES:
+- If you see a cookie popup, click "Alle akzeptieren" immediately
+- If stuck on a page, click browser back button to recover
+- Do NOT type into any search bar until after login is complete
 
-    STEP 1: NAVIGATE AND HANDLE COOKIE POPUP
-    -----------------------------------------
-    1. Navigate to https://beck-online.beck.de
-    2. Wait 2 seconds for the page to fully load
-    3. You will see a large search bar in the middle - IGNORE IT FOR NOW
-    4. Look for a cookie consent popup or banner
-    5. If you see a cookie popup, click "Akzeptieren", "Alle akzeptieren", or "OK" to dismiss it
-    6. Wait 1 second after dismissing the cookie popup
+STEP 1: LOGIN TO BECK-ONLINE
+-----------------------------
+1. Go to https://beck-online.beck.de
+2. On the RIGHT side of the page, find the "Mein beck-online" box
+3. Click "Anmelden" button in that box
+4. On the login page, enter:
+   - Username: {beck_username}
+   - Password: {beck_password}
+5. Click the login button
+6. Wait for login to complete (you should see "Abmelden" instead of "Anmelden")
 
-    STEP 2: FIND AND CLICK THE LOGIN LINK (NOT THE SEARCH BAR!)
-    ------------------------------------------------------------
-    7. IGNORE the large search bar in the center of the page
-    8. Look at the TOP RIGHT CORNER of the page header (near the edge)
-    9. Find the text "Mein beck-online" - it's a small link, NOT the big search bar
-    10. Click on "Mein beck-online" or look for "Anmelden" near it
-    11. If you see a dropdown menu, click "Anmelden" (Login) in that menu
-    12. If "Anmelden" is directly visible as a link, click it
-    13. This will take you to a SEPARATE LOGIN PAGE with a login form
-    14. Wait for the login page to fully load
+STEP 2: SEARCH AND EXTRACT
+--------------------------
+After successful login:
+1. Search for: {keywords_str} {rechtsgebiet}
+2. Filter results to show only court decisions (Rechtsprechung/Urteile)
+3. Find and extract 3 recent court decisions with these fields:
+   - Gericht (court name)
+   - Aktenzeichen (case reference)
+   - Datum (date)
+   - Leitsatz (legal principle)
+   - Relevante Normen (cited statutes)
+   - URL (full beck-online URL)
 
-    STEP 3: ENTER CREDENTIALS IN THE LOGIN FORM
-    --------------------------------------------
-    15. You are now on the LOGIN PAGE (URL should contain "login" or "anmelden")
-    16. This page has a LOGIN FORM with username and password fields
-    17. DO NOT type in any search bar - use ONLY the login form fields
-    18. Find the input field labeled "Benutzername", "E-Mail", or "Benutzerkennung"
-    19. Click inside this username/email field
-    20. Type this username exactly: {beck_username}
-    21. Press Tab to move to the password field
-    22. Find the input field labeled "Passwort" or "Kennwort"
-    23. Click inside the password field
-    24. Type this password exactly: {beck_password}
-    25. Find the submit button labeled "Anmelden", "Login", or "Einloggen"
-    26. Click the submit button to log in
-    27. Wait 3 seconds for login to complete
-    28. Verify login success: look for your username or "Abmelden" (Logout) in top right
+OUTPUT FORMAT:
+Decision 1:
+Gericht: [value]
+Aktenzeichen: [value]
+Datum: [DD.MM.YYYY]
+Leitsatz: [value]
+Relevante Normen: [value]
+URL: [value]
 
-    STEP 4: SEARCH FOR COURT DECISIONS (ONLY AFTER SUCCESSFUL LOGIN)
-    -----------------------------------------------------------------
-    For each of these keywords: {keywords_str}
+Decision 2:
+[same format]
 
-    1. Only proceed if you confirmed login in step 28 above
-    2. NOW you can use the search bar at beck-online.beck.de
-    3. Find the main search bar and click in it
-    4. Type: [keyword] {rechtsgebiet}
-       For example: "Kündigung Arbeitsrecht"
-    5. Press Enter or click the search button
-    6. Wait for search results to load
-    7. Look for a filter for "Rechtsprechung" or "Urteile" (court decisions)
-    8. Click to filter results to court decisions only
-    9. Sort by date (newest first / "Datum absteigend") if possible
-    10. Click on the top 3 most recent results to view details
-    11. For each decision, extract:
-        - Gericht (court name, e.g., BGH, BAG, OLG München)
-        - Aktenzeichen (case reference, e.g., 6 AZR 123/23)
-        - Datum (decision date in DD.MM.YYYY format)
-        - Leitsatz (core legal principle - usually the first bold paragraph)
-        - Relevante Normen (cited statutes, e.g., § 623 BGB, § 626 BGB)
-        - URL (copy the full beck-online.beck.de URL from the address bar)
-
-    STEP 5: OUTPUT FORMAT
-    ---------------------
-    For each decision found, output in this exact format:
-
-    Decision 1:
-    Gericht: [court name]
-    Aktenzeichen: [case reference]
-    Datum: [DD.MM.YYYY]
-    Leitsatz: [main legal principle]
-    Relevante Normen: [statute citations separated by commas]
-    URL: [full URL]
-
-    Decision 2:
-    [same format]
-
-    Extract up to 3 decisions per keyword (maximum 15 total across all keywords).
-    Focus on decisions from the last 2 years (2024-2026).
-
-    CRITICAL RULES:
-    1. The homepage has a big search bar in the CENTER - DO NOT USE IT before logging in
-    2. "Mein beck-online" and "Anmelden" are small links in the TOP RIGHT corner
-    3. You MUST click "Anmelden" to go to the login page FIRST
-    4. Enter credentials ONLY in the login form, NEVER in any search bar
-    5. Only search AFTER you see "Abmelden" confirming successful login
+Decision 3:
+[same format]
     """
 
     logger.info("Starting browser agent...")
