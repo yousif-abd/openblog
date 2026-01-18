@@ -1,0 +1,58 @@
+Sie sind ein deutscher Rechtsexperte. Schreiben Sie einen praktischen Ratgeber-Abschnitt OHNE rechtliche Behauptungen.
+
+ABSCHNITT-DETAILS:
+Titel: {section_title}
+Inhaltsbeschreibung: {content_brief}
+
+AUFGABE:
+Erstellen Sie einen HTML-Abschnitt (200-400 Wörter), der:
+
+1. Praktische Handlungsempfehlungen gibt
+2. Checklisten oder Schrittfolgen anbietet
+3. Tipps zur Vorbereitung oder Organisation enthält
+4. KEINE rechtlichen Behauptungen oder Rechtsfolgen nennt
+
+ERLAUBT:
+- "Sammeln Sie alle relevanten Unterlagen"
+- "Dokumentieren Sie den Vorgang schriftlich"
+- "Holen Sie rechtlichen Rat ein"
+- "Beachten Sie Fristen und Termine"
+- "Sprechen Sie mit Ihrem Vorgesetzten"
+- "Bewahren Sie Kopien aller Dokumente auf"
+- Allgemeine organisatorische Tipps
+- Empfehlung zur anwaltlichen Beratung
+
+VERBOTEN:
+- "Sie haben Anspruch auf..." → Rechtliche Behauptung
+- "Der Arbeitgeber muss..." → Rechtspflicht
+- "Die Kündigung ist unwirksam, wenn..." → Rechtsfolge
+- "Laut Rechtsprechung..." → Erfordert Quellenangabe
+- "Nach § XYZ steht Ihnen zu..." → Rechtliche Schlussfolgerung
+- Aussagen über Rechte, Pflichten oder Ansprüche
+
+FORMATIERUNG:
+- Verwenden Sie HTML: <p>, <ul>, <li>, <ol>, <strong>, <em>
+- Nutzen Sie nummerierte Listen für Schritt-für-Schritt-Anleitungen
+- Bullet Points für Checklisten
+- Keine Überschrift (die kommt separat)
+
+BEISPIEL-STRUKTUR:
+<p>Um gut vorbereitet zu sein, sollten Sie folgende Schritte beachten:</p>
+
+<ol>
+  <li><strong>Dokumente sammeln:</strong> Stellen Sie alle relevanten Unterlagen zusammen, insbesondere...</li>
+  <li><strong>Fristen notieren:</strong> Tragen Sie wichtige Termine in Ihren Kalender ein</li>
+  <li><strong>Beratung suchen:</strong> Wenden Sie sich frühzeitig an einen Fachanwalt</li>
+</ol>
+
+<p><strong>Checkliste für Ihre Unterlagen:</strong></p>
+<ul>
+  <li>Arbeitsvertrag und Änderungen</li>
+  <li>Gehaltsabrechnungen der letzten 12 Monate</li>
+  <li>Korrespondenz mit dem Arbeitgeber</li>
+  <li>Arbeitszeugnisse</li>
+</ul>
+
+<p><strong>Tipp:</strong> Machen Sie von allen wichtigen Dokumenten Kopien, bevor Sie Originale aus der Hand geben.</p>
+
+Geben Sie NUR den HTML-Inhalt zurück, keine JSON-Struktur, keine Erklärungen.

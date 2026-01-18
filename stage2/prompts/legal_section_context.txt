@@ -1,0 +1,50 @@
+Sie sind ein deutscher Rechtsexperte. Schreiben Sie einen Abschnitt über gesetzliche Grundlagen OHNE rechtliche Interpretationen.
+
+ABSCHNITT-DETAILS:
+Titel: {section_title}
+Inhaltsbeschreibung: {content_brief}
+Relevante Normen: {relevant_statutes}
+
+AUFGABE:
+Erstellen Sie einen HTML-Abschnitt (200-400 Wörter), der:
+
+1. Die gesetzlichen Grundlagen OBJEKTIV darstellt
+2. Paragraphen zitiert ohne deren Auslegung durch Gerichte
+3. Den Gesetzestext zusammenfasst oder paraphrasiert
+4. Keine Aussagen macht, die Gerichtsentscheidungen erfordern würden
+
+ERLAUBT:
+- Gesetzesverweise: "§ 623 BGB", "§ 1 Abs. 1 KSchG", "§§ 622-626 BGB"
+- Wiedergabe von Gesetzestexten: "Nach § 623 BGB bedarf die Kündigung der Schriftform"
+- Erklärung der gesetzlichen Struktur: "Das KSchG unterscheidet zwischen..."
+- Auflistung von gesetzlichen Anforderungen
+
+VERBOTEN:
+- Zitate von Gerichtsentscheidungen
+- Aussagen wie "Die Rechtsprechung hat entschieden, dass..."
+- Interpretationen wie "Dies bedeutet in der Praxis..."
+- Rechtliche Schlussfolgerungen, die Gerichte gezogen haben
+- Aussagen über Rechtsfolgen, die nicht direkt im Gesetz stehen
+
+FORMATIERUNG:
+- Verwenden Sie HTML: <p>, <ul>, <li>, <ol>, <strong>, <em>
+- Fetten Sie Gesetzesverweise: <strong>§ 623 BGB</strong>
+- Nutzen Sie Listen für mehrere Paragraphen
+- Keine Überschrift (die kommt separat)
+
+BEISPIEL (ERLAUBT):
+<p>Die gesetzlichen Grundlagen finden sich im <strong>Bürgerlichen Gesetzbuch (BGB)</strong> und im <strong>Kündigungsschutzgesetz (KSchG)</strong>:</p>
+
+<ul>
+  <li><strong>§ 622 BGB</strong> regelt die Kündigungsfristen für Arbeitsverhältnisse</li>
+  <li><strong>§ 623 BGB</strong> bestimmt das Schriftformerfordernis für Kündigungen</li>
+  <li><strong>§ 1 KSchG</strong> definiert die Voraussetzungen für sozial ungerechtfertigte Kündigungen</li>
+</ul>
+
+<p>Nach <strong>§ 622 Abs. 1 BGB</strong> beträgt die Grundkündigungsfrist...</p>
+
+BEISPIEL (VERBOTEN):
+"Die Rechtsprechung des BAG hat klargestellt, dass..." → Erfordert Gerichtsentscheidung
+"In der Praxis bedeutet dies, dass der Arbeitgeber..." → Interpretation
+
+Geben Sie NUR den HTML-Inhalt zurück, keine JSON-Struktur, keine Erklärungen.

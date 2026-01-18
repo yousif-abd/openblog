@@ -259,6 +259,12 @@ class ArticleOutput(BaseModel):
         description="Unsupported legal claims flagged by Stage 2.5 verification"
     )
 
+    # Decision-centric generation metadata (used by Stage 2.5 for fast verification)
+    section_types_metadata: Optional[Dict[str, str]] = Field(
+        default=None,
+        description="Section type mapping from decision-centric generation (section_id -> type)"
+    )
+
     model_config = ConfigDict(extra="ignore")
 
     @field_validator("Headline", "Teaser", "Direct_Answer", "Intro", "Meta_Title", "Meta_Description", "section_01_title", "section_01_content")

@@ -18,7 +18,7 @@ import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 # Add parent to path for shared imports
 _parent = Path(__file__).parent.parent
@@ -31,6 +31,23 @@ try:
     from shared.gemini_client import GeminiClient
 except ImportError:
     GeminiClient = None
+
+# Legal article models for decision-centric generation
+try:
+    from stage2.legal_article_models import (
+        ArticleOutline,
+        SectionOutline,
+        GeneratedSection,
+        calculate_section_allocation,
+    )
+except ImportError:
+    # Fallback for direct execution
+    from legal_article_models import (
+        ArticleOutline,
+        SectionOutline,
+        GeneratedSection,
+        calculate_section_allocation,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -183,6 +200,7 @@ async def write_article(
     keyword_instructions: Optional[str] = None,
     api_key: Optional[str] = None,
     legal_context: Optional[Dict[str, Any]] = None,
+    use_decision_centric: bool = True,
 ) -> ArticleOutput:
     """
     Generate a complete blog article using Gemini.
@@ -200,6 +218,7 @@ async def write_article(
         keyword_instructions: Keyword-level instructions (adds to batch instructions)
         api_key: Gemini API key (falls back to env var)
         legal_context: Optional LegalContext dict from Stage 1 (enables legal mode)
+        use_decision_centric: Use two-phase decision-centric approach for legal articles (default True)
 
     Returns:
         ArticleOutput with all fields populated (including legal fields if legal_context provided)
@@ -209,6 +228,18 @@ async def write_article(
         Exception: If Gemini call fails
     """
     logger.info(f"Writing article for: {keyword} ({language}/{country})")
+
+    # Use decision-centric approach for legal articles with court decisions
+    if use_decision_centric and legal_context and legal_context.get("court_decisions"):
+        logger.info("Using decision-centric two-phase generation for legal article")
+        article, _ = await write_legal_article_decision_centric(
+            keyword=keyword,
+            company_context=company_context,
+            legal_context=legal_context,
+            word_count=word_count,
+            api_key=api_key,
+        )
+        return article
 
     # Log Beck-Online data usage
     _log_legal_context_usage(legal_context)
@@ -702,6 +733,565 @@ def _log_legal_context_usage(legal_context: Optional[dict]) -> None:
 
 
 # =============================================================================
+# Decision-Centric Legal Article Generation (Two-Phase)
+# =============================================================================
+
+async def write_legal_article_decision_centric(
+    keyword: str,
+    company_context: Dict[str, Any],
+    legal_context: Dict[str, Any],
+    word_count: int = 2000,
+    api_key: Optional[str] = None,
+) -> tuple[ArticleOutput, int]:
+    """
+    Generate a legal article using decision-centric two-phase approach.
+
+    Phase 1: Generate structured outline mapping sections to court decisions
+    Phase 2: Generate each section with type-specific constraints
+
+    This approach ensures:
+    - Every provided court decision is cited in exactly one section
+    - No unsupported legal claims (verified by section type)
+    - Reduced Stage 2.5 verification burden
+
+    Args:
+        keyword: Primary SEO keyword
+        company_context: Company info dict
+        legal_context: LegalContext dict with court_decisions
+        word_count: Target word count
+        api_key: Gemini API key
+
+    Returns:
+        Tuple of (ArticleOutput, ai_calls_count)
+    """
+    logger.info(f"Starting decision-centric generation for: {keyword}")
+
+    client = GeminiClient(api_key=api_key)
+    ai_calls = 0
+
+    # Extract court decisions
+    court_decisions = legal_context.get("court_decisions", [])
+    rechtsgebiet = legal_context.get("rechtsgebiet", "Arbeitsrecht")
+
+    if not court_decisions:
+        logger.warning("No court decisions provided - falling back to standard legal generation")
+        # Fall back to standard approach
+        article = await write_article(
+            keyword=keyword,
+            company_context=company_context,
+            word_count=word_count,
+            legal_context=legal_context,
+            api_key=api_key,
+        )
+        return article, 1
+
+    logger.info(f"Decision-centric mode: {len(court_decisions)} court decisions available")
+
+    # ==========================================================================
+    # PHASE 1: Generate Structured Outline
+    # ==========================================================================
+
+    logger.info("Phase 1: Generating structured outline...")
+
+    outline = await _generate_legal_outline(
+        client=client,
+        keyword=keyword,
+        rechtsgebiet=rechtsgebiet,
+        court_decisions=court_decisions,
+    )
+    ai_calls += 1
+
+    logger.info(f"Outline generated: {len(outline.target_sections)} sections")
+    for section in outline.target_sections:
+        logger.info(f"  - {section.section_id}: {section.section_type} "
+                   f"({section.anchored_decision_aktenzeichen or 'no anchor'})")
+
+    # ==========================================================================
+    # PHASE 2: Generate Section Content
+    # ==========================================================================
+
+    logger.info("Phase 2: Generating section content...")
+
+    sections_content = {}
+    decisions_by_az = {d.get("aktenzeichen"): d for d in court_decisions}
+
+    for section in outline.target_sections:
+        logger.info(f"  Generating {section.section_id} ({section.section_type})...")
+
+        if section.section_type == "decision_anchor":
+            decision = decisions_by_az.get(section.anchored_decision_aktenzeichen)
+            if not decision:
+                logger.warning(f"Decision {section.anchored_decision_aktenzeichen} not found, using first available")
+                decision = court_decisions[0]
+
+            content = await _generate_decision_anchor_section(
+                client=client,
+                section=section,
+                decision=decision,
+            )
+        elif section.section_type == "context":
+            content = await _generate_context_section(
+                client=client,
+                section=section,
+            )
+        else:  # practical_advice
+            content = await _generate_practical_section(
+                client=client,
+                section=section,
+            )
+
+        sections_content[section.section_id] = {
+            "title": section.title,
+            "content": content,
+            "type": section.section_type,
+        }
+        ai_calls += 1
+
+    # ==========================================================================
+    # PHASE 3: Generate Supporting Content (FAQs, Intro, Meta)
+    # ==========================================================================
+
+    logger.info("Phase 3: Generating supporting content...")
+
+    supporting = await _generate_supporting_content(
+        client=client,
+        keyword=keyword,
+        rechtsgebiet=rechtsgebiet,
+        outline=outline,
+        court_decisions=court_decisions,
+        legal_context=legal_context,
+    )
+    ai_calls += 1
+
+    # ==========================================================================
+    # ASSEMBLE FINAL ARTICLE
+    # ==========================================================================
+
+    logger.info("Assembling final article...")
+
+    article_dict = _assemble_article(
+        outline=outline,
+        sections_content=sections_content,
+        supporting=supporting,
+        legal_context=legal_context,
+        court_decisions=court_decisions,
+    )
+
+    # Normalize field names
+    article_dict = _normalize_field_names(article_dict)
+
+    logger.info(f"Decision-centric generation complete: {ai_calls} AI calls")
+
+    return ArticleOutput(**article_dict), ai_calls
+
+
+async def _generate_legal_outline(
+    client: GeminiClient,
+    keyword: str,
+    rechtsgebiet: str,
+    court_decisions: List[Dict[str, Any]],
+) -> ArticleOutline:
+    """
+    Phase 1: Generate structured outline mapping sections to decisions.
+
+    Args:
+        client: GeminiClient instance
+        keyword: Article keyword
+        rechtsgebiet: Legal area
+        court_decisions: List of court decision dicts
+
+    Returns:
+        ArticleOutline with section assignments
+    """
+    # Format court decisions for prompt
+    decisions_summary = _format_court_decisions(court_decisions)
+
+    # Load outline prompt
+    prompt_template = _load_prompt("legal_outline.txt", "")
+    if not prompt_template:
+        raise ValueError("legal_outline.txt prompt not found")
+
+    prompt = prompt_template.format(
+        keyword=keyword,
+        rechtsgebiet=rechtsgebiet,
+        court_decisions_summary=decisions_summary,
+    )
+
+    # Define schema for outline
+    outline_schema = {
+        "type": "object",
+        "properties": {
+            "headline": {"type": "string"},
+            "teaser": {"type": "string"},
+            "direct_answer": {"type": "string"},
+            "intro_brief": {"type": "string"},
+            "target_sections": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "section_id": {"type": "string"},
+                        "title": {"type": "string"},
+                        "section_type": {"type": "string", "enum": ["decision_anchor", "context", "practical_advice"]},
+                        "anchored_decision_aktenzeichen": {"type": "string"},
+                        "content_brief": {"type": "string"},
+                        "relevant_statutes": {"type": "array", "items": {"type": "string"}}
+                    },
+                    "required": ["section_id", "title", "section_type", "content_brief"]
+                }
+            },
+            "faq_topics": {"type": "array", "items": {"type": "string"}},
+            "key_takeaway_topics": {"type": "array", "items": {"type": "string"}}
+        },
+        "required": ["headline", "teaser", "direct_answer", "intro_brief", "target_sections"]
+    }
+
+    result = await client.generate_with_schema(
+        prompt=prompt,
+        response_schema=outline_schema,
+        temperature=0.3,
+    )
+
+    return ArticleOutline(**result)
+
+
+async def _generate_decision_anchor_section(
+    client: GeminiClient,
+    section: SectionOutline,
+    decision: Dict[str, Any],
+) -> str:
+    """
+    Generate a section anchored to a specific court decision.
+
+    The section MUST cite and explain the assigned decision.
+
+    Args:
+        client: GeminiClient instance
+        section: Section outline with assignment
+        decision: Court decision dict to anchor
+
+    Returns:
+        HTML content for the section
+    """
+    prompt_template = _load_prompt("legal_section_decision_anchor.txt", "")
+    if not prompt_template:
+        raise ValueError("legal_section_decision_anchor.txt prompt not found")
+
+    # Format decision date to German
+    datum = decision.get("datum", "")
+    if datum and len(datum) == 10:
+        try:
+            parts = datum.split("-")
+            datum_german = f"{parts[2]}.{parts[1]}.{parts[0]}"
+        except:
+            datum_german = datum
+    else:
+        datum_german = datum
+
+    normen = ", ".join(decision.get("relevante_normen", [])) or "keine Normen"
+
+    prompt = prompt_template.format(
+        section_title=section.title,
+        content_brief=section.content_brief,
+        relevant_statutes=", ".join(section.relevant_statutes) or "keine",
+        decision_gericht=decision.get("gericht", "Unbekannt"),
+        decision_aktenzeichen=decision.get("aktenzeichen", ""),
+        decision_datum=datum_german,
+        decision_leitsatz=decision.get("leitsatz", ""),
+        decision_normen=normen,
+    )
+
+    result = await client.generate(
+        prompt=prompt,
+        use_url_context=False,
+        use_google_search=False,
+        json_output=False,
+        temperature=0.3,
+        max_tokens=2048,
+    )
+
+    return result.strip()
+
+
+async def _generate_context_section(
+    client: GeminiClient,
+    section: SectionOutline,
+) -> str:
+    """
+    Generate a context section with statutory references only.
+
+    NO legal claims requiring court decisions allowed.
+
+    Args:
+        client: GeminiClient instance
+        section: Section outline
+
+    Returns:
+        HTML content for the section
+    """
+    prompt_template = _load_prompt("legal_section_context.txt", "")
+    if not prompt_template:
+        raise ValueError("legal_section_context.txt prompt not found")
+
+    prompt = prompt_template.format(
+        section_title=section.title,
+        content_brief=section.content_brief,
+        relevant_statutes=", ".join(section.relevant_statutes) or "keine",
+    )
+
+    result = await client.generate(
+        prompt=prompt,
+        use_url_context=False,
+        use_google_search=False,
+        json_output=False,
+        temperature=0.3,
+        max_tokens=2048,
+    )
+
+    return result.strip()
+
+
+async def _generate_practical_section(
+    client: GeminiClient,
+    section: SectionOutline,
+) -> str:
+    """
+    Generate a practical advice section with no legal claims.
+
+    Tips and recommendations only.
+
+    Args:
+        client: GeminiClient instance
+        section: Section outline
+
+    Returns:
+        HTML content for the section
+    """
+    prompt_template = _load_prompt("legal_section_practical.txt", "")
+    if not prompt_template:
+        raise ValueError("legal_section_practical.txt prompt not found")
+
+    prompt = prompt_template.format(
+        section_title=section.title,
+        content_brief=section.content_brief,
+    )
+
+    result = await client.generate(
+        prompt=prompt,
+        use_url_context=False,
+        use_google_search=False,
+        json_output=False,
+        temperature=0.4,  # Slightly higher for practical tips
+        max_tokens=2048,
+    )
+
+    return result.strip()
+
+
+async def _generate_supporting_content(
+    client: GeminiClient,
+    keyword: str,
+    rechtsgebiet: str,
+    outline: ArticleOutline,
+    court_decisions: List[Dict[str, Any]],
+    legal_context: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    Generate supporting content: intro, FAQs, meta tags, key takeaways.
+
+    Args:
+        client: GeminiClient instance
+        keyword: Article keyword
+        rechtsgebiet: Legal area
+        outline: Generated article outline
+        court_decisions: Court decisions for citations
+        legal_context: Full legal context
+
+    Returns:
+        Dict with intro, faqs, meta, takeaways
+    """
+    # Format decisions for prompt
+    decisions_summary = _format_court_decisions(court_decisions)
+    disclaimer = legal_context.get("disclaimer_template", "")
+
+    prompt = f"""Erstellen Sie unterstützende Inhalte für einen deutschen Rechtsartikel.
+
+KEYWORD: {keyword}
+RECHTSGEBIET: {rechtsgebiet}
+
+ARTIKEL-HEADLINE: {outline.headline}
+ARTIKEL-TEASER: {outline.teaser}
+DIREKTE ANTWORT: {outline.direct_answer}
+
+INTRO-KURZBESCHREIBUNG: {outline.intro_brief}
+
+FAQ-THEMEN: {', '.join(outline.faq_topics)}
+KEY-TAKEAWAY-THEMEN: {', '.join(outline.key_takeaway_topics)}
+
+VERFÜGBARE GERICHTSENTSCHEIDUNGEN (für Zitate in FAQs):
+{decisions_summary}
+
+AUFGABE:
+Erstellen Sie die folgenden Felder als JSON:
+
+1. Intro (80-120 Wörter, HTML mit <p>-Tags)
+2. Meta_Title (max 55 Zeichen, SEO-optimiert)
+3. Meta_Description (max 160 Zeichen, mit CTA)
+4. 4 FAQs (faq_01_question, faq_01_answer, etc.) - HTML in Antworten
+5. 3 Key Takeaways (key_takeaway_01, key_takeaway_02, key_takeaway_03)
+6. 4 PAA (People Also Ask) - paa_01_question, paa_01_answer, etc.
+7. TLDR (2-3 Sätze Zusammenfassung)
+
+WICHTIG:
+- FAQs können Gerichtsentscheidungen zitieren (im korrekten Format)
+- Key Takeaways sollten die wichtigsten Punkte zusammenfassen
+- Meta-Felder SEO-optimiert mit Keyword
+- Alle Texte auf Deutsch
+
+Geben Sie NUR das JSON zurück.
+"""
+
+    schema = {
+        "type": "object",
+        "properties": {
+            "Intro": {"type": "string"},
+            "Meta_Title": {"type": "string"},
+            "Meta_Description": {"type": "string"},
+            "faq_01_question": {"type": "string"},
+            "faq_01_answer": {"type": "string"},
+            "faq_02_question": {"type": "string"},
+            "faq_02_answer": {"type": "string"},
+            "faq_03_question": {"type": "string"},
+            "faq_03_answer": {"type": "string"},
+            "faq_04_question": {"type": "string"},
+            "faq_04_answer": {"type": "string"},
+            "paa_01_question": {"type": "string"},
+            "paa_01_answer": {"type": "string"},
+            "paa_02_question": {"type": "string"},
+            "paa_02_answer": {"type": "string"},
+            "paa_03_question": {"type": "string"},
+            "paa_03_answer": {"type": "string"},
+            "paa_04_question": {"type": "string"},
+            "paa_04_answer": {"type": "string"},
+            "key_takeaway_01": {"type": "string"},
+            "key_takeaway_02": {"type": "string"},
+            "key_takeaway_03": {"type": "string"},
+            "TLDR": {"type": "string"},
+        },
+        "required": ["Intro", "Meta_Title", "Meta_Description"]
+    }
+
+    result = await client.generate_with_schema(
+        prompt=prompt,
+        response_schema=schema,
+        temperature=0.3,
+    )
+
+    return result
+
+
+def _assemble_article(
+    outline: ArticleOutline,
+    sections_content: Dict[str, Dict[str, Any]],
+    supporting: Dict[str, Any],
+    legal_context: Dict[str, Any],
+    court_decisions: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """
+    Assemble the final ArticleOutput dict from all generated components.
+
+    Args:
+        outline: Generated outline
+        sections_content: Dict of section_id -> {title, content, type}
+        supporting: Supporting content (intro, faqs, meta, etc.)
+        legal_context: Legal context for metadata
+        court_decisions: Court decisions for rechtliche_grundlagen
+
+    Returns:
+        Complete ArticleOutput dict
+    """
+    article = {
+        "Headline": outline.headline,
+        "Teaser": outline.teaser,
+        "Direct_Answer": outline.direct_answer,
+        "Intro": supporting.get("Intro", ""),
+        "Meta_Title": supporting.get("Meta_Title", ""),
+        "Meta_Description": supporting.get("Meta_Description", ""),
+        "TLDR": supporting.get("TLDR", ""),
+    }
+
+    # Add sections
+    for i, section in enumerate(outline.target_sections, 1):
+        section_id = f"section_{i:02d}"
+        content_data = sections_content.get(section.section_id, {})
+
+        article[f"section_{i:02d}_title"] = content_data.get("title", section.title)
+        article[f"section_{i:02d}_content"] = content_data.get("content", "")
+
+        # Store section type as metadata for Stage 2.5 verification
+        article[f"_section_{i:02d}_type"] = content_data.get("type", "unknown")
+
+    # Add FAQs
+    for i in range(1, 5):
+        article[f"faq_{i:02d}_question"] = supporting.get(f"faq_{i:02d}_question", "")
+        article[f"faq_{i:02d}_answer"] = supporting.get(f"faq_{i:02d}_answer", "")
+
+    # Add PAAs
+    for i in range(1, 5):
+        article[f"paa_{i:02d}_question"] = supporting.get(f"paa_{i:02d}_question", "")
+        article[f"paa_{i:02d}_answer"] = supporting.get(f"paa_{i:02d}_answer", "")
+
+    # Add key takeaways
+    article["key_takeaway_01"] = supporting.get("key_takeaway_01", "")
+    article["key_takeaway_02"] = supporting.get("key_takeaway_02", "")
+    article["key_takeaway_03"] = supporting.get("key_takeaway_03", "")
+
+    # Add legal metadata
+    article["rechtsgebiet"] = legal_context.get("rechtsgebiet", "")
+    article["stand_der_rechtsprechung"] = legal_context.get("stand_der_rechtsprechung", "")
+    article["legal_disclaimer"] = legal_context.get("disclaimer_template", "")
+
+    # Build rechtliche_grundlagen from court decisions
+    rechtliche_grundlagen = []
+    for decision in court_decisions:
+        datum = decision.get("datum", "")
+        if datum and len(datum) == 10:
+            try:
+                parts = datum.split("-")
+                datum_german = f"{parts[2]}.{parts[1]}.{parts[0]}"
+            except:
+                datum_german = datum
+        else:
+            datum_german = datum
+
+        citation = f"{decision.get('gericht', 'Unbekannt')}, Urt. v. {datum_german} – {decision.get('aktenzeichen', '')}"
+        rechtliche_grundlagen.append(citation)
+
+    article["rechtliche_grundlagen"] = rechtliche_grundlagen
+
+    # Build sources from court decisions
+    sources = []
+    for decision in court_decisions:
+        sources.append({
+            "title": f"{decision.get('gericht', '')} {decision.get('aktenzeichen', '')}",
+            "url": decision.get("url", ""),
+        })
+    article["Sources"] = sources
+
+    # Initialize empty fields
+    article["Subtitle"] = ""
+    article["Search_Queries"] = f"Recherche: {outline.headline}"
+
+    # Store section types mapping for Stage 2.5
+    section_types = {}
+    for i, section in enumerate(outline.target_sections, 1):
+        section_types[f"section_{i:02d}"] = section.section_type
+    article["section_types_metadata"] = section_types
+
+    return article
+
+
+# =============================================================================
 # BlogWriter Class (wrapper for compatibility)
 # =============================================================================
 
@@ -729,6 +1319,7 @@ class BlogWriter:
         batch_instructions: Optional[str] = None,
         keyword_instructions: Optional[str] = None,
         legal_context: Optional[Dict[str, Any]] = None,
+        use_decision_centric: bool = True,
     ) -> ArticleOutput:
         """Generate article using write_article function."""
         return await write_article(
@@ -741,6 +1332,7 @@ class BlogWriter:
             keyword_instructions=keyword_instructions,
             api_key=self.api_key,
             legal_context=legal_context,
+            use_decision_centric=use_decision_centric,
         )
 
 

@@ -1,0 +1,52 @@
+Sie sind ein deutscher Rechtsexperte. Schreiben Sie einen Artikelabschnitt, der auf einer spezifischen Gerichtsentscheidung aufbaut.
+
+ABSCHNITT-DETAILS:
+Titel: {section_title}
+Inhaltsbeschreibung: {content_brief}
+Relevante Normen: {relevant_statutes}
+
+ZUGEWIESENE GERICHTSENTSCHEIDUNG (MUSS zitiert werden):
+Gericht: {decision_gericht}
+Aktenzeichen: {decision_aktenzeichen}
+Datum: {decision_datum}
+Leitsatz: {decision_leitsatz}
+Relevante Normen der Entscheidung: {decision_normen}
+
+AUFGABE:
+Erstellen Sie einen HTML-Abschnitt (300-500 Wörter), der:
+
+1. ZWINGEND die zugewiesene Entscheidung zitiert im Format:
+   "{decision_gericht}, Urt. v. {decision_datum} – {decision_aktenzeichen}"
+
+2. Den Leitsatz erklärt und in verständliche Sprache übersetzt
+
+3. Die praktische Bedeutung der Entscheidung aufzeigt
+
+4. Beispiele oder Szenarien verwendet, um die Entscheidung zu veranschaulichen
+
+FORMATIERUNG:
+- Verwenden Sie HTML: <p>, <ul>, <li>, <ol>, <strong>, <em>
+- Fetten Sie das Zitat der Gerichtsentscheidung
+- Strukturieren Sie mit Absätzen und ggf. Listen
+- Keine Überschrift (die kommt separat)
+
+VERBOTEN:
+- Andere Gerichtsentscheidungen zitieren (NUR die zugewiesene!)
+- Rechtliche Behauptungen ohne Bezug zur zugewiesenen Entscheidung
+- Erfinden von Fakten oder Urteilen
+- Juristischer Fachjargon ohne Erklärung
+
+BEISPIEL-STRUKTUR:
+<p>Das <strong>{decision_gericht}</strong> hat mit Urteil vom <strong>{decision_datum}</strong> (Az. <strong>{decision_aktenzeichen}</strong>) entschieden, dass...</p>
+
+<p>Konkret bedeutet dies: [Erklärung in einfacher Sprache]</p>
+
+<p>In der Praxis zeigt sich dies etwa in folgenden Situationen:</p>
+<ul>
+  <li>[Beispiel 1]</li>
+  <li>[Beispiel 2]</li>
+</ul>
+
+<p>[Praktische Konsequenz für Betroffene]</p>
+
+Geben Sie NUR den HTML-Inhalt zurück, keine JSON-Struktur, keine Erklärungen.
