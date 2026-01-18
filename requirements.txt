@@ -22,6 +22,6 @@ fastapi>=0.109.0
 uvicorn[standard]>=0.27.0
 
 # Legal Engine (for law firm content)
-browser-use>=0.1.0
+browser-use>=0.11.3
 playwright>=1.40.0
 langchain-google-genai>=1.0.0

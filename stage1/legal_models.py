@@ -10,7 +10,14 @@ Used by Stage 1 for legal research and Stage 2.5 for verification.
 """
 
 from typing import List, Optional
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
+
+
+# Module-level constant to avoid Pydantic treating it as ModelPrivateAttr
+PLACEHOLDER_PATTERNS = [
+    "not available", "n/a", "na", "pending", "unknown",
+    "tbd", "see above", "placeholder"
+]
 
 
 class CourtDecision(BaseModel):
@@ -58,6 +65,42 @@ class CourtDecision(BaseModel):
         ...,
         description="Legal area (e.g., Arbeitsrecht, Mietrecht)"
     )
+
+    @field_validator('gericht', 'aktenzeichen', 'datum', 'rechtsgebiet')
+    @classmethod
+    def validate_non_empty(cls, v: str, info) -> str:
+        """Ensure required string fields are non-empty."""
+        if not v or not v.strip():
+            raise ValueError(f"{info.field_name} cannot be empty")
+        return v.strip()
+
+    @field_validator('url')
+    @classmethod
+    def validate_beck_url(cls, v: str) -> str:
+        """Ensure URL is from Beck-Online."""
+        if not v or not v.strip():
+            raise ValueError("URL cannot be empty")
+        v = v.strip()
+        if not v.startswith("https://beck-online.beck.de"):
+            raise ValueError(f"URL must be from beck-online.beck.de, got: {v}")
+        return v
+
+    @field_validator('leitsatz')
+    @classmethod
+    def validate_leitsatz_not_placeholder(cls, v: str) -> str:
+        """Ensure leitsatz has real content."""
+        if not v or not v.strip():
+            raise ValueError("Leitsatz cannot be empty")
+        v = v.strip()
+        # Check for placeholder patterns
+        lower = v.lower()
+        for pattern in PLACEHOLDER_PATTERNS:
+            if lower == pattern or lower.startswith(f"{pattern}:"):
+                raise ValueError(f"Leitsatz cannot be placeholder: {v}")
+        # Leitsatz should be at least a sentence
+        if len(v) < 20:
+            raise ValueError(f"Leitsatz too short to be valid ({len(v)} chars): {v}")
+        return v
 
 
 class Statute(BaseModel):
