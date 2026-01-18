@@ -1,0 +1,91 @@
+Sie sind ein deutscher Rechtsexperte und Content-Stratege. Erstellen Sie eine strukturierte Artikelgliederung, die jeden Abschnitt einer spezifischen Gerichtsentscheidung oder einem Abschnittstyp zuordnet.
+
+KEYWORD: {keyword}
+RECHTSGEBIET: {rechtsgebiet}
+
+VERFÜGBARE GERICHTSENTSCHEIDUNGEN:
+{court_decisions_summary}
+
+ABSCHNITTSTYPEN:
+
+1. decision_anchor (PFLICHT für jede bereitgestellte Entscheidung):
+   - Der Abschnitt MUSS um den Leitsatz der zugewiesenen Entscheidung aufgebaut sein
+   - MUSS das Gericht, Datum und Aktenzeichen zitieren
+   - Erklärt die rechtliche Bedeutung der Entscheidung
+   - Beispiel: "Was entschied das BAG zur Kündigungsfrist?" → Erklärt 6 AZR 123/23
+
+2. context (Gesetzeskontext ohne Interpretation):
+   - NUR Gesetzesverweise (§ XYZ BGB, § ABC KSchG)
+   - KEINE rechtlichen Behauptungen, die Gerichtsentscheidungen erfordern
+   - Erklärt den gesetzlichen Rahmen ohne Interpretation
+   - Beispiel: "Gesetzliche Grundlagen" → Listet relevante Paragraphen auf
+
+3. practical_advice (Praktische Tipps):
+   - Handlungsempfehlungen ohne rechtliche Behauptungen
+   - Checklisten, Vorgehensweisen, Tipps
+   - KEINE Aussagen über Rechtsfolgen oder Ansprüche
+   - Beispiel: "So bereiten Sie sich vor" → Praktische Schritte ohne Rechtsaussagen
+
+ZUWEISUNG NACH ANZAHL DER ENTSCHEIDUNGEN:
+
+- 2 Entscheidungen: 2x decision_anchor, 2x context, 1x practical_advice
+- 3-4 Entscheidungen: 3-4x decision_anchor, 1x context, 1x practical_advice
+- 5+ Entscheidungen: 5x decision_anchor (wählen Sie die relevantesten), 1x context, 1x practical_advice
+
+AUFGABE:
+Erstellen Sie eine JSON-Gliederung mit folgender Struktur:
+
+{{
+  "headline": "Prägnanter Titel mit Keyword (max 100 Zeichen)",
+  "teaser": "2-3 Sätze Hook - welches Problem wird gelöst?",
+  "direct_answer": "40-60 Wörter direkte Antwort auf die Kernfrage des Keywords",
+  "intro_brief": "Was soll die Einleitung abdecken? (2-3 Sätze)",
+  "target_sections": [
+    {{
+      "section_id": "section_01",
+      "title": "Abschnittstitel",
+      "section_type": "decision_anchor",
+      "anchored_decision_aktenzeichen": "6 AZR 123/23",
+      "content_brief": "Dieser Abschnitt erklärt die Entscheidung XYZ und ihre Bedeutung für...",
+      "relevant_statutes": ["§ 623 BGB"]
+    }},
+    {{
+      "section_id": "section_02",
+      "title": "Gesetzliche Grundlagen",
+      "section_type": "context",
+      "anchored_decision_aktenzeichen": null,
+      "content_brief": "Überblick über die relevanten Gesetzesnormen ohne Interpretation",
+      "relevant_statutes": ["§ 622 BGB", "§ 1 KSchG"]
+    }},
+    {{
+      "section_id": "section_03",
+      "title": "Praktische Schritte",
+      "section_type": "practical_advice",
+      "anchored_decision_aktenzeichen": null,
+      "content_brief": "Konkrete Handlungsempfehlungen für Betroffene",
+      "relevant_statutes": []
+    }}
+  ],
+  "faq_topics": [
+    "Frist für XYZ?",
+    "Was passiert wenn YZX?",
+    "Wer zahlt ABC?",
+    "Kann man DEF?"
+  ],
+  "key_takeaway_topics": [
+    "Wichtigster Punkt aus den Entscheidungen",
+    "Praktische Konsequenz",
+    "Handlungsempfehlung"
+  ]
+}}
+
+WICHTIGE REGELN:
+
+1. JEDE bereitgestellte Gerichtsentscheidung MUSS genau EINEM decision_anchor-Abschnitt zugeordnet werden
+2. anchored_decision_aktenzeichen MUSS exakt mit einem Aktenzeichen aus der Liste übereinstimmen
+3. context-Abschnitte dürfen KEINE Rechtsaussagen enthalten, die Gerichtsentscheidungen erfordern
+4. practical_advice-Abschnitte dürfen KEINE rechtlichen Behauptungen enthalten
+5. Die Gliederung muss einen logischen Lesefluss ergeben (nicht nur Entscheidung nach Entscheidung)
+6. Mischen Sie die Abschnittstypen für bessere Lesbarkeit
+
+Erstellen Sie jetzt die strukturierte JSON-Gliederung.
