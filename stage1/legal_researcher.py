@@ -64,26 +64,12 @@ async def conduct_legal_research(
         )
     else:
         logger.info("Using Beck-Online browser agent (production mode)")
-        try:
-            from browser_agent import research_via_beck_online
-            context = await research_via_beck_online(
-                keywords=keywords,
-                rechtsgebiet=rechtsgebiet
-            )
-        except ImportError as e:
-            logger.error(f"Beck-Online scraper not available: {e}")
-            logger.warning("Falling back to mock data")
-            context = await generate_mock_legal_context(
-                keywords=keywords,
-                rechtsgebiet=rechtsgebiet
-            )
-        except Exception as e:
-            logger.error(f"Beck-Online scraping failed: {e}")
-            logger.warning("Falling back to mock data")
-            context = await generate_mock_legal_context(
-                keywords=keywords,
-                rechtsgebiet=rechtsgebiet
-            )
+        # No fallback - fail if Beck-Online doesn't work
+        from browser_agent import research_via_beck_online
+        context = await research_via_beck_online(
+            keywords=keywords,
+            rechtsgebiet=rechtsgebiet
+        )
 
     # Enhanced logging: Beck-Online Research Summary
     logger.info("=" * 80)
