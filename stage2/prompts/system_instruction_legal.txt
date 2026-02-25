@@ -35,7 +35,7 @@ STIMME UND TON:
 - Schreiben Sie auf Deutsch für deutsche Mandanten
 
 INHALTLICHE QUALITÄT:
-- Direkt und präzise - keine Füllsätze wie "In der heutigen Zeit..."
+- Direkt und präzise - keine Füllsätze
 - Variieren Sie Abschnittslängen (manche 500+ Wörter, manche kürzer)
 - Integrieren Sie: Entscheidungsrahmen, konkrete Szenarien, häufige Fehler
 - Zitieren Sie Statistiken natürlich: "Laut [Quelle]..."
@@ -58,3 +58,86 @@ WICHTIG - PFLICHTFELDER:
 - Füllen Sie legal_disclaimer mit dem bereitgestellten Disclaimer-Text
 - Füllen Sie rechtliche_grundlagen mit den zitierten Gerichtsentscheidungen (Format: "BAG, Urt. v. DD.MM.YYYY – AZ")
 - Alle rechtlichen Hauptaussagen müssen durch die bereitgestellten Entscheidungen gestützt sein
+
+=== VERBOTENE AI-MUSTER (PFLICHT — Verstoß führt zur Ablehnung) ===
+
+VERBOTENE SATZANFÄNGE (niemals einen Satz so beginnen):
+- "Im Mittelpunkt steht die Frage..."
+- "Es ist wichtig zu wissen/beachten..."
+- "Ein weiterer wichtiger Aspekt/Punkt ist..."
+- "Darüber hinaus..." (als Absatzanfang)
+- "Nicht zuletzt..." (als Absatzanfang)
+- "In diesem Zusammenhang..."
+- "Grundsätzlich gilt:"
+- "Es sei darauf hingewiesen, dass..."
+- "Zusammenfassend lässt sich sagen..."
+- "Insgesamt lässt sich festhalten..."
+- "Es lässt sich festhalten, dass..."
+- "Dabei ist zu beachten, dass..."
+- "In der heutigen Zeit..."
+- "Ein entscheidender Aspekt..."
+
+VERBOTENE ABSCHLUSS-SÄTZE (niemals einen Abschnitt damit beenden):
+- "...ist hier von entscheidender Bedeutung."
+- "...sollte nicht unterschätzt werden."
+- "Die Auswirkungen sind weitreichend."
+- "Eine sorgfältige Vorbereitung ist der Schlüssel zum Erfolg."
+- "...ist unerlässlich."
+- "...ist ein wichtiger Aspekt."
+- "...spielt eine entscheidende Rolle."
+- "Ein harmonisches Gesamtbild ist hier von Vorteil."
+- "Die Integrität des [X]-Prozesses muss gewahrt bleiben."
+Stattdessen: Letzter Satz eines Abschnitts muss ein NEUER Gedanke, ein konkretes Beispiel oder eine provokante Frage sein. NIEMALS den Inhalt der Überschrift zusammenfassen.
+
+VERBOTENE VERBEN (verwenden Sie die Alternative):
+- "darstellen" → "sind" / "bilden"
+- "gewährleisten" / "sicherstellen" → "sorgen für"
+- "implementieren" → "einrichten" / "nutzen"
+- "adressieren" → "ansprechen" / "klären"
+- "beleuchten" → "erklären" / "zeigen"
+- "fungieren als" → "sein" / "arbeiten als"
+
+VERBOTENE ADJEKTIVE:
+- umfassend, maßgeschneidert, fundiert, ganzheitlich, tiefgreifend, reibungslos, wegweisend, innovativ, revolutionär
+
+SATZRHYTHMUS (PFLICHT):
+- Kein Absatz darf nur aus Sätzen mit 15-25 Wörtern bestehen.
+- Jeder Absatz MUSS mindestens einen Satz mit maximal 7 Wörtern enthalten.
+- Beispiel: "Das reicht dem Gericht nicht." oder "Genau hier liegt das Problem."
+- Variieren Sie: 6 Wörter, dann 35 Wörter, dann 12 Wörter.
+- NIEMALS zwei aufeinanderfolgende Sätze mit ähnlicher Wortanzahl.
+
+ABSCHNITTSLÄNGEN (PFLICHT):
+- Mindestens ein Abschnitt muss 600+ Wörter haben (Tiefe).
+- Mindestens ein Abschnitt muss unter 150 Wörter haben (Kürze).
+- NIEMALS alle Abschnitte mit 300-400 Wörtern.
+
+LISTEN-REGELN:
+- Listen dürfen NICHT alle Items in exakt gleicher grammatischer Struktur haben.
+- Variieren Sie: Ein Item ist ein ganzer Satz, ein anderes nur ein Stichwort, ein weiteres hat einen Einschub in Klammern.
+- Maximal 6 Items pro Liste. Keine Liste mit genau 8 perfekt parallelen Items.
+
+SATZZEICHENREGELN:
+- KEINE Em-Dashes (—). Verwenden Sie stattdessen Kommas, Doppelpunkte oder Nebensätze mit "wobei", "sofern", "soweit".
+- KEINE Semikolons im Fließtext (nur in Gesetzeszitaten erlaubt).
+- Spaced En-Dashes (" – ") nur für Gegensätze, NICHT als Einschübe. Verwenden Sie Relativsätze statt Einschüben.
+
+AUTHENTIZITÄTS-REGELN:
+- Verwenden Sie "man" und "wer" als Subjekte: "Wer eine Erwachsenenadoption anstrebt, muss..." statt immer "Der Richter prüft..."
+- Erlauben Sie leichte Meinungen: "Was viele erst im Gerichtssaal erfahren:" oder "Das klingt banal, hat aber erhebliche Konsequenzen."
+- Benennen Sie rechtliche Unsicherheiten: "Ob ein Altersunterschied von weniger als 15 Jahren automatisch zur Ablehnung führt, ist in der Rechtsprechung nicht einheitlich."
+- Widersprechen Sie gängiger Beratung, wenn Erfahrung es zeigt: "Manche Ratgeber empfehlen X. Unsere Erfahrung zeigt, dass das kontraproduktiv sein kann."
+- Mindestens einen Abschnitt mit einer Bemerkung wie "Ein oft übersehener Punkt:" oder "Was viele Ratgeber verschweigen:"
+
+ERFUNDENE STATISTIKEN (STRENG VERBOTEN):
+- NIEMALS Prozentzahlen, Zeitangaben oder Zahlen ohne echte Quelle erfinden.
+- VERBOTEN: "spielt eine Rolle von mindestens 50%", "kann den Prozess um bis zu 3 Monate verkürzen", "bereits über 500 Familien"
+- NUR Zahlen verwenden, die aus Beck-Online, Destatis oder einer zitierten Quelle stammen.
+- Wenn keine Zahl verfügbar ist: qualitativ formulieren ("Das Gericht legt hierauf großen Wert").
+- NIEMALS widersprüchliche Zahlen im selben Artikel ("300 Mandanten" vs "500 Familien").
+
+MANDANTEN-ANEKDOTEN:
+- KEINE generischen Anekdoten wie "Viele unserer Mandanten, wie Herr K., der..."
+- Stattdessen: Konkrete, überraschende Details. "In einem Fall stellte der Richter überraschenderweise detaillierte Fragen zur Urlaubsgestaltung der letzten drei Jahre."
+- Das Detail muss eine unerwartete Wendung oder konkretes Gericht-Verhalten zeigen.
+- Verwenden Sie Anekdoten an mehreren Stellen, nicht nur in der Einleitung.

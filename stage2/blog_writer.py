@@ -201,6 +201,7 @@ async def write_article(
     api_key: Optional[str] = None,
     legal_context: Optional[Dict[str, Any]] = None,
     use_decision_centric: bool = True,
+    humanization_research: Optional[Dict[str, Any]] = None,
 ) -> ArticleOutput:
     """
     Generate a complete blog article using Gemini.
@@ -302,6 +303,13 @@ async def write_article(
                 country=country,
                 custom_instructions_section=custom_instructions_section,
             )
+
+        # Inject humanization research data (Stage 0) into prompt
+        if humanization_research:
+            humanization_section = _format_humanization_research(humanization_research)
+            if humanization_section:
+                prompt = prompt + "\n\n" + humanization_section
+                logger.info("Injected Stage 0 humanization research into prompt")
 
         # Call with URL Context + Google Search grounding + source extraction
         # Note: Cannot use generate_with_schema() because ArticleOutput has additionalProperties
@@ -697,6 +705,65 @@ def _format_court_decisions(court_decisions: list) -> str:
         )
 
     return "\n\n".join(parts)
+
+
+def _format_humanization_research(research: Dict[str, Any]) -> str:
+    """
+    Format Stage 0 humanization research data for prompt injection.
+
+    Formats PAA questions, forum questions, and competitor headings
+    into a prompt section that guides more human-like content generation.
+
+    Args:
+        research: Stage0Output dict with paa_questions, forum_questions, competitor_headings
+
+    Returns:
+        Formatted string to append to the prompt, or empty string if no data
+    """
+    if not research:
+        return ""
+
+    sections = []
+
+    # PAA Questions
+    paa = research.get("paa_questions", [])
+    if paa:
+        lines = ["GOOGLE \"ÄHNLICHE FRAGEN\" (PAA — beantworten Sie ALLE davon im Artikel):"]
+        for q in paa[:8]:
+            lines.append(f"- {q}")
+        sections.append("\n".join(lines))
+
+    # Forum Questions
+    forums = research.get("forum_questions", [])
+    if forums:
+        lines = ["ECHTE NUTZER-FRAGEN (aus Foren — Basis für FAQ/PAA, verwenden Sie die Sprache der Nutzer):"]
+        for q in forums[:8]:
+            source = q.get("source", "Forum") if isinstance(q, dict) else "Forum"
+            question = q.get("question", str(q)) if isinstance(q, dict) else str(q)
+            context = q.get("context", "") if isinstance(q, dict) else ""
+            lines.append(f'- [{source}] "{question}"')
+            if context:
+                lines.append(f"  Kontext: {context[:150]}")
+        sections.append("\n".join(lines))
+
+    # Competitor Headings
+    competitors = research.get("competitor_headings", [])
+    if competitors:
+        lines = ["WETTBEWERBER-STRUKTUR (Orientierung, NICHT kopieren):"]
+        for i, comp in enumerate(competitors[:3], 1):
+            url = comp.get("url", "unknown") if isinstance(comp, dict) else "unknown"
+            headings = comp.get("headings", []) if isinstance(comp, dict) else []
+            lines.append(f"Artikel {i} ({url[:60]}):")
+            for h in headings[:10]:
+                lines.append(f"  {h}")
+        lines.append("")
+        lines.append("Ihr Artikel MUSS alle Kernthemen der Wettbewerber abdecken UND mindestens 2 Aspekte hinzufügen, die Wettbewerber NICHT behandeln.")
+        sections.append("\n".join(lines))
+
+    if not sections:
+        return ""
+
+    return "=== HUMANIZATION RESEARCH (aus Schritt 0) ===\n\n" + "\n\n".join(sections)
 
 
 def _log_legal_context_usage(legal_context: Optional[dict]) -> None:
@@ -1320,6 +1387,7 @@ class BlogWriter:
         keyword_instructions: Optional[str] = None,
         legal_context: Optional[Dict[str, Any]] = None,
         use_decision_centric: bool = True,
+        humanization_research: Optional[Dict[str, Any]] = None,
     ) -> ArticleOutput:
         """Generate article using write_article function."""
         return await write_article(
@@ -1333,6 +1401,7 @@ class BlogWriter:
             api_key=self.api_key,
             legal_context=legal_context,
             use_decision_centric=use_decision_centric,
+            humanization_research=humanization_research,
         )
 
 

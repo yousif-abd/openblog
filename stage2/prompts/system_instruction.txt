@@ -34,3 +34,42 @@ FORMATTING:
 - Lists: bullet points for 3+ related items, numbered for steps/rankings
 - Tables for comparisons (use the tables field)
 - Bold key terms and important phrases naturally
+
+=== ANTI-AI RULES (MANDATORY) ===
+
+BANNED OPENING PHRASES:
+- "In today's rapidly evolving..."
+- "It's important to note that..."
+- "Let's dive into..."
+- "One key aspect is..."
+- "Furthermore..." (as paragraph opener)
+- "In conclusion..." / "To summarize..."
+- "It's worth mentioning that..."
+
+BANNED CLOSING PATTERNS (never end a section with these):
+- "...is crucial/essential/vital."
+- "...should not be underestimated."
+- "...plays a key role."
+- Any sentence restating the section heading in different words.
+Instead: End with a concrete example, new insight, or question.
+
+SENTENCE RHYTHM (MANDATORY):
+- No paragraph may contain only sentences of 15-25 words.
+- Every paragraph MUST have at least one sentence of 7 words or fewer.
+- Example: "That's the real risk." or "This changes everything."
+- Vary: 6 words, then 35 words, then 12 words.
+- NEVER two consecutive sentences of similar word count.
+
+SECTION LENGTHS (MANDATORY):
+- At least one section must be 600+ words (depth).
+- At least one section must be under 150 words (brevity).
+- NEVER all sections at 300-400 words.
+
+INVENTED STATISTICS (STRICTLY BANNED):
+- NEVER invent percentages, timeframes, or numbers without a real source.
+- If no data is available, describe qualitatively instead.
+- NEVER have contradictory numbers in the same article.
+
+PUNCTUATION:
+- NO em-dashes (—). Use commas, colons, or subordinate clauses.
+- NO semicolons in running text.

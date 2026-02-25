@@ -66,6 +66,15 @@ from shared.models import ArticleOutput
 from shared.html_renderer import HTMLRenderer
 from shared.article_exporter import ArticleExporter
 
+# Stage 0: Humanization Research (browser-use)
+try:
+    from stage0.humanization_agents import run_stage_0
+    from stage0.stage0_models import Stage0Output
+    STAGE0_AVAILABLE = True
+except ImportError:
+    STAGE0_AVAILABLE = False
+    Stage0Output = None
+
 
 def _get_next_article_number(output_dir: Path) -> int:
     """
@@ -238,6 +247,7 @@ async def process_single_article(
     export_formats: Optional[List[str]] = None,
     legal_research_enabled: bool = False,
     article_number: Optional[int] = None,
+    humanization_research: Optional[dict] = None,
 ) -> dict:
     """
     Process one article through stages 2-5 sequentially.
@@ -292,6 +302,7 @@ async def process_single_article(
             job_id=context.job_id,
             skip_images=skip_images,
             legal_context=legal_context,
+            humanization_research=humanization_research,
         )
 
         stage2_output = await run_stage_2(stage2_input)
@@ -593,6 +604,27 @@ async def run_pipeline(
             logger.info(f"  Legal Research: {rechtsgebiet} ({num_decisions} court decisions)")
 
     # -----------------------------------------
+    # Stage 0: Humanization Research (runs once per keyword)
+    # -----------------------------------------
+    humanization_data = {}  # keyword -> Stage0Output dict
+    if STAGE0_AVAILABLE:
+        logger.info("\n[Stage 0] Humanization Research (PAA + Forums + Competitors)")
+        for article in context.articles:
+            try:
+                stage0_output = await run_stage_0(article.keyword, language)
+                humanization_data[article.keyword] = stage0_output.model_dump()
+                logger.info(
+                    f"  {article.keyword}: {len(stage0_output.paa_questions)} PAA, "
+                    f"{len(stage0_output.forum_questions)} forum Qs, "
+                    f"{len(stage0_output.competitor_headings)} competitors"
+                )
+            except Exception as e:
+                logger.warning(f"  Stage 0 failed for {article.keyword} (non-fatal): {e}")
+                humanization_data[article.keyword] = {}
+    else:
+        logger.info("\n[Stage 0] Skipped (browser-use not installed)")
+
+    # -----------------------------------------
     # Stages 2-5: Per article (parallel)
     # -----------------------------------------
     logger.info("\n[Stages 2-5] Article Processing (parallel)")
@@ -610,6 +642,7 @@ async def run_pipeline(
             export_formats=export_formats,
             legal_research_enabled=legal_research_enabled,
             article_number=start_number + i,
+            humanization_research=humanization_data.get(article.keyword),
         )
         for i, article in enumerate(context.articles)
     ]

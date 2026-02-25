@@ -207,44 +207,51 @@ class QualityFixer:
 
         article = copy.deepcopy(input_data.article)
 
-        # Build content for Gemini review
-        content_text = self._extract_content(article)
-        if not content_text:
-            logger.warning("  No content to check")
-            return Stage3Output(
-                article=article,
-                fixes_applied=0,
-                fixes=[],
-                ai_calls=0,
+        fixes_applied_total = 0
+        all_fixes = []
+        ai_calls = 0
+
+        # Loop up to 3 times for iterative self-critique (Anti-AI bypass)
+        MAX_ITERATIONS = 2
+        for iteration in range(MAX_ITERATIONS):
+            logger.info(f"  Stage 3 Iteration {iteration + 1}/{MAX_ITERATIONS} (Anti-AI Self-Critique)")
+            
+            # Build content for Gemini review
+            content_text = self._extract_content(article)
+            if not content_text:
+                logger.warning("  No content to check")
+                break
+
+            # Call Gemini for quality review
+            fixes = await self._get_fixes(
+                content_text,
+                input_data.keyword,
+                input_data.language,
+                voice_context=input_data.voice_context,
+                timeout=effective_timeout,
             )
+            ai_calls += 1
 
-        # Call Gemini for quality review
-        fixes = await self._get_fixes(
-            content_text,
-            input_data.keyword,
-            input_data.language,
-            voice_context=input_data.voice_context,
-            timeout=effective_timeout,
-        )
+            if not fixes:
+                logger.info("  No further fixes needed - content passes AI-detection critique")
+                break
 
-        if not fixes:
-            logger.info("  No fixes needed - content looks good")
-            return Stage3Output(
-                article=article,
-                fixes_applied=0,
-                fixes=[],
-                ai_calls=1,
-            )
-
-        # Apply fixes
-        applied_fixes = self._apply_fixes(article, fixes)
-        logger.info(f"  Applied {len(applied_fixes)} fixes")
+            # Apply fixes
+            applied_fixes = self._apply_fixes(article, fixes)
+            logger.info(f"  Applied {len(applied_fixes)} fixes in iteration {iteration + 1}")
+            
+            if not applied_fixes:
+                logger.info("  No fixes were successfully applied, stopping loop")
+                break
+                
+            all_fixes.extend(applied_fixes)
+            fixes_applied_total += len(applied_fixes)
 
         return Stage3Output(
             article=article,
-            fixes_applied=len(applied_fixes),
-            fixes=applied_fixes,
-            ai_calls=1,
+            fixes_applied=fixes_applied_total,
+            fixes=all_fixes,
+            ai_calls=ai_calls,
         )
 
     def _extract_content(self, article: Dict[str, Any]) -> str:
