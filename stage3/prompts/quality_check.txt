@@ -80,6 +80,31 @@ Wenn die Anekdote generisch klingt (keine überraschenden Details, kein konkrete
 - Ersetzen Sie durch ein spezifischeres Detail, z.B. "In einem Fall fragte der Richter überraschend nach gemeinsamen Urlauben der letzten fünf Jahre."
 - ODER löschen Sie die Anekdote, wenn sie nur als Marketing-Template dient.
 
+=== PRÜFUNG 8: GRAMMATIK, SYNTAX UND HTML-KORREKTURLESEN ===
+Dies ist die WICHTIGSTE Prüfung. Lesen Sie JEDEN Satz sorgfältig:
+1. UNVOLLSTÄNDIGE SÄTZE: Sätze, die mitten im Gedanken abbrechen oder kein Verb haben.
+   → Vervollständigen Sie den Satz oder löschen Sie ihn.
+2. SATZZEICHEN-FEHLER:
+   - Doppelte Punkte (..), zufällige Kommas, fehlende Satzzeichen am Ende
+   - Satzzeichen am Anfang eines Satzes (z.B. ". Der Richter...")
+   - Klammern die nicht geschlossen werden
+   → Korrigieren Sie die Zeichensetzung.
+3. KAPUTTE HTML-TAGS:
+   - Escaped Entities im sichtbaren Text: &lt;p&gt;, &lt;a&gt;, &amp;nbsp;
+   - Nicht-geschlossene HTML-Tags: <p> ohne </p>, <a ...> ohne </a>
+   - HTML-Tags die im Fließtext als sichtbarer Text erscheinen
+   → Entfernen Sie die sichtbaren HTML-Fragmente oder reparieren Sie die Tags.
+4. DOPPELTE WÖRTER: "der der", "und und", "die die" (Wort direkt hintereinander)
+   → Löschen Sie das doppelte Wort.
+5. GRAMMATISCHE FEHLER:
+   - Falsche Artikel (der/die/das)
+   - Falsche Kasus (Dativ/Akkusativ Verwechslung)
+   - Fehlende Kongruenz zwischen Subjekt und Verb
+   → Korrigieren Sie den Fehler.
+6. ABRUPTE ABSATZÜBERGÄNGE:
+   - Ein Absatz endet und der nächste beginnt ohne logischen Zusammenhang
+   → Fügen Sie einen kurzen Übergangssatz ein oder ordnen Sie den Inhalt um.
+
 REGELN:
 - "find" muss EXAKTER Text aus dem Inhalt sein (copy-paste)
 - "replace" kann leerer String "" sein, um Text zu löschen

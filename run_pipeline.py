@@ -248,6 +248,7 @@ async def process_single_article(
     legal_research_enabled: bool = False,
     article_number: Optional[int] = None,
     humanization_research: Optional[dict] = None,
+    legal_approach: Optional[str] = None,
 ) -> dict:
     """
     Process one article through stages 2-5 sequentially.
@@ -299,10 +300,12 @@ async def process_single_article(
             company_context=CompanyContext(**company_ctx),
             visual_identity=VisualIdentity(**visual_identity_data) if visual_identity_data else None,
             language=context.language,
+            word_count=7000,  # ~10 min Lesezeit at ~200 wpm German
             job_id=context.job_id,
             skip_images=skip_images,
             legal_context=legal_context,
             humanization_research=humanization_research,
+            legal_approach=legal_approach,
         )
 
         stage2_output = await run_stage_2(stage2_input)
@@ -483,6 +486,7 @@ async def process_single_article(
                 article=article_dict,
                 company_name=context.company_context.company_name,
                 company_url=context.company_context.company_url,
+                language=context.language,
             )
 
             # Export all formats
@@ -520,6 +524,8 @@ async def process_single_article(
         logger.info(f"  ✓ Article complete: {article.keyword}")
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         logger.error(f"  ✗ Article failed: {article.keyword} - {type(e).__name__}: {e}")
         # Log exception details at debug level (avoid exposing sensitive data in production logs)
         logger.debug(f"Full exception for {article.keyword}:", exc_info=True)
@@ -540,6 +546,8 @@ async def run_pipeline(
     enable_legal_research: bool = False,
     rechtsgebiet: str = "Arbeitsrecht",
     use_mock_legal_data: bool = True,
+    legal_approach: Optional[str] = None,
+    extra_blog_urls: Optional[List[str]] = None,
 ) -> dict:
     """
     Run full pipeline: Stage 1 once, then Stages 2-5 for each article in parallel.
@@ -587,6 +595,7 @@ async def run_pipeline(
         enable_legal_research=enable_legal_research,
         rechtsgebiet=rechtsgebiet,
         use_mock_legal_data=use_mock_legal_data,
+        extra_blog_urls=extra_blog_urls or [],
     )
 
     context = await run_stage_1(input_data)
@@ -611,15 +620,19 @@ async def run_pipeline(
         logger.info("\n[Stage 0] Humanization Research (PAA + Forums + Competitors)")
         for article in context.articles:
             try:
-                stage0_output = await run_stage_0(article.keyword, language)
+                stage0_output = await asyncio.wait_for(
+                    run_stage_0(article.keyword, language),
+                    timeout=120,  # 2 min max for Stage 0
+                )
                 humanization_data[article.keyword] = stage0_output.model_dump()
                 logger.info(
                     f"  {article.keyword}: {len(stage0_output.paa_questions)} PAA, "
                     f"{len(stage0_output.forum_questions)} forum Qs, "
                     f"{len(stage0_output.competitor_headings)} competitors"
                 )
-            except Exception as e:
-                logger.warning(f"  Stage 0 failed for {article.keyword} (non-fatal): {e}")
+            except BaseException as e:
+                # Catch BaseException to handle CancelledError, TimeoutError, etc.
+                logger.warning(f"  Stage 0 failed for {article.keyword} (non-fatal): {type(e).__name__}: {e}")
                 humanization_data[article.keyword] = {}
     else:
         logger.info("\n[Stage 0] Skipped (browser-use not installed)")
@@ -643,6 +656,7 @@ async def run_pipeline(
             legal_research_enabled=legal_research_enabled,
             article_number=start_number + i,
             humanization_research=humanization_data.get(article.keyword),
+            legal_approach=legal_approach,
         )
         for i, article in enumerate(context.articles)
     ]
@@ -712,6 +726,59 @@ async def run_pipeline(
 # CLI
 # =============================================================================
 
+# Keyword-to-Rechtsgebiet mapping for auto-detection
+_RECHTSGEBIET_KEYWORDS = {
+    "Familienrecht": [
+        "adoption", "erwachsenenadoption", "sorgerecht", "umgangsrecht",
+        "unterhalt", "scheidung", "trennung", "ehevertrag", "kindeswohl",
+        "familienrecht", "eltern", "kind", "ehe", "vaterschaft",
+    ],
+    "Mietrecht": [
+        "miete", "mietrecht", "vermieter", "mieter", "mietvertrag",
+        "eigenbedarf", "mieterhöhung", "betriebskosten", "kündigung mietverhältnis",
+        "mietminderung", "nebenkost", "wohnung",
+    ],
+    "Erbrecht": [
+        "erbrecht", "erbschaft", "testament", "pflichtteil", "erbe",
+        "erbfolge", "erbvertrag", "vermächtnis", "nachlassgericht",
+        "nachlass", "enterb",
+    ],
+    "Vertragsrecht": [
+        "vertragsrecht", "agb", "vertragsschluss", "kaufvertrag",
+        "werkvertrag", "dienstvertrag", "widerruf", "anfechtung",
+        "gewährleistung", "schadensersatz", "haftung",
+    ],
+    "Arbeitsrecht": [
+        "arbeitsrecht", "kündigung", "kündigungsschutz", "arbeitsvertrag",
+        "arbeitgeber", "arbeitnehmer", "abfindung", "abmahnung",
+        "betriebsrat", "arbeitszeugnis", "arbeitszeit",
+    ],
+}
+
+
+def _detect_rechtsgebiet(keywords: List[str]) -> str:
+    """
+    Auto-detect the Rechtsgebiet from keywords.
+
+    Scans keywords for topic indicators and returns the best match.
+    Falls back to 'Arbeitsrecht' if no clear match.
+    """
+    combined = " ".join(keywords).lower()
+
+    scores = {}
+    for gebiet, indicators in _RECHTSGEBIET_KEYWORDS.items():
+        score = sum(1 for ind in indicators if ind in combined)
+        if score > 0:
+            scores[gebiet] = score
+
+    if scores:
+        best = max(scores, key=scores.get)
+        logger.info(f"  Auto-detected Rechtsgebiet: {best} (score: {scores[best]})")
+        return best
+
+    return "Arbeitsrecht"
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="OpenBlog Neo - AI Blog Generation Pipeline"
@@ -775,8 +842,15 @@ def main():
     parser.add_argument(
         "--rechtsgebiet",
         type=str,
-        default="Arbeitsrecht",
-        help="German legal area (Arbeitsrecht, Mietrecht, Vertragsrecht, Familienrecht, Erbrecht) (default: Arbeitsrecht)"
+        default=None,
+        help="German legal area (Arbeitsrecht, Mietrecht, Vertragsrecht, Familienrecht, Erbrecht). Auto-detected from keywords if not set."
+    )
+    parser.add_argument(
+        "--extra-blog-urls",
+        type=str,
+        nargs="+",
+        default=None,
+        help="Additional blog URLs for voice analysis (e.g. from related domains)"
     )
     parser.add_argument(
         "--use-mock-legal-data",
@@ -789,6 +863,13 @@ def main():
         dest="use_mock_legal_data",
         action="store_false",
         help="Use real Beck-Online (requires BECK_USERNAME/BECK_PASSWORD in .env)"
+    )
+    parser.add_argument(
+        "--legal-approach",
+        type=str,
+        choices=["approach_a", "approach_b"],
+        default="approach_a",
+        help="Legal article generation approach: approach_a (direct paraphrasing) or approach_b (context synthesis)"
     )
 
     args = parser.parse_args()
@@ -819,6 +900,10 @@ def main():
         else:
             output_dir = output_path.parent
 
+    # Auto-detect rechtsgebiet from keywords if not explicitly set
+    rechtsgebiet = args.rechtsgebiet or _detect_rechtsgebiet(keywords)
+    logger.info(f"Rechtsgebiet: {rechtsgebiet}" + (" (auto-detected)" if not args.rechtsgebiet else ""))
+
     # Run pipeline
     results = asyncio.run(run_pipeline(
         keywords=keywords,
@@ -830,8 +915,10 @@ def main():
         output_dir=output_dir,
         export_formats=args.export_formats,
         enable_legal_research=args.enable_legal_research,
-        rechtsgebiet=args.rechtsgebiet,
+        rechtsgebiet=rechtsgebiet,
         use_mock_legal_data=args.use_mock_legal_data,
+        legal_approach=args.legal_approach,
+        extra_blog_urls=getattr(args, 'extra_blog_urls', None),
     ))
 
     # Save output

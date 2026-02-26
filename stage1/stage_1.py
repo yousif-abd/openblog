@@ -101,11 +101,24 @@ async def run_stage_1(input_data: Stage1Input) -> Stage1Output:
     voice_enhanced = False
     voice_enhancement_urls = []
 
-    if sitemap_data.blog_urls and len(sitemap_data.blog_urls) >= VOICE_ENHANCEMENT_MIN_BLOGS:
+    # Merge extra blog URLs (from additional domains) with sitemap blog URLs
+    all_blog_urls = list(sitemap_data.blog_urls)
+    if input_data.extra_blog_urls:
+        existing = set(all_blog_urls)
+        added = 0
+        for url in input_data.extra_blog_urls:
+            if url not in existing:
+                all_blog_urls.append(url)
+                existing.add(url)
+                added += 1
+        if added:
+            logger.info(f"  Added {added} extra blog URLs for voice analysis (total: {len(all_blog_urls)})")
+
+    if all_blog_urls and len(all_blog_urls) >= VOICE_ENHANCEMENT_MIN_BLOGS:
         logger.info(f"  Enhancing voice persona from {VOICE_ENHANCEMENT_SAMPLE_SIZE} blog samples...")
         enhanced_persona, voice_enhancement_urls, voice_enhanced = await sample_and_enhance(
             initial_persona=company_context.voice_persona,
-            blog_urls=sitemap_data.blog_urls,
+            blog_urls=all_blog_urls,
             sample_size=VOICE_ENHANCEMENT_SAMPLE_SIZE,
             min_blogs_required=VOICE_ENHANCEMENT_MIN_BLOGS,
         )
@@ -116,7 +129,7 @@ async def run_stage_1(input_data: Stage1Input) -> Stage1Output:
         else:
             logger.info("  Voice enhancement skipped or failed, using initial persona")
     else:
-        logger.info(f"  Not enough blog URLs ({len(sitemap_data.blog_urls)}) for voice enhancement, skipping")
+        logger.info(f"  Not enough blog URLs ({len(all_blog_urls)}) for voice enhancement, skipping")
 
     # -----------------------------------------
     # Step 3.5: Legal Research (if enabled)

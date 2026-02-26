@@ -152,12 +152,14 @@ class GeminiClient:
             logger.debug(f"Auto-selected timeout: {timeout}s (grounding={bool(tools)})")
 
         # Build config
+        # Note: Gemini 2.5 Pro doesn't support response_mime_type + tools together
+        use_json_mime = json_output and not tools
         config = self._types.GenerateContentConfig(
             system_instruction=system_instruction,
             temperature=temperature,
             max_output_tokens=max_tokens,
             tools=tools if tools else None,
-            response_mime_type="application/json" if json_output else None,
+            response_mime_type="application/json" if use_json_mime else None,
         )
 
         logger.debug(f"Generating with model={GEMINI_MODEL}, tools={len(tools)}, json={json_output}")
@@ -176,6 +178,11 @@ class GeminiClient:
                     timeout=timeout,
                 )
 
+                if response.text is None:
+                    raise ValueError(
+                        f"Gemini returned empty response (possibly blocked by safety filters). "
+                        f"Candidates: {getattr(response, 'candidates', 'N/A')}"
+                    )
                 text = response.text.strip()
 
                 if json_output:
@@ -552,12 +559,13 @@ class GeminiClient:
             timeout = GEMINI_TIMEOUT_GROUNDING if tools else GEMINI_TIMEOUT_DEFAULT
             logger.debug(f"Auto-selected timeout: {timeout}s (grounding={bool(tools)})")
 
+        # Note: Gemini 2.5 Pro doesn't support response_mime_type + tools together
         config = self._types.GenerateContentConfig(
             temperature=temperature,
             max_output_tokens=8192,
             tools=tools if tools else None,
-            response_mime_type="application/json",
-            response_schema=response_schema,
+            response_mime_type="application/json" if not tools else None,
+            response_schema=response_schema if not tools else None,
             system_instruction=system_instruction if system_instruction else None,
         )
 

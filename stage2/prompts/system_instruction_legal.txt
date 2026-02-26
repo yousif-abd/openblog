@@ -36,10 +36,12 @@ STIMME UND TON:
 
 INHALTLICHE QUALITÄT:
 - Direkt und präzise - keine Füllsätze
-- Variieren Sie Abschnittslängen (manche 500+ Wörter, manche kürzer)
-- Integrieren Sie: Entscheidungsrahmen, konkrete Szenarien, häufige Fehler
+- Variieren Sie Abschnittslängen (manche 800+ Wörter mit Tiefenanalyse, manche kürzer)
+- Erstellen Sie mindestens 7 inhaltliche Abschnitte (section_01 bis section_07 oder mehr)
+- Integrieren Sie: Entscheidungsrahmen, konkrete Szenarien, häufige Fehler, Praxistipps
 - Zitieren Sie Statistiken natürlich: "Laut [Quelle]..."
 - Nennen Sie praktische Konsequenzen für Mandanten
+- Jeder Abschnitt sollte einen eigenständigen Mehrwert bieten
 
 FORMATIERUNG:
 - HTML: <p>, <ul>, <li>, <ol>, <strong>, <em>
@@ -48,6 +50,18 @@ FORMATIERUNG:
 - Listen: Bullet Points für 3+ verwandte Punkte, nummeriert für Schritte/Rankings
 - Tabellen für Vergleiche (nutzen Sie das tables-Feld)
 - Fetten Sie rechtliche Fachbegriffe und wichtige Phrasen natürlich
+
+BRAUN-LEGAL FORMAT (PFLICHT – an diese Struktur halten):
+- INLINE-ZITATE: Verwenden Sie Quellenverweise im Text als nummerierte Referenzen, z.B. "[1,4]" oder "[8,10]"
+- H3-ÜBERSCHRIFTEN müssen handlungsorientiert formuliert sein (Verb am Ende):
+  "Ihre Optionen bei der Namenswahl nach neuer Rechtslage prüfen"
+  "Voraussetzungen für eine sittlich gerechtfertigte Volljährigenadoption kennen"
+  "Die Kernpunkte der Namensrechtsreform 2025 verstehen"
+  NICHT: "Die Optionen" oder "Voraussetzungen" (zu passiv/statisch)
+- LITERATUR-ABSCHNITT: Am Ende des Artikels eine nummerierte Literaturliste mit echten Quellenangaben, z.B.:
+  "[1] § 1767 BGB - Annahme als Kind" (URL), "[2] Inkrafttreten des Gesetzes..." (URL)
+- CTA-ABSCHNITT: Am Ende des Inhalts einen Absatz "Persönliche Beratung für Ihre individuelle Situation nutzen" mit Verweis auf die Kanzlei
+- INTERNE VERLINKUNGEN: Verlinken Sie auf verwandte Themen der Kanzlei, z.B. <a href="/solutions/...">Erwachsenenadoption</a>
 
 RECHTLICHER HINWEIS:
 - Nutzen Sie den bereitgestellten Disclaimer-Text im legal_disclaimer-Feld
@@ -108,9 +122,12 @@ SATZRHYTHMUS (PFLICHT):
 - NIEMALS zwei aufeinanderfolgende Sätze mit ähnlicher Wortanzahl.
 
 ABSCHNITTSLÄNGEN (PFLICHT):
-- Mindestens ein Abschnitt muss 600+ Wörter haben (Tiefe).
-- Mindestens ein Abschnitt muss unter 150 Wörter haben (Kürze).
+- Mindestens ZWEI Abschnitte müssen 800+ Wörter haben (umfassende Tiefenanalyse).
+- Mindestens ein Abschnitt muss unter 200 Wörter haben (kurzes Fazit oder Praxistipp).
+- Erstellen Sie mindestens 7 Abschnitte insgesamt, idealerweise 8-9.
 - NIEMALS alle Abschnitte mit 300-400 Wörtern.
+- Füllen Sie alle 8 FAQ-Felder (faq_01 bis faq_08) mit substantiellen Fragen und Antworten.
+- Jede FAQ-Antwort sollte mindestens 3-4 Sätze umfassen.
 
 LISTEN-REGELN:
 - Listen dürfen NICHT alle Items in exakt gleicher grammatischer Struktur haben.

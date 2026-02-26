@@ -337,6 +337,49 @@ async def write_article(
                 result["Sources"] = grounding_sources
                 logger.info(f"Using {len(grounding_sources)} grounding sources (replaced {len(ai_sources) if ai_sources else 0} AI-generated)")
 
+        # Filter out sources from company domain and competitors
+        if result.get("Sources"):
+            from urllib.parse import urlparse
+            blocked_domains = set()
+            # Block company's own domain
+            company_url = company_context.get("company_url", "")
+            if company_url:
+                try:
+                    parsed = urlparse(company_url)
+                    domain = parsed.netloc.replace("www.", "")
+                    if domain:
+                        blocked_domains.add(domain)
+                except Exception:
+                    pass
+            # Block competitor domains
+            for comp in company_context.get("competitors", []):
+                if isinstance(comp, str) and comp.strip():
+                    try:
+                        parsed = urlparse(comp if "://" in comp else f"https://{comp}")
+                        domain = parsed.netloc.replace("www.", "")
+                        if domain:
+                            blocked_domains.add(domain)
+                    except Exception:
+                        pass
+
+            if blocked_domains:
+                original_count = len(result["Sources"])
+                filtered = []
+                for src in result["Sources"]:
+                    src_url = src.get("url", "") if isinstance(src, dict) else getattr(src, "url", "")
+                    try:
+                        src_domain = urlparse(src_url).netloc.replace("www.", "")
+                        if src_domain not in blocked_domains:
+                            filtered.append(src)
+                        else:
+                            logger.debug(f"Filtered source from blocked domain: {src_domain}")
+                    except Exception:
+                        filtered.append(src)  # Keep on parse error
+                result["Sources"] = filtered
+                removed = original_count - len(filtered)
+                if removed > 0:
+                    logger.info(f"Filtered {removed} source(s) from company/competitor domains")
+
         logger.info(f"Article generated: {result.get('Headline', 'Unknown')[:50]}...")
 
         # Populate legal fields if in legal mode
@@ -1077,6 +1120,9 @@ async def _generate_decision_anchor_section(
         max_tokens=2048,
     )
 
+    if not result:
+        logger.warning(f"Gemini returned empty for decision section: {section.title}")
+        return f"<p>[Inhalt konnte nicht generiert werden für: {section.title}]</p>"
     return result.strip()
 
 
@@ -1115,6 +1161,9 @@ async def _generate_context_section(
         max_tokens=2048,
     )
 
+    if not result:
+        logger.warning(f"Gemini returned empty for context section: {section.title}")
+        return f"<p>[Inhalt konnte nicht generiert werden für: {section.title}]</p>"
     return result.strip()
 
 
@@ -1152,6 +1201,9 @@ async def _generate_practical_section(
         max_tokens=2048,
     )
 
+    if not result:
+        logger.warning(f"Gemini returned empty for practical section: {section.title}")
+        return f"<p>[Inhalt konnte nicht generiert werden für: {section.title}]</p>"
     return result.strip()
 
 

@@ -124,6 +124,7 @@ class Stage2Input(BaseModel):
     job_id: Optional[str] = Field(default=None, description="Job ID from Stage 1")
     legal_context: Optional[Dict[str, Any]] = Field(default=None, description="Legal context from Stage 1 (for law firm content)")
     humanization_research: Optional[Dict[str, Any]] = Field(default=None, description="Stage 0 humanization research (PAA, forums, competitors)")
+    legal_approach: Optional[str] = Field(default=None, description="Legal generation approach: 'approach_a' (decision-centric) or 'approach_b' (context synthesis)")
 
 
 class ImageResult(BaseModel):
@@ -184,6 +185,9 @@ async def run_stage_2(input_data: Stage2Input) -> Stage2Output:
     # -----------------------------------------
     logger.info("  Generating article with Gemini...")
 
+    # Determine generation approach
+    use_decision_centric = input_data.legal_approach != "approach_b"
+
     article = await blog_writer.write_article(
         keyword=input_data.keyword,
         company_context=input_data.company_context.model_dump(),
@@ -193,6 +197,7 @@ async def run_stage_2(input_data: Stage2Input) -> Stage2Output:
         batch_instructions=input_data.custom_instructions,
         keyword_instructions=input_data.keyword_instructions,
         legal_context=input_data.legal_context,
+        use_decision_centric=use_decision_centric,
         humanization_research=input_data.humanization_research,
     )
     ai_calls += 1

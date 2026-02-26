@@ -337,7 +337,7 @@ async def _execute_beck_research_single_agent(
     """
     # Initialize Gemini LLM for browser-use
     llm = ChatGoogle(
-        model="gemini-3.1-pro",
+        model="gemini-2.5-pro",
         api_key=gemini_api_key,
         temperature=0.1
     )

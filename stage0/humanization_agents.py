@@ -1,24 +1,30 @@
 """
-Stage 0: Humanization Research Agents
+Stage 0: Humanization Research Agents (Fast HTTP Version)
 
-Uses browser-use to scrape real human content before article generation:
+Collects real human content before article generation:
 1. Google PAA (Ähnliche Fragen) — real questions users ask
 2. Forum questions — authentic language from juraforum.de, gutefrage.net
 3. Competitor headings — H2/H3 structure from top-ranking articles
 
-All three sub-agents run in parallel. Failures are non-fatal:
-if any scraper fails, the pipeline continues with whatever data was collected.
+All three sub-agents run in parallel using httpx (no browser needed).
+Failures are non-fatal: if any scraper fails, the pipeline continues.
 
-AI Calls: 0-3 (one per browser-use agent, only if browser-use is available)
+AI Calls: 0 (pure HTML parsing, no LLM calls)
 """
 
 import asyncio
 import logging
-import os
+import re
 import sys
 from pathlib import Path
 from typing import List, Optional
 from urllib.parse import quote_plus
+
+try:
+    import httpx
+    HTTPX_AVAILABLE = True
+except ImportError:
+    HTTPX_AVAILABLE = False
 
 # Add project root for imports
 _BASE_PATH = Path(__file__).parent.parent
@@ -29,295 +35,192 @@ from stage0.stage0_models import Stage0Output, ForumQuestion, CompetitorPage
 
 logger = logging.getLogger(__name__)
 
-# Check browser-use availability
-try:
-    from browser_use.agent.service import Agent
-    from browser_use.browser import BrowserSession, BrowserProfile
-    from browser_use.llm.google.chat import ChatGoogle
-    BROWSER_USE_AVAILABLE = True
-except ImportError as e:
-    BROWSER_USE_AVAILABLE = False
-    logger.warning(f"browser-use not available for Stage 0: {e}")
+# Common headers to avoid bot detection
+_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "de-DE,de;q=0.9,en;q=0.5",
+    "Accept-Encoding": "gzip, deflate",
+}
 
 
 # =============================================================================
-# Google PAA Scraper
+# Google PAA Scraper (HTTP)
 # =============================================================================
-
-PAA_TASK_TEMPLATE = """
-TASK: Extract "People Also Ask" questions from Google search results.
-
-Step 1: Go to https://www.google.de/search?q={query}&hl=de
-Step 2: If a cookie consent popup appears, click "Alle akzeptieren"
-Step 3: Look for the "Ähnliche Fragen" or "Nutzer fragten auch" section on the page
-Step 4: If found, click on each question to expand it (this reveals additional questions)
-Step 5: Extract ALL question text strings you can see in this section (aim for 4-8 questions)
-Step 6: Call done with all questions in this format:
-
-PAA_SUCCESS
-Question 1: [exact question text]
-Question 2: [exact question text]
-Question 3: [exact question text]
-...
-
-If no PAA section exists, call done with: NO_PAA_FOUND
-
-CRITICAL:
-- Only extract the QUESTION text, not the answers
-- Do NOT click on any ads or sponsored content
-- Do NOT navigate away from the search results page
-- Extract the questions EXACTLY as written (in German)
-"""
-
 
 async def scrape_google_paa(keyword: str, language: str = "de") -> List[str]:
     """
-    Search Google.de for keyword, extract the 'Ähnliche Fragen' (PAA) box.
-    
+    Fetch Google SERP for the keyword and extract PAA questions from HTML.
+
     Args:
         keyword: Search keyword
         language: Language code (default: de)
-        
+
     Returns:
         List of PAA question strings
     """
-    if not BROWSER_USE_AVAILABLE:
-        logger.warning("browser-use not available, skipping PAA scraping")
+    if not HTTPX_AVAILABLE:
+        logger.warning("httpx not available, skipping PAA scraping")
         return []
 
-    gemini_api_key = os.getenv("GEMINI_API_KEY")
-    if not gemini_api_key:
-        logger.warning("GEMINI_API_KEY not set, skipping PAA scraping")
-        return []
-
-    llm = ChatGoogle(
-        model="gemini-3.1-pro",
-        api_key=gemini_api_key,
-        temperature=0.1,
-    )
-
-    browser_profile = BrowserProfile(headless=True)
-    browser_session = BrowserSession(browser_profile=browser_profile)
+    query = quote_plus(keyword)
+    url = f"https://www.google.de/search?q={query}&hl=de&gl=DE"
 
     try:
-        await browser_session.start()
+        async with httpx.AsyncClient(
+            headers=_HEADERS,
+            follow_redirects=True,
+            timeout=15.0,
+        ) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            html = response.text
 
-        query = quote_plus(keyword)
-        task = PAA_TASK_TEMPLATE.format(query=query)
-
-        agent = Agent(
-            task=task,
-            llm=llm,
-            browser_session=browser_session,
-            use_vision=False,
-            max_failures=3,
-            max_actions_per_step=15,
-        )
-
-        result = await agent.run()
-        content = result.extracted_content() or []
-        output = "\n".join(str(item) for item in content if item)
-
-        if "NO_PAA_FOUND" in output:
-            logger.info("No PAA section found on Google for this keyword")
-            return []
-
-        # Parse questions from output
+        # Extract PAA questions from Google HTML
         questions = []
-        for line in output.split("\n"):
-            line = line.strip()
-            if line.startswith("Question") and ":" in line:
-                q = line.split(":", 1)[1].strip()
-                if q and len(q) > 5:
+
+        # Pattern 1: data-q attribute contains question text
+        pattern_data_q = re.findall(r'data-q="([^"]+)"', html)
+        for q in pattern_data_q:
+            q = q.strip()
+            if q and len(q) > 10 and q not in questions:
+                questions.append(q)
+
+        # Pattern 2: aria-expanded spans in PAA accordion
+        pattern_paa = re.findall(
+            r'<div[^>]*jsname="[^"]*"[^>]*>\s*<span[^>]*>([^<]{15,120})\?</span>',
+            html
+        )
+        for q in pattern_paa:
+            q = q.strip() + "?"
+            if q not in questions:
+                questions.append(q)
+
+        # Pattern 3: Question-like text near PAA section header
+        paa_section = re.search(
+            r'(Ähnliche Fragen|Nutzer fragen auch|People also ask)(.*?)'
+            r'(Weitere Ergebnisse|Ähnliche Suchanfragen|$)',
+            html, re.DOTALL | re.IGNORECASE
+        )
+        if paa_section:
+            section_html = paa_section.group(2)
+            q_patterns = re.findall(r'>([^<]{15,150}\?)\s*<', section_html)
+            for q in q_patterns:
+                q = q.strip()
+                if q and q not in questions:
                     questions.append(q)
 
-        logger.info(f"Scraped {len(questions)} PAA questions from Google")
-        return questions
+        logger.info(f"PAA: Extracted {len(questions)} questions from Google SERP")
+        return questions[:8]
 
-    except Exception as e:
-        logger.warning(f"PAA scraping failed (non-fatal): {e}")
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 429:
+            logger.warning("PAA: Google rate-limited (429), skipping")
+        else:
+            logger.warning(f"PAA: HTTP error {e.response.status_code}")
         return []
-    finally:
-        await browser_session.stop()
+    except Exception as e:
+        logger.warning(f"PAA scraping failed (non-fatal): {type(e).__name__}: {e}")
+        return []
 
 
 # =============================================================================
-# Forum Question Scraper
+# Forum Question Scraper (HTTP)
 # =============================================================================
-
-FORUM_TASK_TEMPLATE = """
-TASK: Find real user questions about a legal topic from German forums.
-
-Step 1: Go to https://www.google.de/search?q=site:{site}+{query}&hl=de
-Step 2: If a cookie consent popup appears, click "Alle akzeptieren"
-Step 3: Look at the search results — these are forum threads from {site}
-Step 4: For each of the top 5 results:
-   - Note the thread TITLE (this is the user's question)
-   - Click on the result
-   - Copy the FIRST 200 characters of the original post (the question body)
-   - Go BACK to search results
-Step 5: Call done with all questions in this format:
-
-FORUM_SUCCESS
-Thread 1:
-Title: [thread title]
-Context: [first 200 chars of original post]
-URL: [thread URL]
-
-Thread 2:
-Title: [thread title]
-Context: [first 200 chars of original post]
-URL: [thread URL]
-...
-
-If no results found, call done with: NO_FORUM_RESULTS
-
-CRITICAL:
-- Extract at least 3 threads, up to 5
-- Copy the exact question text — do NOT paraphrase
-- Do NOT click on ads
-- The Context should be the ORIGINAL POSTER's text, not a reply
-"""
-
 
 async def scrape_forum_questions(
     keyword: str,
     sites: Optional[List[str]] = None,
 ) -> List[ForumQuestion]:
     """
-    Search German legal forums for real user questions about the keyword.
-    
+    Search Google for forum threads and extract titles from SERP HTML.
+
     Args:
         keyword: Search keyword
         sites: Forum domains to search (default: juraforum.de, gutefrage.net)
-        
+
     Returns:
         List of ForumQuestion objects with real user questions
     """
-    if not BROWSER_USE_AVAILABLE:
-        logger.warning("browser-use not available, skipping forum scraping")
+    if not HTTPX_AVAILABLE:
+        logger.warning("httpx not available, skipping forum scraping")
         return []
 
     if sites is None:
         sites = ["juraforum.de", "gutefrage.net"]
 
-    gemini_api_key = os.getenv("GEMINI_API_KEY")
-    if not gemini_api_key:
-        logger.warning("GEMINI_API_KEY not set, skipping forum scraping")
-        return []
-
-    all_questions = []
+    all_questions: List[ForumQuestion] = []
 
     for site in sites:
-        llm = ChatGoogle(
-            model="gemini-3.1-pro",
-            api_key=gemini_api_key,
-            temperature=0.1,
-        )
-
-        browser_profile = BrowserProfile(headless=True)
-        browser_session = BrowserSession(browser_profile=browser_profile)
+        query = quote_plus(f"site:{site} {keyword}")
+        url = f"https://www.google.de/search?q={query}&hl=de&gl=DE&num=5"
 
         try:
-            await browser_session.start()
+            async with httpx.AsyncClient(
+                headers=_HEADERS,
+                follow_redirects=True,
+                timeout=15.0,
+            ) as client:
+                response = await client.get(url)
+                response.raise_for_status()
+                html = response.text
 
-            query = quote_plus(keyword)
-            task = FORUM_TASK_TEMPLATE.format(site=site, query=query)
-
-            agent = Agent(
-                task=task,
-                llm=llm,
-                browser_session=browser_session,
-                use_vision=False,
-                max_failures=3,
-                max_actions_per_step=20,
+            # Extract search result titles and URLs
+            results = re.findall(
+                r'<a[^>]+href="(/url\?q=([^"&]+)|([^"]+))"[^>]*>\s*<h3[^>]*>([^<]+)</h3>',
+                html
             )
 
-            result = await agent.run()
-            content = result.extracted_content() or []
-            output = "\n".join(str(item) for item in content if item)
+            for match in results:
+                raw_url = match[1] or match[2]
+                title = match[3].strip()
 
-            if "NO_FORUM_RESULTS" in output:
-                logger.info(f"No forum results found on {site}")
-                continue
-
-            # Parse forum questions from output
-            import re
-            thread_blocks = re.split(r"Thread \d+:", output)
-            for block in thread_blocks:
-                if "Title:" not in block:
+                if site not in raw_url:
                     continue
-                title_match = re.search(r"Title:\s*(.+)", block)
-                context_match = re.search(r"Context:\s*(.+)", block)
-                url_match = re.search(r"URL:\s*(.+)", block)
 
-                if title_match:
-                    q = ForumQuestion(
+                if title and len(title) > 10:
+                    all_questions.append(ForumQuestion(
                         source=site,
-                        question=title_match.group(1).strip(),
-                        context=context_match.group(1).strip() if context_match else "",
-                        url=url_match.group(1).strip() if url_match else "",
-                    )
-                    all_questions.append(q)
+                        question=title,
+                        context="",
+                        url=raw_url,
+                    ))
 
-            logger.info(f"Scraped {len(all_questions)} questions from {site}")
+            # Fallback: extract <h3> texts if standard pattern finds nothing
+            if not any(q.source == site for q in all_questions):
+                h3_texts = re.findall(r'<h3[^>]*>([^<]+)</h3>', html)
+                for t in h3_texts[:5]:
+                    t = t.strip()
+                    if t and len(t) > 10:
+                        all_questions.append(ForumQuestion(
+                            source=site,
+                            question=t,
+                            context="",
+                            url=f"https://www.{site}",
+                        ))
 
+            site_count = len([q for q in all_questions if q.source == site])
+            logger.info(f"Forum: {site_count} questions from {site}")
+
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 429:
+                logger.warning(f"Forum: Google rate-limited for {site}, skipping")
+            else:
+                logger.warning(f"Forum: HTTP error {e.response.status_code} for {site}")
         except Exception as e:
-            logger.warning(f"Forum scraping failed for {site} (non-fatal): {e}")
-        finally:
-            await browser_session.stop()
+            logger.warning(
+                f"Forum scraping failed for {site} (non-fatal): {type(e).__name__}: {e}"
+            )
 
     return all_questions
 
 
 # =============================================================================
-# Competitor Heading Scraper
+# Competitor Heading Scraper (HTTP)
 # =============================================================================
-
-COMPETITOR_TASK_TEMPLATE = """
-TASK: Extract H2 and H3 headings from top Google search results.
-
-Step 1: Go to https://www.google.de/search?q={query}&hl=de
-Step 2: If a cookie consent popup appears, click "Alle akzeptieren"
-Step 3: Look at the organic (non-ad) search results. Skip anything marked "Gesponsert" or "Anzeige".
-Step 4: For each of the top 3 organic results:
-   - Note the page TITLE and URL
-   - Click on the result
-   - Extract ALL <h2> and <h3> headings from the page content
-   - Go BACK to search results
-   - Click the NEXT organic result
-Step 5: Call done with all headings in this format:
-
-COMPETITOR_SUCCESS
-
-Page 1:
-URL: [page URL]
-Title: [page title]
-H2: [first h2 heading]
-H2: [second h2 heading]
-H3: [first h3 heading]
-...
-
-Page 2:
-URL: [page URL]
-Title: [page title]
-H2: [heading]
-...
-
-Page 3:
-URL: [page URL]
-Title: [page title]
-H2: [heading]
-...
-
-CRITICAL:
-- Skip ads and sponsored results
-- Extract headings EXACTLY as they appear on the page
-- Only extract H2 and H3 level headings (not H1, H4, etc.)
-- Go back to search results after each page
-- Do NOT extract headings from navigation, footer, or sidebar — only from the main article content
-"""
-
 
 async def scrape_competitor_headings(
     keyword: str,
@@ -325,86 +228,119 @@ async def scrape_competitor_headings(
     num_results: int = 3,
 ) -> List[CompetitorPage]:
     """
-    Search Google.de, visit top organic results, extract H2/H3 headings.
-    
+    Search Google, fetch top organic result pages, extract H2/H3 headings.
+
     Args:
         keyword: Search keyword
         language: Language code
         num_results: Number of competitor pages to analyze
-        
+
     Returns:
         List of CompetitorPage objects with heading structures
     """
-    if not BROWSER_USE_AVAILABLE:
-        logger.warning("browser-use not available, skipping competitor scraping")
+    if not HTTPX_AVAILABLE:
+        logger.warning("httpx not available, skipping competitor scraping")
         return []
 
-    gemini_api_key = os.getenv("GEMINI_API_KEY")
-    if not gemini_api_key:
-        logger.warning("GEMINI_API_KEY not set, skipping competitor scraping")
-        return []
-
-    llm = ChatGoogle(
-        model="gemini-3.1-pro",
-        api_key=gemini_api_key,
-        temperature=0.1,
-    )
-
-    browser_profile = BrowserProfile(headless=True)
-    browser_session = BrowserSession(browser_profile=browser_profile)
+    query = quote_plus(keyword)
+    serp_url = f"https://www.google.de/search?q={query}&hl=de&gl=DE&num={num_results + 2}"
 
     try:
-        await browser_session.start()
+        async with httpx.AsyncClient(
+            headers=_HEADERS,
+            follow_redirects=True,
+            timeout=15.0,
+        ) as client:
+            serp_response = await client.get(serp_url)
+            serp_response.raise_for_status()
+            serp_html = serp_response.text
 
-        query = quote_plus(keyword)
-        task = COMPETITOR_TASK_TEMPLATE.format(query=query)
+        # Extract organic result URLs from Google redirect links
+        url_matches = re.findall(r'/url\?q=(https?://[^&"]+)', serp_html)
 
-        agent = Agent(
-            task=task,
-            llm=llm,
-            browser_session=browser_session,
-            use_vision=False,
-            max_failures=3,
-            max_actions_per_step=25,
-        )
-
-        result = await agent.run()
-        content = result.extracted_content() or []
-        output = "\n".join(str(item) for item in content if item)
-
-        # Parse competitor pages from output
-        import re
-        competitors = []
-        page_blocks = re.split(r"Page \d+:", output)
-
-        for block in page_blocks:
-            if "URL:" not in block:
+        organic_urls = []
+        seen_domains = set()
+        for u in url_matches:
+            if "google." in u or "youtube.com" in u:
                 continue
+            domain_match = re.match(r'https?://([^/]+)', u)
+            if domain_match:
+                domain = domain_match.group(1)
+                if domain not in seen_domains:
+                    seen_domains.add(domain)
+                    organic_urls.append(u)
+            if len(organic_urls) >= num_results:
+                break
 
-            url_match = re.search(r"URL:\s*(.+)", block)
-            title_match = re.search(r"Title:\s*(.+)", block)
+        if not organic_urls:
+            logger.info("Competitor: No organic URLs found in SERP")
+            return []
 
-            headings = []
-            for line in block.split("\n"):
-                line = line.strip()
-                if line.startswith("H2:") or line.startswith("H3:"):
-                    headings.append(line)
+        # Fetch each page and extract H2/H3 headings
+        competitors = []
 
-            if url_match and headings:
-                competitors.append(CompetitorPage(
-                    url=url_match.group(1).strip(),
-                    title=title_match.group(1).strip() if title_match else "",
-                    headings=headings,
-                ))
+        async with httpx.AsyncClient(
+            headers=_HEADERS,
+            follow_redirects=True,
+            timeout=10.0,
+        ) as client:
+            for page_url in organic_urls:
+                try:
+                    resp = await client.get(page_url)
+                    resp.raise_for_status()
+                    page_html = resp.text
 
-        logger.info(f"Scraped headings from {len(competitors)} competitor pages")
+                    title_match = re.search(
+                        r'<title[^>]*>([^<]+)</title>', page_html, re.IGNORECASE
+                    )
+                    page_title = title_match.group(1).strip() if title_match else ""
+
+                    headings = []
+                    h2_matches = re.findall(
+                        r'<h2[^>]*>([^<]+)</h2>', page_html, re.IGNORECASE
+                    )
+                    for h in h2_matches:
+                        h = h.strip()
+                        if h and 3 < len(h) < 200:
+                            headings.append(f"H2: {h}")
+
+                    h3_matches = re.findall(
+                        r'<h3[^>]*>([^<]+)</h3>', page_html, re.IGNORECASE
+                    )
+                    for h in h3_matches:
+                        h = h.strip()
+                        if h and 3 < len(h) < 200:
+                            headings.append(f"H3: {h}")
+
+                    if headings:
+                        competitors.append(CompetitorPage(
+                            url=page_url,
+                            title=page_title,
+                            headings=headings[:15],
+                        ))
+                        logger.info(
+                            f"Competitor: {len(headings)} headings from "
+                            f"{page_url[:60]}..."
+                        )
+
+                except Exception as e:
+                    logger.debug(f"Competitor: Failed to fetch {page_url[:60]}: {e}")
+                    continue
+
+        logger.info(f"Competitor: Scraped headings from {len(competitors)} pages")
         return competitors
 
-    except Exception as e:
-        logger.warning(f"Competitor scraping failed (non-fatal): {e}")
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 429:
+            logger.warning("Competitor: Google rate-limited (429), skipping")
+        else:
+            logger.warning(f"Competitor: HTTP error {e.response.status_code}")
         return []
-    finally:
-        await browser_session.stop()
+    except Exception as e:
+        logger.warning(
+            f"Competitor scraping failed (non-fatal): {type(e).__name__}: {e}"
+        )
+        return []
 
 
 # =============================================================================
@@ -413,46 +349,44 @@ async def scrape_competitor_headings(
 
 async def run_stage_0(keyword: str, language: str = "de") -> Stage0Output:
     """
-    Run all three Stage 0 sub-agents in parallel.
-    
+    Run all three Stage 0 sub-agents in parallel using httpx.
+
     Each agent is independent — failures in one don't affect the others.
-    Results are collected and returned as Stage0Output for use in Stage 2.
-    
+    Results are collected and returned as Stage0Output.
+
     Args:
         keyword: Primary article keyword
         language: Target language code
-        
+
     Returns:
         Stage0Output with PAA questions, forum questions, and competitor headings
     """
-    logger.info(f"Stage 0: Humanization Research for '{keyword}'")
+    logger.info(f"Stage 0: Humanization Research for '{keyword}' (httpx mode)")
 
-    if not BROWSER_USE_AVAILABLE:
-        logger.warning("browser-use not installed. Stage 0 returning empty results.")
-        return Stage0Output(errors=["browser-use not installed"])
+    if not HTTPX_AVAILABLE:
+        logger.warning("httpx not installed. Stage 0 returning empty results.")
+        return Stage0Output(errors=["httpx not installed"])
 
     errors = []
 
     # Run all three in parallel
-    paa_task = scrape_google_paa(keyword, language)
-    forum_task = scrape_forum_questions(keyword)
-    competitor_task = scrape_competitor_headings(keyword, language)
-
     results = await asyncio.gather(
-        paa_task, forum_task, competitor_task,
+        scrape_google_paa(keyword, language),
+        scrape_forum_questions(keyword),
+        scrape_competitor_headings(keyword, language),
         return_exceptions=True,
     )
 
-    paa = results[0] if not isinstance(results[0], Exception) else []
-    if isinstance(results[0], Exception):
+    paa = results[0] if not isinstance(results[0], BaseException) else []
+    if isinstance(results[0], BaseException):
         errors.append(f"PAA scraper: {results[0]}")
 
-    forums = results[1] if not isinstance(results[1], Exception) else []
-    if isinstance(results[1], Exception):
+    forums = results[1] if not isinstance(results[1], BaseException) else []
+    if isinstance(results[1], BaseException):
         errors.append(f"Forum scraper: {results[1]}")
 
-    competitors = results[2] if not isinstance(results[2], Exception) else []
-    if isinstance(results[2], Exception):
+    competitors = results[2] if not isinstance(results[2], BaseException) else []
+    if isinstance(results[2], BaseException):
         errors.append(f"Competitor scraper: {results[2]}")
 
     output = Stage0Output(

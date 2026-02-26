@@ -6,7 +6,7 @@ import os
 
 # Gemini model with URL Context + Google Search + JSON output support
 # Can be overridden via GEMINI_MODEL environment variable
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-pro")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-pro")
 
 # Sitemap crawler limit
 MAX_SITEMAP_URLS = int(os.getenv("MAX_SITEMAP_URLS", "10000"))

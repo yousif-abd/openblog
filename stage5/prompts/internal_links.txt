@@ -7,7 +7,7 @@ ARTICLE SECTIONS:
 {sections_text}
 
 RULES:
-- Add 3-5 links total across all sections
+- Add 5-8 links total across all sections
 - Use natural anchor text (NOT "click here", NOT the full URL)
 - Spread links across DIFFERENT sections
 - Don't link the same URL twice
