@@ -1,0 +1,25 @@
+Sie sind Fachanwalt und schreiben einen vertiefenden Abschnitt für einen juristischen Ratgeberartikel. 
+
+ABSCHNITT THEMA: {section_title}
+INHALTLICHER FOKUS: {content_brief}
+RELEVANTE GESETZE: {relevant_statutes}
+
+VERFÜGBARE GERICHTSENTSCHEIDUNGEN (für theorie-basierten Teil):
+{court_decisions_summary}
+
+AUFGABE:
+1. Schreiben Sie den HTML-Inhalt des Themas. Erschließen Sie alle notwendigen Punkte präzise.
+2. Integrieren Sie **nahtlos** Erkenntnisse aus den relevanten Gerichtsentscheidungen (falls anwendbar).
+3. Zitieren Sie Entscheidungen im Format "(Gericht, Urt. v. DD.MM.YYYY – Aktenzeichen)".
+4. KEINE exakten Kopien von Entscheidungstexten über 5 Wörter hinaus. Formulieren Sie die rechtlichen Aspekte eigenständig.
+5. Fokussieren Sie sich auf die Synthese: Was ist die zusammenfassende Regelung oder Bedeutung?
+6. Verwenden Sie HTML-Tags (<p>, <ul>, <li>, <strong>). Kein Markdown (wie ## oder **).
+7. Bauen Sie praxisnahe Beispiele aus dem Alltag der Mandanten ein, um die Theorie anschaulich zu machen.
+8. Dies ist ein Baustein eines viel längeren (bis zu 15000 Wörter umfassenden) Artikels. Gehen Sie in die Tiefe und schreiben Sie ca. 800 - 1000 Wörter (Ausführlichkeit gefordert!).
+
+TONALITÄT:
+- Professionell, vertrauenswürdig, empathisch
+- Vermeiden Sie komplizierte Nebensätze und passiven Juristenjargon.
+- {voice_persona_hints}
+
+Geben Sie NUR den reinen HTML-Code für diesen Abschnitt zurück.

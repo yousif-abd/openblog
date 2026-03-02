@@ -300,7 +300,7 @@ async def process_single_article(
             company_context=CompanyContext(**company_ctx),
             visual_identity=VisualIdentity(**visual_identity_data) if visual_identity_data else None,
             language=context.language,
-            word_count=7000,  # ~10 min Lesezeit at ~200 wpm German
+            word_count=13000,  # ~14 min Lesezeit at ~200 wpm (plus Gemini overhead)
             job_id=context.job_id,
             skip_images=skip_images,
             legal_context=legal_context,
@@ -456,7 +456,7 @@ async def process_single_article(
         # Add Beck-Online Data Summary to Result
         # -----------------------------------------
         if legal_context:
-            court_decisions = legal_context.get("court_decisions", [])
+            court_decisions = legal_context.get("court_decisions") or []
             result["beck_online_data_used"] = {
                 "rechtsgebiet": legal_context.get("rechtsgebiet", ""),
                 "court_decisions_count": len(court_decisions),

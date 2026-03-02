@@ -23,6 +23,7 @@ class SectionOutline(BaseModel):
     - decision_anchor: Must cite and explain its assigned court decision
     - context: Only statutory references (§ XYZ BGB), no interpretive claims
     - practical_advice: Tips and recommendations, no legal claims
+    - thematic_synthesis: Synthesizes multiple decisions around a theme (Approach B)
     """
 
     section_id: str = Field(
@@ -35,7 +36,7 @@ class SectionOutline(BaseModel):
         description="Section heading/title"
     )
 
-    section_type: Literal["decision_anchor", "context", "practical_advice"] = Field(
+    section_type: Literal["decision_anchor", "context", "practical_advice", "thematic_synthesis"] = Field(
         ...,
         description="Type determines content constraints"
     )
@@ -126,11 +127,11 @@ class ArticleOutline(BaseModel):
     @field_validator('target_sections')
     @classmethod
     def validate_sections_count(cls, v):
-        """Ensure we have 4-6 sections."""
+        """Ensure we have 4-15 sections."""
         if len(v) < 4:
             raise ValueError(f"Need at least 4 sections, got {len(v)}")
-        if len(v) > 7:
-            raise ValueError(f"Maximum 7 sections, got {len(v)}")
+        if len(v) > 15:
+            raise ValueError(f"Maximum 15 sections, got {len(v)}")
         return v
 
     def get_decision_anchor_sections(self) -> List[SectionOutline]:
@@ -185,7 +186,7 @@ class GeneratedSection(BaseModel):
         description="HTML content for the section"
     )
 
-    section_type: Literal["decision_anchor", "context", "practical_advice"] = Field(
+    section_type: Literal["decision_anchor", "context", "practical_advice", "thematic_synthesis"] = Field(
         ...,
         description="Type from the outline"
     )

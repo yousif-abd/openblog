@@ -223,17 +223,17 @@ class HTMLRenderer:
         :root {
             --font-body: 'Source Sans 3', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             --font-heading: 'Source Serif 4', Georgia, 'Times New Roman', serif;
-            --primary: #2563eb;
-            --primary-light: #dbeafe;
-            --primary-dark: #1e40af;
+            --primary: #1e3a8a; /* Deep elegant blue */
+            --primary-light: #eff6ff;
+            --primary-dark: #172554;
             --accent: #f59e0b;
             --text: #1e293b;
-            --text-secondary: #64748b;
+            --text-secondary: #475569;
             --text-light: #94a3b8;
             --bg: #ffffff;
-            --bg-warm: #faf9f7;
+            --bg-warm: #fdfaf6; /* Warmer background like Peec */
             --bg-card: #f8fafc;
-            --bg-highlight: #eff6ff;
+            --bg-highlight: #f0fdf4;
             --border: #e2e8f0;
             --border-light: #f1f5f9;
             --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
@@ -366,25 +366,24 @@ class HTMLRenderer:
             margin-bottom: 8px;
         }
 
-        /* --- TLDR --- */
+        /* --- Das Thema kurz und kompakt --- */
         .tldr {
-            margin: 0 0 36px;
-            padding: 24px 28px;
-            background: linear-gradient(135deg, #fefce8, #fef9c3);
+            margin: 48px 0;
+            padding: 32px;
+            background: linear-gradient(135deg, #fffbeb, #fef3c7);
             border: 1px solid #fde68a;
             border-radius: var(--radius);
             box-shadow: var(--shadow-sm);
         }
         .tldr .tldr-label {
+            font-family: var(--font-heading);
+            font-size: 1.35rem;
+            font-weight: 700;
+            color: #92400e;
+            margin-bottom: 20px;
             display: flex;
             align-items: center;
-            gap: 8px;
-            font-size: 0.8rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            color: #92400e;
-            margin-bottom: 10px;
+            gap: 10px;
         }
         .tldr p {
             color: #78350f;
@@ -398,18 +397,21 @@ class HTMLRenderer:
         }
         .tldr-bullets li {
             position: relative;
-            padding-left: 24px;
-            margin: 10px 0;
+            padding-left: 28px;
+            margin: 14px 0;
             color: #78350f;
-            font-size: 0.95rem;
+            font-size: 1.05rem;
             line-height: 1.6;
+            font-weight: 500;
         }
         .tldr-bullets li::before {
-            content: "\2713";
+            content: "→";
             position: absolute;
             left: 0;
+            top: 0;
             color: #d97706;
             font-weight: 700;
+            font-size: 1.2rem;
         }
 
         /* --- Section Numbers --- */
@@ -634,13 +636,28 @@ class HTMLRenderer:
         }
         article strong { font-weight: 600; color: #0f172a; }
         article blockquote {
-            margin: 24px 0;
-            padding: 20px 24px;
-            border-left: 3px solid var(--primary);
-            background: var(--bg-card);
+            margin: 32px 0;
+            padding: 28px 32px;
+            border: none;
+            background: var(--bg-warm);
+            border-left: 4px solid var(--accent);
             border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-            font-style: italic;
-            color: var(--text-secondary);
+            font-family: var(--font-heading);
+            font-weight: 600;
+            font-size: 1.15rem;
+            color: var(--text);
+            line-height: 1.6;
+            position: relative;
+        }
+        article blockquote::before {
+            content: "“";
+            position: absolute;
+            top: 5px;
+            left: -20px;
+            font-size: 4rem;
+            color: var(--accent);
+            opacity: 0.3;
+            line-height: 1;
         }
 
         /* --- Inline Images --- */
@@ -904,16 +921,20 @@ class HTMLRenderer:
 
     @staticmethod
     def _render_tldr_compact(article: Dict[str, Any], language: str = "en") -> str:
-        """Render 'Das Thema kurz und kompakt' box with bullet points from TLDR + takeaways."""
-        tldr = article.get("TLDR", "")
-        # Collect bullet points: TLDR sentence + key takeaways
+        """Render 'Das Thema kurz und kompakt' box with ONLY short key takeaways."""
         bullets = []
-        if tldr:
-            bullets.append(escape(tldr))
         for i in range(1, 4):
             t = article.get(f"key_takeaway_{i:02d}", "")
             if t:
                 bullets.append(escape(t))
+        if not bullets:
+            return ""
+        label = "Das Thema kurz und kompakt" if language == "de" else "Key Points at a Glance"
+        items_html = ''.join(f'<li>{b}</li>' for b in bullets)
+        return f"""<div class="tldr">
+            <div class="tldr-label">&#9889; {label}</div>
+            <ul class="tldr-bullets">{items_html}</ul>
+        </div>"""
         if not bullets:
             return ""
         label = "Das Thema kurz und kompakt" if language == "de" else "Key Points at a Glance"
@@ -997,7 +1018,7 @@ class HTMLRenderer:
             section_count += 1
             anchor = f"section-{i}"
             # Section type label (from decision-centric metadata)
-            section_types = article.get("section_types_metadata", {})
+            section_types = article.get("section_types_metadata") or {}
             type_label = ""
             section_key = f"section_{i:02d}"
             stype = section_types.get(section_key, "")
@@ -1075,7 +1096,7 @@ class HTMLRenderer:
             if q and a:
                 items.append(f"""<details class="accordion-item">
                     <summary>{escape(q)}</summary>
-                    <div class="accordion-answer">{escape(a)}</div>
+                    <div class="accordion-answer">{a}</div>
                 </details>""")
 
         if not items:
@@ -1097,7 +1118,7 @@ class HTMLRenderer:
             if q and a:
                 items.append(f"""<details class="accordion-item">
                     <summary>{escape(q)}</summary>
-                    <div class="accordion-answer">{escape(a)}</div>
+                    <div class="accordion-answer">{a}</div>
                 </details>""")
 
         if not items:

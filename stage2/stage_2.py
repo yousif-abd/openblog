@@ -117,7 +117,7 @@ class Stage2Input(BaseModel):
     visual_identity: Optional[VisualIdentity] = Field(default=None, description="Visual identity from Stage 1")
     language: str = Field(default="en", description="Target language code")
     country: str = Field(default="United States", description="Target country/region for localization")
-    word_count: int = Field(default=2000, ge=500, le=10000, description="Target word count (500-10000)")
+    word_count: int = Field(default=2000, ge=500, le=15000, description="Target word count (500-15000)")
     custom_instructions: Optional[str] = Field(default=None, description="Batch-level instructions")
     keyword_instructions: Optional[str] = Field(default=None, description="Keyword-specific instructions")
     skip_images: bool = Field(default=False, description="Skip image generation")
@@ -185,8 +185,8 @@ async def run_stage_2(input_data: Stage2Input) -> Stage2Output:
     # -----------------------------------------
     logger.info("  Generating article with Gemini...")
 
-    # Determine generation approach
-    use_decision_centric = input_data.legal_approach != "approach_b"
+    # Legal articles always use the decision-centric two-phase approach now
+    use_decision_centric = True
 
     article = await blog_writer.write_article(
         keyword=input_data.keyword,
@@ -224,10 +224,11 @@ async def run_stage_2(input_data: Stage2Input) -> Stage2Output:
         visual_identity = input_data.visual_identity.model_dump() if input_data.visual_identity else None
 
         # Build prompts for all 3 positions (using visual identity from Stage 1)
+        article_context = f"{article.Headline}. {article.Teaser}" if article else None
         prompts = {
-            "hero": build_image_prompt(input_data.keyword, company_data, input_data.language, "hero", visual_identity),
-            "mid": build_image_prompt(input_data.keyword, company_data, input_data.language, "mid", visual_identity),
-            "bottom": build_image_prompt(input_data.keyword, company_data, input_data.language, "bottom", visual_identity),
+            "hero": build_image_prompt(input_data.keyword, company_data, input_data.language, "hero", visual_identity, article_context),
+            "mid": build_image_prompt(input_data.keyword, company_data, input_data.language, "mid", visual_identity, article_context),
+            "bottom": build_image_prompt(input_data.keyword, company_data, input_data.language, "bottom", visual_identity, article_context),
         }
 
         # Generate images in parallel using async method
