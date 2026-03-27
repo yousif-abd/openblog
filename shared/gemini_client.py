@@ -178,7 +178,7 @@ class GeminiClient:
                     timeout=timeout,
                 )
 
-                if response.text is None:
+                if response.text is None or response.text.strip() == "":
                     raise ValueError(
                         f"Gemini returned empty response (possibly blocked by safety filters). "
                         f"Candidates: {getattr(response, 'candidates', 'N/A')}"
@@ -209,7 +209,8 @@ class GeminiClient:
                 is_retryable = any(x in error_str for x in [
                     'rate limit', '429', '500', '502', '503', '504',
                     'overloaded', 'quota', 'temporarily unavailable',
-                    'connection', 'timeout', 'resource exhausted'
+                    'connection', 'timeout', 'resource exhausted',
+                    'empty response', 'could not find json',
                 ])
 
                 if not is_retryable or attempt >= self.max_retries:
@@ -614,7 +615,8 @@ class GeminiClient:
                 is_retryable = any(x in error_str for x in [
                     'rate limit', '429', '500', '502', '503', '504',
                     'overloaded', 'quota', 'temporarily unavailable',
-                    'connection', 'timeout', 'resource exhausted'
+                    'connection', 'timeout', 'resource exhausted',
+                    'empty response', 'could not find json',
                 ])
 
                 if not is_retryable or attempt >= self.max_retries:

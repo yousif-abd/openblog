@@ -344,8 +344,107 @@ async def scrape_competitor_headings(
 
 
 # =============================================================================
+# Gemini Fallback (Google Search Grounding)
+# =============================================================================
+
+async def _gemini_humanization_fallback(keyword: str, language: str = "de") -> dict:
+    """
+    Use Gemini with Google Search grounding to find real PAA questions
+    and forum discussions when HTML scraping fails.
+
+    Returns:
+        Dict with "paa" (list of strings) and "forum_questions" (list of strings)
+    """
+    from shared.gemini_client import GeminiClient
+
+    client = GeminiClient()
+
+    prompt = f"""Du bist ein SEO-Researcher. Suche im Internet nach dem Thema "{keyword}" auf dem deutschen Markt.
+
+Finde und gib mir zurück:
+
+1. **PAA-Fragen (Ähnliche Fragen)**: 4-8 echte Fragen, die Nutzer zu diesem Thema bei Google stellen.
+   Diese müssen authentische Fragen sein, wie sie in der Google-Suche unter "Ähnliche Fragen" erscheinen.
+
+2. **Forum-Fragen**: 3-5 echte Fragen von Nutzern aus deutschen Rechtsforen oder Ratgeberforen
+   (z.B. juraforum.de, gutefrage.net, finanztip.de). Diese sollen die echte Sprache und Sorgen
+   der Menschen widerspiegeln.
+
+Antworte NUR im folgenden JSON-Format, ohne Erklärungen:
+{{
+  "paa": ["Frage 1?", "Frage 2?", ...],
+  "forum_questions": ["Frage 1?", "Frage 2?", ...]
+}}"""
+
+    result = await client.generate(
+        prompt=prompt,
+        use_google_search=True,
+        json_output=True,
+        temperature=0.3,
+        max_tokens=2048,
+    )
+
+    if not result:
+        return {"paa": [], "forum_questions": []}
+
+    # result may already be a dict (json_output=True) or a string
+    if isinstance(result, dict):
+        data = result
+    else:
+        import json
+        try:
+            data = json.loads(result)
+        except (json.JSONDecodeError, TypeError):
+            logger.warning("Gemini fallback returned non-JSON, trying to extract questions")
+            questions = re.findall(r'"([^"]{15,150}\?)"', str(result))
+            half = len(questions) // 2
+            return {
+                "paa": questions[:half] or questions[:4],
+                "forum_questions": questions[half:] or [],
+            }
+
+    return {
+        "paa": data.get("paa", [])[:8],
+        "forum_questions": data.get("forum_questions", [])[:5],
+    }
+
+
+# =============================================================================
 # Stage 0 Orchestrator
 # =============================================================================
+
+def _simplify_keyword(keyword: str) -> str:
+    """
+    Simplify a long article title into a better Google search query.
+
+    Examples:
+        "Berliner Testament: Vorteile, Risiken und Alternativen" → "Berliner Testament"
+        "Erbrecht: 3 häufige Fehler" → "Erbrecht häufige Fehler"
+        "Nach mir die Sintflut: Gefahren der gesetzlichen Erbfolge" → "Gefahren gesetzliche Erbfolge"
+    """
+    # If keyword has a colon, combine the topic (before) with key terms from after
+    if ":" in keyword:
+        parts = keyword.split(":", 1)
+        before = parts[0].strip()
+        after = parts[1].strip()
+        # Always keep the part before the colon (the main topic)
+        # If before is short (1 word), combine with first 2-3 meaningful words from after
+        if len(before.split()) >= 2:
+            simplified = before
+        else:
+            # Take topic + first meaningful words from subtitle
+            after_words = list(w for w in after.split() if len(w) > 2 and not w.endswith("?"))[:2]
+            simplified = before + " " + " ".join(after_words) if after_words else before
+    else:
+        simplified = keyword
+
+    # Remove numbering patterns like "3 häufige" → "häufige"
+    simplified = re.sub(r'^\d+\s+', '', simplified)
+    # Remove trailing year references
+    simplified = re.sub(r'\s+\d{4}$', '', simplified)
+
+    return simplified.strip()
+
 
 async def run_stage_0(keyword: str, language: str = "de") -> Stage0Output:
     """
@@ -367,13 +466,18 @@ async def run_stage_0(keyword: str, language: str = "de") -> Stage0Output:
         logger.warning("httpx not installed. Stage 0 returning empty results.")
         return Stage0Output(errors=["httpx not installed"])
 
+    # Simplify keyword for better Google results
+    search_keyword = _simplify_keyword(keyword)
+    if search_keyword != keyword:
+        logger.info(f"  Simplified search keyword: '{keyword}' → '{search_keyword}'")
+
     errors = []
 
-    # Run all three in parallel
+    # Run all three in parallel, using simplified keyword for search
     results = await asyncio.gather(
-        scrape_google_paa(keyword, language),
-        scrape_forum_questions(keyword),
-        scrape_competitor_headings(keyword, language),
+        scrape_google_paa(search_keyword, language),
+        scrape_forum_questions(search_keyword),
+        scrape_competitor_headings(search_keyword, language),
         return_exceptions=True,
     )
 
@@ -388,6 +492,23 @@ async def run_stage_0(keyword: str, language: str = "de") -> Stage0Output:
     competitors = results[2] if not isinstance(results[2], BaseException) else []
     if isinstance(results[2], BaseException):
         errors.append(f"Competitor scraper: {results[2]}")
+
+    # If scraping returned nothing, use Gemini with Google Search grounding
+    total_scraped = len(paa) + len(forums) + len(competitors)
+    if total_scraped == 0:
+        logger.info("  Scraping returned 0 results, falling back to Gemini Search grounding...")
+        try:
+            gemini_result = await _gemini_humanization_fallback(keyword, language)
+            paa = gemini_result.get("paa", [])
+            forums_raw = gemini_result.get("forum_questions", [])
+            forums = [
+                ForumQuestion(question=q, source="gemini-search", url="")
+                for q in forums_raw
+            ]
+            logger.info(f"  Gemini fallback: {len(paa)} PAA, {len(forums)} forum Qs")
+        except Exception as e:
+            logger.warning(f"  Gemini fallback failed: {type(e).__name__}: {e}")
+            errors.append(f"Gemini fallback: {e}")
 
     output = Stage0Output(
         paa_questions=paa,

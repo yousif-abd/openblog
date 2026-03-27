@@ -15,7 +15,7 @@ AUFGABE:
 5. Fokussieren Sie sich auf die Synthese: Was ist die zusammenfassende Regelung oder Bedeutung?
 6. Verwenden Sie HTML-Tags (<p>, <ul>, <li>, <strong>). Kein Markdown (wie ## oder **).
 7. Bauen Sie praxisnahe Beispiele aus dem Alltag der Mandanten ein, um die Theorie anschaulich zu machen.
-8. Dies ist ein Baustein eines viel längeren (bis zu 15000 Wörter umfassenden) Artikels. Gehen Sie in die Tiefe und schreiben Sie ca. 800 - 1000 Wörter (Ausführlichkeit gefordert!).
+8. Schreiben Sie ca. {word_budget} Wörter für diesen Abschnitt. Halten Sie sich strikt an dieses Wortlimit.
 
 TONALITÄT:
 - Professionell, vertrauenswürdig, empathisch

@@ -27,11 +27,11 @@ ABSCHNITTSTYPEN:
    - Beispiel: "So bereiten Sie sich vor" → Praktische Schritte ohne Rechtsaussagen
 
 ZUWEISUNG DER ABSCHNITTE (Für {word_count} Wörter!):
-Da die Zielwortanzahl sehr hoch sein kann (bis zu 15000 Wörter), generieren Sie entsprechend viele thematische Unterpunkte, um diese Länge zu füllen (z.B. 10 bis 15 Abschnitte).
-Weisen Sie wie folgt zu:
-- 1-2x context
-- 6-10x thematic_synthesis
-- 2-3x practical_advice
+Passen Sie die Anzahl der Abschnitte an die Zielwortanzahl an:
+- Bis 2000 Wörter: 4-6 Abschnitte (1x context, 2-3x thematic_synthesis, 1-2x practical_advice)
+- 2000-5000 Wörter: 6-8 Abschnitte (1x context, 4-5x thematic_synthesis, 1-2x practical_advice)
+- 5000-10000 Wörter: 8-12 Abschnitte (1-2x context, 6-8x thematic_synthesis, 2-3x practical_advice)
+- Über 10000 Wörter: 10-15 Abschnitte (1-2x context, 8-10x thematic_synthesis, 2-3x practical_advice)
 
 AUFGABE:
 Erstellen Sie eine JSON-Gliederung mit folgender Struktur:

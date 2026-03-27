@@ -15,6 +15,7 @@ Requires:
 import asyncio
 import logging
 import os
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -268,6 +269,7 @@ async def write_article(
     legal_context: Optional[Dict[str, Any]] = None,
     use_decision_centric: bool = True,
     humanization_research: Optional[Dict[str, Any]] = None,
+    webinar_content: Optional[List[Dict[str, Any]]] = None,
 ) -> ArticleOutput:
     """
     Generate a complete blog article using Gemini.
@@ -305,6 +307,8 @@ async def write_article(
             legal_context=legal_context,
             word_count=word_count,
             api_key=api_key,
+            humanization_research=humanization_research,
+            webinar_content=webinar_content,
         )
         return article
 
@@ -376,6 +380,13 @@ async def write_article(
             if humanization_section:
                 prompt = prompt + "\n\n" + humanization_section
                 logger.info("Injected Stage 0 humanization research into prompt")
+
+        # Inject webinar content into prompt
+        if webinar_content:
+            webinar_section = _format_webinar_content(webinar_content)
+            if webinar_section:
+                prompt = prompt + "\n\n" + webinar_section
+                logger.info("Injected webinar content into prompt")
 
         # Call with URL Context + Google Search grounding + source extraction
         # Note: Cannot use generate_with_schema() because ArticleOutput has additionalProperties
@@ -840,6 +851,82 @@ def _format_humanization_research(research: Dict[str, Any]) -> str:
     return "=== HUMANIZATION RESEARCH (aus Schritt 0) ===\n\n" + "\n\n".join(sections)
 
 
+def _format_webinar_content(webinar_data: List[Dict[str, Any]]) -> str:
+    """
+    Format webinar extracts for prompt injection.
+
+    Provides the article writer with key insights AND actual transcript passages
+    from expert webinar recordings so the generated content can reference real
+    expert opinions, examples, case studies, and practical tips.
+
+    Args:
+        webinar_data: List of webinar dicts with title, summary, key_points,
+                      legal_references, and transcript_segments
+
+    Returns:
+        Formatted string to append to the prompt, or empty string if no data
+    """
+    if not webinar_data:
+        return ""
+
+    sections = []
+    for w in webinar_data:
+        title = w.get("title", "Webinar")
+        parts = [f"### {title}"]
+
+        summary = w.get("summary", "")
+        if summary:
+            parts.append(f"Zusammenfassung: {summary}")
+
+        key_points = w.get("key_points", [])
+        if key_points:
+            parts.append("Kernaussagen:")
+            for kp in key_points[:8]:
+                parts.append(f"  - {kp}")
+
+        legal_refs = w.get("legal_references", [])
+        if legal_refs:
+            parts.append(f"Rechtliche Bezüge: {', '.join(legal_refs[:10])}")
+
+        practical_tips = w.get("practical_tips", [])
+        if practical_tips:
+            parts.append("Praxistipps:")
+            for tip in practical_tips[:5]:
+                parts.append(f"  - {tip}")
+
+        # Include actual transcript passages — the real value
+        transcript_segments = w.get("transcript_segments", [])
+        if transcript_segments:
+            parts.append("")
+            parts.append("### ORIGINAL-PASSAGEN AUS DEM WEBINAR")
+            parts.append(
+                "Die folgenden Passagen sind wörtliche Auszüge aus dem Webinar. "
+                "Nutzen Sie die konkreten Beispiele, Fallschilderungen, Zahlen und "
+                "Formulierungen des Experten, um den Artikel authentisch und praxisnah "
+                "zu gestalten. Paraphrasieren Sie die Inhalte in Ihrem eigenen Stil, "
+                "aber übernehmen Sie die konkreten Fakten, Beispiele und Argumente."
+            )
+            for i, seg in enumerate(transcript_segments, 1):
+                parts.append(f"\n--- Passage {i} ---")
+                parts.append(seg)
+
+        sections.append("\n".join(parts))
+
+    if not sections:
+        return ""
+
+    header = (
+        "=== WEBINAR-INHALTE (aus Experten-Aufzeichnungen) ===\n\n"
+        "Die folgenden Erkenntnisse und Original-Passagen stammen aus Webinaren "
+        "unserer Kanzlei. Verwenden Sie die konkreten Beispiele, Praxisfälle, "
+        "Zahlen und Expertenmeinungen im Artikel. Integrieren Sie die Inhalte "
+        "natürlich in den Artikeltext — NICHT als Zitate markieren, sondern als "
+        "Fachwissen des Autors formulieren.\n\n"
+    )
+
+    return header + "\n\n".join(sections)
+
+
 def _log_legal_context_usage(legal_context: Optional[dict]) -> None:
     """
     Log which Beck-Online court decisions are being used in article generation.
@@ -884,6 +971,7 @@ async def write_legal_article_decision_centric(
     word_count: int = 2000,
     api_key: Optional[str] = None,
     humanization_research: Optional[Dict[str, Any]] = None,
+    webinar_content: Optional[List[Dict[str, Any]]] = None,
 ) -> tuple[ArticleOutput, int]:
     """
     Generate a legal article using decision-centric two-phase approach.
@@ -926,6 +1014,7 @@ async def write_legal_article_decision_centric(
             legal_context=legal_context,
             api_key=api_key,
             humanization_research=humanization_research,
+            webinar_content=webinar_content,
         )
         return article, 1
 
@@ -960,6 +1049,12 @@ async def write_legal_article_decision_centric(
 
     logger.info("Phase 2: Generating section content...")
 
+    # Calculate per-section word budget (reserve ~20% for intro, FAQs, meta)
+    num_sections = len(outline.target_sections)
+    sections_word_budget = int(word_count * 0.80)
+    per_section_budget = max(150, sections_word_budget // max(num_sections, 1))
+    logger.info(f"  Word budget: {word_count} total, {per_section_budget} per section ({num_sections} sections)")
+
     sections_content = {}
     decisions_by_az = {d.get("aktenzeichen"): d for d in court_decisions}
 
@@ -976,11 +1071,13 @@ async def write_legal_article_decision_centric(
                 client=client,
                 section=section,
                 decision=decision,
+                word_budget=per_section_budget,
             )
         elif section.section_type == "context":
             content = await _generate_context_section(
                 client=client,
                 section=section,
+                word_budget=per_section_budget,
             )
         elif section.section_type == "thematic_synthesis":
             content = await _generate_thematic_synthesis_section(
@@ -989,15 +1086,27 @@ async def write_legal_article_decision_centric(
                 court_decisions=court_decisions,
                 legal_context=legal_context,
                 company_context=company_context,
+                word_budget=per_section_budget,
             )
         else:  # practical_advice
             content = await _generate_practical_section(
                 client=client,
                 section=section,
+                word_budget=per_section_budget,
             )
 
+        # Strip code fences (Gemini sometimes wraps output in ```html ... ```)
+        content = re.sub(r'^```(?:html)?\s*\n?', '', content.strip())
+        content = re.sub(r'\n?```\s*$', '', content.strip())
+
+        # Strip section type metadata from title (e.g. "Title (thematic_synthesis)" → "Title")
+        clean_title = re.sub(
+            r'\s*\((decision_anchor|context|practical_advice|thematic_synthesis)\)\s*$',
+            '', section.title
+        ).strip()
+
         sections_content[section.section_id] = {
-            "title": section.title,
+            "title": clean_title,
             "content": content,
             "type": section.section_type,
         }
@@ -1017,6 +1126,7 @@ async def write_legal_article_decision_centric(
         court_decisions=court_decisions,
         legal_context=legal_context,
         humanization_research=humanization_research,
+        webinar_content=webinar_content,
     )
     ai_calls += 1
 
@@ -1130,6 +1240,7 @@ async def _generate_decision_anchor_section(
     client: GeminiClient,
     section: SectionOutline,
     decision: Dict[str, Any],
+    word_budget: int = 300,
 ) -> str:
     """
     Generate a section anchored to a specific court decision.
@@ -1170,6 +1281,7 @@ async def _generate_decision_anchor_section(
         decision_datum=datum_german,
         decision_leitsatz=decision.get("leitsatz", ""),
         decision_normen=normen,
+        word_budget=word_budget,
     )
 
     result = await client.generate(
@@ -1178,7 +1290,7 @@ async def _generate_decision_anchor_section(
         use_google_search=False,
         json_output=False,
         temperature=0.3,
-        max_tokens=2048,
+        max_tokens=8192,
     )
 
     if not result:
@@ -1190,6 +1302,7 @@ async def _generate_decision_anchor_section(
 async def _generate_context_section(
     client: GeminiClient,
     section: SectionOutline,
+    word_budget: int = 200,
 ) -> str:
     """
     Generate a context section with statutory references only.
@@ -1211,6 +1324,7 @@ async def _generate_context_section(
         section_title=section.title,
         content_brief=section.content_brief,
         relevant_statutes=", ".join(section.relevant_statutes) or "keine",
+        word_budget=word_budget,
     )
 
     result = await client.generate(
@@ -1219,7 +1333,7 @@ async def _generate_context_section(
         use_google_search=False,
         json_output=False,
         temperature=0.3,
-        max_tokens=2048,
+        max_tokens=8192,
     )
 
     if not result:
@@ -1234,6 +1348,7 @@ async def _generate_thematic_synthesis_section(
     court_decisions: List[Dict[str, Any]],
     legal_context: Dict[str, Any],
     company_context: Dict[str, Any],
+    word_budget: int = 250,
 ) -> str:
     """
     Generate a thematic synthesis section (Approach B).
@@ -1266,6 +1381,7 @@ async def _generate_thematic_synthesis_section(
         relevant_statutes=", ".join(section.relevant_statutes) or "keine",
         court_decisions_summary=decisions_summary,
         voice_persona_hints="; ".join(voice_persona_hints),
+        word_budget=word_budget,
     )
 
     result = await client.generate(
@@ -1274,7 +1390,7 @@ async def _generate_thematic_synthesis_section(
         use_google_search=False,
         json_output=False,
         temperature=0.4,
-        max_tokens=2048,
+        max_tokens=8192,
     )
 
     if not result:
@@ -1286,6 +1402,7 @@ async def _generate_thematic_synthesis_section(
 async def _generate_practical_section(
     client: GeminiClient,
     section: SectionOutline,
+    word_budget: int = 200,
 ) -> str:
     """
     Generate a practical advice section with no legal claims.
@@ -1306,6 +1423,7 @@ async def _generate_practical_section(
     prompt = prompt_template.format(
         section_title=section.title,
         content_brief=section.content_brief,
+        word_budget=word_budget,
     )
 
     result = await client.generate(
@@ -1314,7 +1432,7 @@ async def _generate_practical_section(
         use_google_search=False,
         json_output=False,
         temperature=0.4,  # Slightly higher for practical tips
-        max_tokens=2048,
+        max_tokens=8192,
     )
 
     if not result:
@@ -1331,6 +1449,7 @@ async def _generate_supporting_content(
     court_decisions: List[Dict[str, Any]],
     legal_context: Dict[str, Any],
     humanization_research: Optional[Dict[str, Any]] = None,
+    webinar_content: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """
     Generate supporting content: intro, FAQs, meta tags, key takeaways.
@@ -1393,6 +1512,12 @@ Geben Sie NUR das JSON zurück.
         if humanization_section:
             prompt = prompt + "\n\n" + humanization_section
             logger.info("Injected Stage 0 humanization research into supporting content prompt")
+
+    if webinar_content:
+        webinar_section = _format_webinar_content(webinar_content)
+        if webinar_section:
+            prompt = prompt + "\n\n" + webinar_section
+            logger.info("Injected webinar content into supporting content prompt")
 
     schema = {
         "type": "object",
@@ -1469,7 +1594,7 @@ def _assemble_article(
     # Build complete article dictate
     article = {
         "Headline": outline.headline,
-        "Subtitle": outline.subtitle,
+        "Subtitle": getattr(outline, "subtitle", ""),
         "Teaser": outline.teaser,
         "Direct_Answer": outline.direct_answer,
         "Intro": supporting.get("Intro", ""),
@@ -1581,6 +1706,7 @@ class BlogWriter:
         legal_context: Optional[Dict[str, Any]] = None,
         use_decision_centric: bool = True,
         humanization_research: Optional[Dict[str, Any]] = None,
+        webinar_content: Optional[List[Dict[str, Any]]] = None,
     ) -> ArticleOutput:
         """Generate article using write_article function."""
         return await write_article(
@@ -1595,6 +1721,7 @@ class BlogWriter:
             legal_context=legal_context,
             use_decision_centric=use_decision_centric,
             humanization_research=humanization_research,
+            webinar_content=webinar_content,
         )
 
 

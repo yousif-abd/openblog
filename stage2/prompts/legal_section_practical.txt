@@ -5,7 +5,7 @@ Titel: {section_title}
 Inhaltsbeschreibung: {content_brief}
 
 AUFGABE:
-Erstellen Sie einen HTML-Abschnitt (200-400 Wörter), der:
+Erstellen Sie einen HTML-Abschnitt ({word_budget} Wörter), der:
 
 1. Praktische Handlungsempfehlungen gibt
 2. Checklisten oder Schrittfolgen anbietet

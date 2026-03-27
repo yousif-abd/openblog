@@ -44,7 +44,7 @@ import json
 import logging
 import sys
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from dotenv import load_dotenv
@@ -74,6 +74,13 @@ try:
 except ImportError:
     STAGE0_AVAILABLE = False
     Stage0Output = None
+
+# Persistent storage for enrichment (Beck resources + webinar content)
+try:
+    from shared.database import OpenBlogDB
+    DB_AVAILABLE = True
+except ImportError:
+    DB_AVAILABLE = False
 
 
 def _get_next_article_number(output_dir: Path) -> int:
@@ -295,17 +302,41 @@ async def process_single_article(
         if legal_research_enabled and hasattr(context, "legal_context") and context.legal_context:
             legal_context = context.legal_context
 
+        # --- Enrichment from stored resources (Beck + webinar) ---
+        webinar_content = None
+        if DB_AVAILABLE:
+            try:
+                db = OpenBlogDB()
+                enrichment = db.get_enrichment_for_keyword(article.keyword)
+                beck_from_db = enrichment.get("beck_resources")
+                webinar_content = enrichment.get("webinar_content") or None
+
+                if beck_from_db and not legal_context:
+                    legal_context = {
+                        "rechtsgebiet": beck_from_db[0].get("rechtsgebiet", ""),
+                        "court_decisions": beck_from_db,
+                        "stand_der_rechtsprechung": datetime.now(timezone.utc).isoformat()[:10],
+                        "keywords_researched": [article.keyword],
+                    }
+                    logger.info(f"    [Enrichment] Using {len(beck_from_db)} stored Beck resources")
+
+                if webinar_content:
+                    logger.info(f"    [Enrichment] Using {len(webinar_content)} webinar extracts")
+            except Exception as e:
+                logger.debug(f"    [Enrichment] DB lookup failed (non-fatal): {e}")
+
         stage2_input = Stage2Input(
             keyword=article.keyword,
             company_context=CompanyContext(**company_ctx),
             visual_identity=VisualIdentity(**visual_identity_data) if visual_identity_data else None,
             language=context.language,
-            word_count=13000,  # ~14 min Lesezeit at ~200 wpm (plus Gemini overhead)
+            word_count=article.word_count or 2000,
             job_id=context.job_id,
             skip_images=skip_images,
             legal_context=legal_context,
             humanization_research=humanization_research,
             legal_approach=legal_approach,
+            webinar_content=webinar_content,
         )
 
         stage2_output = await run_stage_2(stage2_input)
@@ -537,8 +568,8 @@ async def process_single_article(
 async def run_pipeline(
     keywords: List[str],
     company_url: str,
-    language: str = "en",
-    market: str = "US",
+    language: str = "de",
+    market: str = "DE",
     skip_images: bool = False,
     max_parallel: Optional[int] = None,
     output_dir: Optional[Path] = None,
@@ -807,14 +838,14 @@ def main():
     parser.add_argument(
         "--language",
         type=str,
-        default="en",
-        help="Target language code (default: en)"
+        default="de",
+        help="Target language code (default: de)"
     )
     parser.add_argument(
         "--market",
         type=str,
-        default="US",
-        help="Target market code (default: US)"
+        default="DE",
+        help="Target market code (default: DE)"
     )
     parser.add_argument(
         "--skip-images",

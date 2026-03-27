@@ -81,7 +81,19 @@ simple_*.json
 
 # Generated artifacts
 *.db
+data/*.db
 debug_*.png
+
+# Media files (webinar downloads)
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.wav
+*.m4a
+
+# Credentials
+credentials/*.json
 
 # Logs
 *.log

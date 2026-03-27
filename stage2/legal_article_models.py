@@ -56,6 +56,14 @@ class SectionOutline(BaseModel):
         description="Statutes to reference (e.g., ['§ 623 BGB', '§ 1 KSchG'])"
     )
 
+    @field_validator('anchored_decision_aktenzeichen', mode='before')
+    @classmethod
+    def coerce_aktenzeichen(cls, v):
+        """Gemini sometimes returns a list instead of a single string."""
+        if isinstance(v, list):
+            return v[0] if v else None
+        return v
+
     @field_validator('section_id')
     @classmethod
     def validate_section_id(cls, v):

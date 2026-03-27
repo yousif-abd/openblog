@@ -125,6 +125,7 @@ class Stage2Input(BaseModel):
     legal_context: Optional[Dict[str, Any]] = Field(default=None, description="Legal context from Stage 1 (for law firm content)")
     humanization_research: Optional[Dict[str, Any]] = Field(default=None, description="Stage 0 humanization research (PAA, forums, competitors)")
     legal_approach: Optional[str] = Field(default=None, description="Legal generation approach: 'approach_a' (decision-centric) or 'approach_b' (context synthesis)")
+    webinar_content: Optional[List[Dict[str, Any]]] = Field(default=None, description="Webinar extracts relevant to this keyword (from SQLite)")
 
 
 class ImageResult(BaseModel):
@@ -199,6 +200,7 @@ async def run_stage_2(input_data: Stage2Input) -> Stage2Output:
         legal_context=input_data.legal_context,
         use_decision_centric=use_decision_centric,
         humanization_research=input_data.humanization_research,
+        webinar_content=input_data.webinar_content,
     )
     ai_calls += 1
 
