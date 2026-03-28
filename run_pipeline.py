@@ -256,6 +256,7 @@ async def process_single_article(
     article_number: Optional[int] = None,
     humanization_research: Optional[dict] = None,
     legal_approach: Optional[str] = None,
+    rechtsgebiet: str = "",
 ) -> dict:
     """
     Process one article through stages 2-5 sequentially.
@@ -307,7 +308,7 @@ async def process_single_article(
         if DB_AVAILABLE:
             try:
                 db = OpenBlogDB()
-                enrichment = db.get_enrichment_for_keyword(article.keyword)
+                enrichment = db.get_enrichment_for_keyword(article.keyword, rechtsgebiet=rechtsgebiet)
                 beck_from_db = enrichment.get("beck_resources")
                 webinar_content = enrichment.get("webinar_content") or None
 
@@ -688,6 +689,7 @@ async def run_pipeline(
             article_number=start_number + i,
             humanization_research=humanization_data.get(article.keyword),
             legal_approach=legal_approach,
+            rechtsgebiet=rechtsgebiet,
         )
         for i, article in enumerate(context.articles)
     ]
@@ -772,7 +774,9 @@ _RECHTSGEBIET_KEYWORDS = {
     "Erbrecht": [
         "erbrecht", "erbschaft", "testament", "pflichtteil", "erbe",
         "erbfolge", "erbvertrag", "vermächtnis", "nachlassgericht",
-        "nachlass", "enterb",
+        "nachlass", "enterb", "ehegattentestament", "ehegatten",
+        "berliner testament", "vorsorgevollmacht", "patientenverfügung",
+        "schenkung", "schenk",
     ],
     "Vertragsrecht": [
         "vertragsrecht", "agb", "vertragsschluss", "kaufvertrag",

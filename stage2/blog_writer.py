@@ -898,13 +898,14 @@ def _format_webinar_content(webinar_data: List[Dict[str, Any]]) -> str:
         transcript_segments = w.get("transcript_segments", [])
         if transcript_segments:
             parts.append("")
-            parts.append("### ORIGINAL-PASSAGEN AUS DEM WEBINAR")
+            parts.append("### ORIGINAL-PASSAGEN AUS DEM WEBINAR (PFLICHT-INTEGRATION)")
             parts.append(
-                "Die folgenden Passagen sind wörtliche Auszüge aus dem Webinar. "
-                "Nutzen Sie die konkreten Beispiele, Fallschilderungen, Zahlen und "
-                "Formulierungen des Experten, um den Artikel authentisch und praxisnah "
-                "zu gestalten. Paraphrasieren Sie die Inhalte in Ihrem eigenen Stil, "
-                "aber übernehmen Sie die konkreten Fakten, Beispiele und Argumente."
+                "Die folgenden Passagen sind wörtliche Auszüge aus dem Webinar unserer Kanzlei. "
+                "Sie MÜSSEN die konkreten Beispiele, Fallschilderungen, Zahlen, Statistiken "
+                "und Warnungen des Experten in den Artikel einbauen. Jede Passage enthält "
+                "einzigartiges Praxiswissen — übernehmen Sie die Fakten und Argumente in "
+                "Ihrem eigenen Stil. Besonders wichtig: konkrete Rechenbeispiele, "
+                "Prozentsätze, Fristen, und Fallkonstellationen aus der Beratungspraxis."
             )
             for i, seg in enumerate(transcript_segments, 1):
                 parts.append(f"\n--- Passage {i} ---")
@@ -917,11 +918,17 @@ def _format_webinar_content(webinar_data: List[Dict[str, Any]]) -> str:
 
     header = (
         "=== WEBINAR-INHALTE (aus Experten-Aufzeichnungen) ===\n\n"
-        "Die folgenden Erkenntnisse und Original-Passagen stammen aus Webinaren "
-        "unserer Kanzlei. Verwenden Sie die konkreten Beispiele, Praxisfälle, "
-        "Zahlen und Expertenmeinungen im Artikel. Integrieren Sie die Inhalte "
-        "natürlich in den Artikeltext — NICHT als Zitate markieren, sondern als "
-        "Fachwissen des Autors formulieren.\n\n"
+        "PFLICHT-ANWEISUNG: Die folgenden Erkenntnisse und Original-Passagen stammen "
+        "aus Webinaren unserer Kanzlei. Sie MÜSSEN mindestens 3-5 konkrete Erkenntnisse, "
+        "Statistiken, Beispiele oder Praxistipps aus den unten stehenden Webinar-Passagen "
+        "direkt in den Artikel einbauen. Referenzieren Sie das Webinar natürlich, z.B.:\n"
+        "  - 'Wie unsere Erfahrung aus der Beratungspraxis zeigt...'\n"
+        "  - 'Ein typischer Fall aus unserer Kanzleipraxis verdeutlicht das Problem...'\n"
+        "  - 'In unserem Webinar zum Thema haben wir darauf hingewiesen, dass...'\n\n"
+        "Übernehmen Sie konkrete Zahlen, Rechenbeispiele, Fallschilderungen und "
+        "Praxis-Warnungen aus den Passagen. Diese machen den Artikel authentisch und "
+        "unterscheiden ihn von generischem Content. Formulieren Sie als Fachwissen "
+        "des Autors, NICHT als wörtliches Zitat.\n\n"
     )
 
     return header + "\n\n".join(sections)

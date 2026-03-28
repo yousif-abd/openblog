@@ -242,6 +242,43 @@ class OpenBlogDB:
         finally:
             conn.close()
 
+    def _get_beck_resources_fuzzy(self, keyword: str, max_results: int = 5) -> List[Dict[str, Any]]:
+        """
+        Find Beck resources by topic word overlap with stored keywords.
+
+        Extracts significant words from the keyword and searches for Beck
+        resources whose stored keyword contains at least 2 of those words.
+        """
+        # Extract significant words (4+ chars, skip common words)
+        skip_words = {"und", "oder", "die", "der", "das", "den", "dem", "des",
+                      "ein", "eine", "für", "mit", "von", "bei", "nach", "über",
+                      "wie", "was", "sich", "ihre", "sein", "sind", "haben",
+                      "werden", "nicht", "auch", "noch", "alle", "kann", "muss"}
+        words = [
+            w.lower() for w in re.split(r'[\s:,;!?\-—–]+', keyword)
+            if len(w) >= 4 and w.lower() not in skip_words
+        ]
+        if not words:
+            return []
+
+        conn = self._get_conn()
+        try:
+            all_rows = conn.execute(
+                "SELECT * FROM beck_resources ORDER BY relevance_score DESC"
+            ).fetchall()
+
+            scored = []
+            for row in all_rows:
+                kw_stored = (dict(row).get("keyword_normalized", "") or "").lower()
+                overlap = sum(1 for w in words if w in kw_stored)
+                if overlap >= 2:
+                    scored.append((overlap, row))
+
+            scored.sort(key=lambda x: x[0], reverse=True)
+            return [self._row_to_court_decision(row) for _, row in scored[:max_results]]
+        finally:
+            conn.close()
+
     def _row_to_court_decision(self, row: sqlite3.Row) -> Dict[str, Any]:
         """Convert a beck_resources row to a CourtDecision-compatible dict."""
         d = dict(row)
@@ -562,9 +599,12 @@ class OpenBlogDB:
     # Enrichment (used by pipeline)
     # =========================================================================
 
-    def get_enrichment_for_keyword(self, keyword: str) -> Dict[str, Any]:
+    def get_enrichment_for_keyword(self, keyword: str, rechtsgebiet: str = "") -> Dict[str, Any]:
         """
         Get all stored enrichment data for a keyword.
+
+        Falls back to rechtsgebiet-based Beck lookup when exact keyword match
+        returns no results, ensuring legal articles always have court decisions.
 
         Returns:
             {
@@ -573,6 +613,24 @@ class OpenBlogDB:
             }
         """
         beck = self.get_beck_resources(keyword)
+
+        # Fallback 1: try fuzzy keyword match (more targeted than rechtsgebiet)
+        if not beck:
+            beck = self._get_beck_resources_fuzzy(keyword)
+            if beck:
+                logger.info(
+                    f"Found {len(beck)} Beck resources via fuzzy keyword match"
+                )
+
+        # Fallback 2: search by rechtsgebiet (broader, cap at 5 most relevant)
+        if not beck and rechtsgebiet:
+            beck = self.get_beck_resources_by_rechtsgebiet(rechtsgebiet)[:5]
+            if beck:
+                logger.info(
+                    f"No Beck resources for exact keyword, "
+                    f"using {len(beck)} from rechtsgebiet '{rechtsgebiet}'"
+                )
+
         webinars = self.get_webinars_for_keyword(keyword)
 
         # For webinars, return content relevant for article generation
@@ -588,8 +646,8 @@ class OpenBlogDB:
                 transcript=transcript,
                 keyword=keyword,
                 topics=topics,
-                max_segments=3,
-                max_total_chars=4000,
+                max_segments=4,
+                max_total_chars=5000,
             )
 
             webinar_content.append({

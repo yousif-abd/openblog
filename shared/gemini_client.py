@@ -471,6 +471,11 @@ class GeminiClient:
                         continue
                     if 'vertexaisearch.cloud.google.com' in real_url:
                         continue
+                    # Skip obviously irrelevant domains (tech companies, consent pages, etc.)
+                    if self._is_irrelevant_source(real_url):
+                        logger.debug(f"Skipping irrelevant source domain: {real_url[:60]}...")
+                        skipped_invalid += 1
+                        continue
 
                     seen_urls.add(real_url)
                     sources.append({
@@ -490,6 +495,50 @@ class GeminiClient:
         except Exception as e:
             logger.warning(f"Failed to extract grounding sources: {e}")
             return []
+
+    @staticmethod
+    def _is_irrelevant_source(url: str) -> bool:
+        """
+        Check if a grounding source URL is obviously irrelevant for legal articles.
+
+        Filters out tech companies, consent pages, non-legal domains, and other
+        URLs that Gemini's Google Search grounding sometimes injects randomly.
+        """
+        from urllib.parse import urlparse
+        try:
+            domain = urlparse(url).netloc.lower().replace('www.', '')
+        except Exception:
+            return False
+
+        # Blocklist of domains that are never relevant for German legal content
+        blocked_domains = {
+            # Tech companies
+            'huawei.com', 'e.huawei.com', 'apple.com', 'microsoft.com',
+            'google.com', 'amazon.com', 'meta.com', 'samsung.com',
+            # Non-German / non-legal
+            'visa.co.uk', 'visa.com', 'mastercard.com',
+            'wikipedia.org',  # Too generic, prefer legal sources
+            # Consent/redirect pages
+            'consent.google.com', 'consent.youtube.com',
+            'accounts.google.com', 'support.google.com',
+        }
+        if domain in blocked_domains:
+            return True
+
+        # Block if domain ends with obviously irrelevant TLDs for German legal
+        irrelevant_suffixes = (
+            '.cn', '.jp', '.kr', '.ru', '.in',
+            '.co.uk', '.com.au', '.co.nz',
+        )
+        if any(domain.endswith(s) for s in irrelevant_suffixes):
+            return True
+
+        # Block URLs that are clearly consent/redirect pages
+        path_lower = url.lower()
+        if any(p in path_lower for p in ('/consent', '/accounts/login', '/error_path/', '/404')):
+            return True
+
+        return False
 
     def _extract_domain(self, url: str) -> str:
         """Extract domain from URL for fallback title."""

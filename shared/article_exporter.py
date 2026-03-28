@@ -134,8 +134,13 @@ class ArticleExporter:
         if body_match:
             html_content = body_match.group(1)
 
+        # Remove script and style tags completely before markdown conversion
+        # (markdownify's strip parameter doesn't reliably remove them)
+        html_content = re.sub(r'<script[^>]*>.*?</script>', '', html_content, flags=re.DOTALL | re.IGNORECASE)
+        html_content = re.sub(r'<style[^>]*>.*?</style>', '', html_content, flags=re.DOTALL | re.IGNORECASE)
+
         # Convert to markdown
-        result = md(html_content, heading_style="ATX", strip=['style', 'script'])
+        result = md(html_content, heading_style="ATX")
 
         # Clean up extra whitespace
         result = re.sub(r'\n{3,}', '\n\n', result)
