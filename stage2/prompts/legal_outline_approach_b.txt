@@ -83,10 +83,12 @@ Erstellen Sie eine JSON-Gliederung mit folgender Struktur:
 
 WICHTIGE REGELN:
 
-1. ZENTRAL: thematic_synthesis-Abschnitte binden mehrere Gerichtsentscheidungen thematisch ein - KEINE Fokussierung auf nur eine Einzelentscheidung pro Abschnitt.
-2. context-Abschnitte dürfen KEINE Rechtsaussagen enthalten, die Gerichtsentscheidungen erfordern.
-3. practical_advice-Abschnitte dürfen KEINE rechtlichen Behauptungen enthalten.
-4. Bauen Sie einen in sich schlüssigen Ratgeber-Artikel auf.
-5. GIB IMMER EIN GÜLTIGES JSON-FORMAT ZURÜCK. GIB KEIN MARKDOWN ODER ERKLÄRENDEN TEXT ZURÜCK - NUR PURES JSON.
+1. MANDANTEN-ORIENTIERT: Der Artikel ist ein Ratgeber für Laien, KEIN juristisches Fachbuch. Praktische Probleme und Fragen der Mandanten stehen im Vordergrund.
+2. CONTEXT-ABSCHNITT KURZ: Der "Gesetzliche Grundlagen" context-Abschnitt soll maximal 300 Wörter lang sein — ein kompakter Überblick, keine §-für-§-Abhandlung.
+3. PRAXIS ZUERST: Platzieren Sie die praktischsten Themen (Fallen, häufige Fehler, Handlungsempfehlungen) in den vorderen Abschnitten. Mandanten lesen vor allem den Anfang.
+4. thematic_synthesis-Abschnitte verweben Gerichtsentscheidungen als Belege — die Entscheidungen UNTERSTÜTZEN den praktischen Punkt, sie dominieren ihn nicht.
+5. practical_advice-Abschnitte enthalten konkrete Checklisten, Rechenbeispiele und Handlungsschritte OHNE rechtliche Behauptungen.
+6. MINDESTENS 2 practical_advice-Abschnitte für Artikel über 4000 Wörter — Mandanten wollen wissen, was sie TUN sollen.
+7. GIB IMMER EIN GÜLTIGES JSON-FORMAT ZURÜCK. GIB KEIN MARKDOWN ODER ERKLÄRENDEN TEXT ZURÜCK - NUR PURES JSON.
 
 Erstellen Sie jetzt die strukturierte JSON-Gliederung.

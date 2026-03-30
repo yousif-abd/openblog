@@ -55,7 +55,12 @@ Wenn die Zahl NICHT durch eine Quellenangabe (z.B. "[1]", "laut Destatis", konkr
 - Bei Einschüben wie "Die sittliche Rechtfertigung – der zentrale Prüfpunkt – muss..." umschreiben zu: "Die sittliche Rechtfertigung, die das Gericht zu prüfen hat, muss..."
 - Semikolons im Fließtext ersetzen durch Punkt und neuen Satz
 
-=== PRÜFUNG 6: VERBOTENE WÖRTER UND CORPORATE SPEAK ===
+=== PRÜFUNG 6: RECHTSCHREIBUNG JURISTISCHER BEGRIFFE ===
+- "Erbschaftssteuer" → "Erbschaftsteuer" (ohne Fugen-s, offizieller Name des ErbStG)
+- "Schenkungssteuer" → "Schenkungsteuer" (ohne Fugen-s, offizieller Name)
+- "Erbschaftssteuergesetz" → "Erbschaftsteuergesetz"
+
+=== PRÜFUNG 7: VERBOTENE WÖRTER UND CORPORATE SPEAK ===
 Ersetzen Sie:
 - "darstellen" → "sind" / "bilden"
 - "gewährleisten" / "sicherstellen" → "sorgen für"
@@ -71,7 +76,7 @@ Ersetzen Sie:
 - "wegweisend" → löschen
 - "innovativ" → löschen
 
-=== PRÜFUNG 7: GENERISCHE MANDANTEN-ANEKDOTEN ===
+=== PRÜFUNG 8: GENERISCHE MANDANTEN-ANEKDOTEN ===
 Suchen Sie nach Template-Anekdoten wie:
 - "Viele unserer Mandanten, wie Herr/Frau X., der/die..."
 - "Ein Mandant berichtete uns..."
@@ -80,7 +85,16 @@ Wenn die Anekdote generisch klingt (keine überraschenden Details, kein konkrete
 - Ersetzen Sie durch ein spezifischeres Detail, z.B. "In einem Fall fragte der Richter überraschend nach gemeinsamen Urlauben der letzten fünf Jahre."
 - ODER löschen Sie die Anekdote, wenn sie nur als Marketing-Template dient.
 
-=== PRÜFUNG 8: GRAMMATIK, SYNTAX UND HTML-KORREKTURLESEN ===
+=== PRÜFUNG 9: VERALTETE GESETZESVERWEISE ===
+Prüfen Sie alle §-Verweise auf Aktualität. Häufige Fehler:
+- "§ 1896 BGB" → "§ 1814 BGB" (Betreuungsrecht-Reform 01.01.2023, §§ 1896-1908k BGB wurden durch §§ 1814-1881 BGB ersetzt)
+- "§ 1901a BGB" (Patientenverfügung) → "§ 1827 BGB"
+- "§ 1901 BGB" (Betreuung) → "§ 1821 BGB"
+- "§ 1904 BGB" (Genehmigung Heilbehandlung) → "§ 1829 BGB"
+- "§ 1906 BGB" (Unterbringung) → "§ 1831 BGB"
+AKTION: Ersetzen Sie veraltete §-Verweise durch die aktuellen Normen. Nur korrigieren, wenn Sie sich sicher sind.
+
+=== PRÜFUNG 10: GRAMMATIK, SYNTAX UND HTML-KORREKTURLESEN ===
 Dies ist die WICHTIGSTE Prüfung. Lesen Sie JEDEN Satz sorgfältig:
 1. UNVOLLSTÄNDIGE SÄTZE: Sätze, die mitten im Gedanken abbrechen oder kein Verb haben.
    → Vervollständigen Sie den Satz oder löschen Sie ihn.

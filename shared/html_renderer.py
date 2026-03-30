@@ -980,7 +980,8 @@ class HTMLRenderer:
         link_html = ""
         if company_url:
             link_label = "Kontakt aufnehmen" if language == "de" else "Get in Touch"
-            link_html = f'<a href="{escape(company_url)}/kontakt" class="next-steps-cta">{link_label} &rarr;</a>'
+            base = escape(company_url.rstrip("/"))
+            link_html = f'<a href="{base}/kontakt" class="next-steps-cta">{link_label} &rarr;</a>'
         return f"""<section class="next-steps">
             <h2>{label}</h2>
             <p>{body}</p>

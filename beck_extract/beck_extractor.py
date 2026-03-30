@@ -156,8 +156,8 @@ async def extract_for_keywords(
     total_resources = 0
     errors = []
 
-    for keyword in keywords:
-        logger.info(f"Extracting resources for: {keyword}")
+    for i, keyword in enumerate(keywords):
+        logger.info(f"Extracting resources for ({i+1}/{len(keywords)}): {keyword}")
         result = await extract_for_keyword(
             keyword=keyword,
             rechtsgebiet=rechtsgebiet,
@@ -168,6 +168,13 @@ async def extract_for_keywords(
         total_resources += result["resources_count"]
         if result["error"]:
             errors.append(f"{keyword}: {result['error']}")
+
+        # Rate limit: wait between keywords to avoid triggering Beck-Online captcha
+        if i < len(keywords) - 1 and not use_mock:
+            import asyncio
+            delay = 120  # 2 minutes between extractions
+            logger.info(f"Rate limiting: waiting {delay}s before next keyword...")
+            await asyncio.sleep(delay)
 
     return {
         "results": results,
@@ -187,10 +194,16 @@ async def extract_from_content_plan(
     Only processes entries with status='planned' that don't already have resources.
     """
     db = OpenBlogDB()
+    # Try both English and German status names
     plan_entries = db.get_content_plan(status="planned")
+    if not plan_entries:
+        plan_entries = db.get_content_plan(status="Geplant")
+    if not plan_entries:
+        # Fall back to all entries if no status filter matches
+        plan_entries = db.get_content_plan()
 
     if not plan_entries:
-        logger.info("No planned articles found in content plan")
+        logger.info("No articles found in content plan")
         return {"results": [], "total_resources": 0, "total_keywords": 0, "errors": []}
 
     keywords = []

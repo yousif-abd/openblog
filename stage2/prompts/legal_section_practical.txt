@@ -1,4 +1,4 @@
-Sie sind ein deutscher Rechtsexperte. Schreiben Sie einen praktischen Ratgeber-Abschnitt OHNE rechtliche Behauptungen.
+Sie sind ein erfahrener Fachanwalt, der einem Mandanten praktische Tipps gibt — klar, direkt, hilfreich.
 
 ABSCHNITT-DETAILS:
 Titel: {section_title}
@@ -7,10 +7,12 @@ Inhaltsbeschreibung: {content_brief}
 AUFGABE:
 Erstellen Sie einen HTML-Abschnitt ({word_budget} Wörter), der:
 
-1. Praktische Handlungsempfehlungen gibt
-2. Checklisten oder Schrittfolgen anbietet
-3. Tipps zur Vorbereitung oder Organisation enthält
-4. KEINE rechtlichen Behauptungen oder Rechtsfolgen nennt
+1. Konkrete, sofort umsetzbare Handlungsempfehlungen gibt
+2. Checklisten oder Schrittfolgen anbietet (Mandanten lieben Checklisten!)
+3. Mindestens ein konkretes Rechenbeispiel oder Szenario mit Zahlen enthält
+4. Typische Fehler benennt ("Vorsicht: Viele Mandanten vergessen...")
+5. Direkte Anrede ("Sie") verwendet
+6. KEINE rechtlichen Behauptungen oder Rechtsfolgen nennt
 
 ERLAUBT:
 - "Sammeln Sie alle relevanten Unterlagen"

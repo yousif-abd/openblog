@@ -298,6 +298,11 @@ async def write_article(
     """
     logger.info(f"Writing article for: {keyword} ({language}/{country})")
 
+    # Enforce minimum word count for legal articles
+    if legal_context and word_count < 4000:
+        logger.info(f"Legal article: raising word_count from {word_count} to 4000")
+        word_count = 4000
+
     # Use decision-centric approach for legal articles with court decisions
     if use_decision_centric and legal_context and legal_context.get("court_decisions"):
         logger.info("Using decision-centric two-phase generation for legal article")
@@ -388,6 +393,32 @@ async def write_article(
                 prompt = prompt + "\n\n" + webinar_section
                 logger.info("Injected webinar content into prompt")
 
+        # Final reinforcement block at end of prompt (Gemini reads end most carefully)
+        reinforcements = []
+        if word_count >= 4000:
+            reinforcements.append(
+                f"=== WORTANZAHL-PFLICHT ===\n"
+                f"Dieser Artikel MUSS mindestens {word_count} Wörter umfassen. "
+                f"Generieren Sie 6-8 Inhaltsabschnitte mit jeweils 400-700 Wörtern. "
+                f"Jeder Abschnitt soll mindestens ein Praxisbeispiel mit konkreten Zahlen enthalten. "
+                f"Ein Artikel unter {int(word_count * 0.8)} Wörtern ist NICHT akzeptabel."
+            )
+        if webinar_content:
+            reinforcements.append(
+                "=== WEBINAR-INTEGRATION PFLICHT ===\n"
+                "Sie MÜSSEN mindestens 4-5 konkrete Erkenntnisse aus den Webinar-Passagen "
+                "in verschiedene Abschnitte des Artikels einbauen. Verwenden Sie die "
+                "spezifischen Beispiele, Zahlen, Warnungen und Praxistipps des Experten. "
+                "Formulieren Sie als Fachwissen des Autors:\n"
+                "  - 'In unserer Beratungspraxis sehen wir immer wieder, dass...'\n"
+                "  - 'Ein häufiger Fehler ist die reine Quotenzuweisung...'\n"
+                "  - 'Wie aktuelle Erhebungen zeigen, verfügen nur etwa 15 bis 20 Prozent...'\n"
+                "Jeder Webinar-Einblick macht den Artikel authentischer und unterscheidet "
+                "ihn von generischem Content. IGNORIEREN SIE DIE WEBINAR-PASSAGEN NICHT."
+            )
+        if reinforcements:
+            prompt += "\n\n" + "\n\n".join(reinforcements)
+
         # Call with URL Context + Google Search grounding + source extraction
         # Note: Cannot use generate_with_schema() because ArticleOutput has additionalProperties
         # which Gemini API doesn't support. Instead, rely on detailed prompt instructions.
@@ -425,14 +456,22 @@ async def write_article(
         logger.info(f"Article generated: {result.get('Headline', 'Unknown')[:50]}...")
 
         # Populate legal fields if in legal mode
-        if is_legal_mode and legal_context:
+        if is_legal_mode and not legal_context:
+            legal_context = {}
+        if is_legal_mode:
             if "rechtsgebiet" not in result or not result["rechtsgebiet"]:
                 result["rechtsgebiet"] = legal_context.get("rechtsgebiet")
             if "stand_der_rechtsprechung" not in result or not result["stand_der_rechtsprechung"]:
                 result["stand_der_rechtsprechung"] = legal_context.get("stand_der_rechtsprechung")
-            if "legal_disclaimer" not in result or not result["legal_disclaimer"]:
-                result["legal_disclaimer"] = legal_context.get("disclaimer_template", "")
             logger.info(f"Legal fields populated: rechtsgebiet={result.get('rechtsgebiet')}")
+
+        # Always set legal disclaimer for German-language articles
+        if not result.get("legal_disclaimer") and language and language.lower().startswith("de"):
+            disclaimer_src = legal_context.get("disclaimer_template", "") if legal_context else ""
+            result["legal_disclaimer"] = disclaimer_src or (
+                "Dieser Artikel dient ausschließlich der allgemeinen Information und stellt keine Rechtsberatung dar. "
+                "Für eine verbindliche Einschätzung Ihrer individuellen Situation wenden Sie sich bitte an einen Rechtsanwalt."
+            )
 
         return ArticleOutput(**result)
 
@@ -1058,12 +1097,23 @@ async def write_legal_article_decision_centric(
 
     # Calculate per-section word budget (reserve ~20% for intro, FAQs, meta)
     num_sections = len(outline.target_sections)
-    sections_word_budget = int(word_count * 0.80)
-    per_section_budget = max(150, sections_word_budget // max(num_sections, 1))
-    logger.info(f"  Word budget: {word_count} total, {per_section_budget} per section ({num_sections} sections)")
+    context_sections = sum(1 for s in outline.target_sections if s.section_type == "context")
+    non_context_sections = num_sections - context_sections
+    # Cap context sections at 300 words, distribute rest to thematic/practical
+    context_budget = min(300, int(word_count * 0.08))
+    remaining_budget = int(word_count * 0.80) - (context_budget * context_sections)
+    per_section_budget = max(300, remaining_budget // max(non_context_sections, 1))
+    logger.info(f"  Word budget: {word_count} total, context={context_budget}, "
+               f"other={per_section_budget} per section ({num_sections} sections)")
 
     sections_content = {}
     decisions_by_az = {d.get("aktenzeichen"): d for d in court_decisions}
+
+    # Format webinar content once for injection into section prompts
+    webinar_prompt_section = ""
+    if webinar_content:
+        webinar_prompt_section = _format_webinar_content(webinar_content)
+        logger.info(f"  Webinar content available for section injection ({len(webinar_prompt_section)} chars)")
 
     for section in outline.target_sections:
         logger.info(f"  Generating {section.section_id} ({section.section_type})...")
@@ -1084,7 +1134,7 @@ async def write_legal_article_decision_centric(
             content = await _generate_context_section(
                 client=client,
                 section=section,
-                word_budget=per_section_budget,
+                word_budget=context_budget,
             )
         elif section.section_type == "thematic_synthesis":
             content = await _generate_thematic_synthesis_section(
@@ -1094,12 +1144,14 @@ async def write_legal_article_decision_centric(
                 legal_context=legal_context,
                 company_context=company_context,
                 word_budget=per_section_budget,
+                webinar_prompt_section=webinar_prompt_section,
             )
         else:  # practical_advice
             content = await _generate_practical_section(
                 client=client,
                 section=section,
                 word_budget=per_section_budget,
+                webinar_prompt_section=webinar_prompt_section,
             )
 
         # Strip code fences (Gemini sometimes wraps output in ```html ... ```)
@@ -1160,6 +1212,14 @@ async def write_legal_article_decision_centric(
             article_dict["Sources"], 
             company_context, 
             humanization_research
+        )
+
+    # Ensure legal disclaimer is set for German articles
+    if not article_dict.get("legal_disclaimer"):
+        disclaimer_src = legal_context.get("disclaimer_template", "") if legal_context else ""
+        article_dict["legal_disclaimer"] = disclaimer_src or (
+            "Dieser Artikel dient ausschließlich der allgemeinen Information und stellt keine Rechtsberatung dar. "
+            "Für eine verbindliche Einschätzung Ihrer individuellen Situation wenden Sie sich bitte an einen Rechtsanwalt."
         )
 
     logger.info(f"Decision-centric generation complete: {ai_calls} AI calls")
@@ -1356,17 +1416,19 @@ async def _generate_thematic_synthesis_section(
     legal_context: Dict[str, Any],
     company_context: Dict[str, Any],
     word_budget: int = 250,
+    webinar_prompt_section: str = "",
 ) -> str:
     """
     Generate a thematic synthesis section (Approach B).
     Weaves insights from multiple decisions based on the section theme.
-    
+
     Args:
         client: GeminiClient instance
         section: Section outline
         court_decisions: All available decisions for context
         legal_context: Legal context
         company_context: Company info
+        webinar_prompt_section: Formatted webinar content for injection
 
     Returns:
         HTML content for the section
@@ -1376,12 +1438,12 @@ async def _generate_thematic_synthesis_section(
         raise ValueError("legal_section_thematic.txt prompt not found")
 
     decisions_summary = _format_court_decisions(court_decisions)
-    
+
     # Extract voice persona hints
     voice_persona_hints = []
     tone = company_context.get("tone", "professionell")
     voice_persona_hints.append(f"Tone: {tone}")
-    
+
     prompt = prompt_template.format(
         section_title=section.title,
         content_brief=section.content_brief,
@@ -1390,6 +1452,15 @@ async def _generate_thematic_synthesis_section(
         voice_persona_hints="; ".join(voice_persona_hints),
         word_budget=word_budget,
     )
+
+    # Inject webinar content into thematic sections
+    if webinar_prompt_section:
+        prompt += "\n\n" + webinar_prompt_section
+        prompt += (
+            "\n\nWICHTIG: Bauen Sie mindestens 1-2 konkrete Erkenntnisse aus den obigen "
+            "Webinar-Passagen in diesen Abschnitt ein. Verwenden Sie die Fakten, Beispiele "
+            "und Praxistipps des Experten und formulieren Sie sie als Ihr eigenes Fachwissen."
+        )
 
     result = await client.generate(
         prompt=prompt,
@@ -1410,15 +1481,17 @@ async def _generate_practical_section(
     client: GeminiClient,
     section: SectionOutline,
     word_budget: int = 200,
+    webinar_prompt_section: str = "",
 ) -> str:
     """
     Generate a practical advice section with no legal claims.
 
-    Tips and recommendations only.
+    Tips and recommendations only. Integrates webinar insights when available.
 
     Args:
         client: GeminiClient instance
         section: Section outline
+        webinar_prompt_section: Formatted webinar content for injection
 
     Returns:
         HTML content for the section
@@ -1433,12 +1506,22 @@ async def _generate_practical_section(
         word_budget=word_budget,
     )
 
+    # Inject webinar content — practical sections benefit most from expert tips
+    if webinar_prompt_section:
+        prompt += "\n\n" + webinar_prompt_section
+        prompt += (
+            "\n\nWICHTIG: Dieser praktische Abschnitt ist der ideale Ort für konkrete "
+            "Praxistipps aus dem Webinar. Verwenden Sie Checklisten-Punkte, Warnungen, "
+            "und Handlungsempfehlungen des Experten. Formulieren Sie als 'Aus unserer "
+            "Beratungspraxis wissen wir...' oder 'Ein häufiger Fehler ist...'."
+        )
+
     result = await client.generate(
         prompt=prompt,
         use_url_context=False,
         use_google_search=False,
         json_output=False,
-        temperature=0.4,  # Slightly higher for practical tips
+        temperature=0.4,
         max_tokens=8192,
     )
 

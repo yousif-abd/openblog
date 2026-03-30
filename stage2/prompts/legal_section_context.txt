@@ -6,7 +6,7 @@ Inhaltsbeschreibung: {content_brief}
 Relevante Normen: {relevant_statutes}
 
 AUFGABE:
-Erstellen Sie einen HTML-Abschnitt ({word_budget} Wörter), der:
+Erstellen Sie einen KOMPAKTEN HTML-Abschnitt (maximal {word_budget} Wörter, eher kürzer), der:
 
 1. Die gesetzlichen Grundlagen OBJEKTIV darstellt
 2. Paragraphen zitiert ohne deren Auslegung durch Gerichte

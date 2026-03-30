@@ -313,13 +313,38 @@ async def process_single_article(
                 webinar_content = enrichment.get("webinar_content") or None
 
                 if beck_from_db and not legal_context:
-                    legal_context = {
-                        "rechtsgebiet": beck_from_db[0].get("rechtsgebiet", ""),
-                        "court_decisions": beck_from_db,
-                        "stand_der_rechtsprechung": datetime.now(timezone.utc).isoformat()[:10],
-                        "keywords_researched": [article.keyword],
-                    }
-                    logger.info(f"    [Enrichment] Using {len(beck_from_db)} stored Beck resources")
+                    # Check match quality — skip rechtsgebiet-only matches (too broad)
+                    # and fuzzy matches with low overlap (< 3 keyword words matching)
+                    has_rechtsgebiet_only = any(r.get("_match_type") == "rechtsgebiet_only" for r in beck_from_db)
+                    has_fuzzy = any(r.get("_fuzzy_overlap") for r in beck_from_db)
+
+                    if has_rechtsgebiet_only:
+                        # Rechtsgebiet-only = no topical match, just same legal area
+                        # Skip decision-centric path — use standard writing instead
+                        logger.info(f"    [Enrichment] Skipping {len(beck_from_db)} Beck resources — "
+                                   f"rechtsgebiet-only match (not topically relevant)")
+                    elif has_fuzzy:
+                        relevant_beck = [r for r in beck_from_db if r.get("_fuzzy_overlap", 0) >= 3]
+                        if relevant_beck:
+                            legal_context = {
+                                "rechtsgebiet": relevant_beck[0].get("rechtsgebiet", ""),
+                                "court_decisions": relevant_beck,
+                                "stand_der_rechtsprechung": datetime.now(timezone.utc).isoformat()[:10],
+                                "keywords_researched": [article.keyword],
+                            }
+                            logger.info(f"    [Enrichment] Using {len(relevant_beck)} stored Beck resources (fuzzy match)")
+                        else:
+                            logger.info(f"    [Enrichment] Skipping {len(beck_from_db)} Beck resources — "
+                                       f"low topical relevance (fuzzy overlap < 3)")
+                    else:
+                        # Exact keyword match — always use
+                        legal_context = {
+                            "rechtsgebiet": beck_from_db[0].get("rechtsgebiet", ""),
+                            "court_decisions": beck_from_db,
+                            "stand_der_rechtsprechung": datetime.now(timezone.utc).isoformat()[:10],
+                            "keywords_researched": [article.keyword],
+                        }
+                        logger.info(f"    [Enrichment] Using {len(beck_from_db)} stored Beck resources (exact match)")
 
                 if webinar_content:
                     logger.info(f"    [Enrichment] Using {len(webinar_content)} webinar extracts")
@@ -331,7 +356,7 @@ async def process_single_article(
             company_context=CompanyContext(**company_ctx),
             visual_identity=VisualIdentity(**visual_identity_data) if visual_identity_data else None,
             language=context.language,
-            word_count=article.word_count or 2000,
+            word_count=max(article.word_count or 2000, 4500) if rechtsgebiet else (article.word_count or 2000),
             job_id=context.job_id,
             skip_images=skip_images,
             legal_context=legal_context,

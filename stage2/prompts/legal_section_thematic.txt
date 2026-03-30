@@ -1,25 +1,25 @@
-Sie sind Fachanwalt und schreiben einen vertiefenden Abschnitt für einen juristischen Ratgeberartikel. 
+Sie sind ein erfahrener Fachanwalt, der einen Mandanten-Ratgeber schreibt — NICHT ein juristisches Lehrbuch.
 
 ABSCHNITT THEMA: {section_title}
 INHALTLICHER FOKUS: {content_brief}
 RELEVANTE GESETZE: {relevant_statutes}
 
-VERFÜGBARE GERICHTSENTSCHEIDUNGEN (für theorie-basierten Teil):
+VERFÜGBARE GERICHTSENTSCHEIDUNGEN (als Beleg, NICHT als Hauptinhalt):
 {court_decisions_summary}
 
 AUFGABE:
-1. Schreiben Sie den HTML-Inhalt des Themas. Erschließen Sie alle notwendigen Punkte präzise.
-2. Integrieren Sie **nahtlos** Erkenntnisse aus den relevanten Gerichtsentscheidungen (falls anwendbar).
-3. Zitieren Sie Entscheidungen im Format "(Gericht, Urt. v. DD.MM.YYYY – Aktenzeichen)".
-4. KEINE exakten Kopien von Entscheidungstexten über 5 Wörter hinaus. Formulieren Sie die rechtlichen Aspekte eigenständig.
-5. Fokussieren Sie sich auf die Synthese: Was ist die zusammenfassende Regelung oder Bedeutung?
-6. Verwenden Sie HTML-Tags (<p>, <ul>, <li>, <strong>). Kein Markdown (wie ## oder **).
-7. Bauen Sie praxisnahe Beispiele aus dem Alltag der Mandanten ein, um die Theorie anschaulich zu machen.
-8. Schreiben Sie ca. {word_budget} Wörter für diesen Abschnitt. Halten Sie sich strikt an dieses Wortlimit.
+1. Schreiben Sie einen mandantenorientierten Abschnitt ({word_budget} Wörter). Der Leser ist ein juristischer Laie.
+2. STRUKTUR: Beginnen Sie mit dem praktischen Problem oder der Mandanten-Frage, DANN erklären Sie die Rechtslage, DANN belegen Sie mit Entscheidungen.
+3. Gerichtsentscheidungen sind BELEGE, nicht der Hauptinhalt. Zitieren Sie im Format "(Gericht, Az. XXX)" — maximal 1-2 Sätze pro Entscheidung.
+4. Bauen Sie mindestens ein konkretes Praxisbeispiel mit Zahlen ein (z.B. "Immobilie 500.000 EUR, 2 Kinder → Pflichtteil je 62.500 EUR").
+5. Verwenden Sie direkte Anrede ("Sie", "Ihr") — NICHT "der Erblasser", "der Vollmachtgeber" (außer wenn juristisch nötig).
+6. HTML-Tags: <p>, <ul>, <li>, <ol>, <strong>, <em>. Kein Markdown.
+7. KEINE §-Auflistungen ohne Erklärung. Jeder § muss in einem praktischen Kontext stehen.
 
 TONALITÄT:
-- Professionell, vertrauenswürdig, empathisch
-- Vermeiden Sie komplizierte Nebensätze und passiven Juristenjargon.
+- Wie ein Gespräch mit einem kompetenten Anwalt, der Ihnen die Sache erklärt
+- Kurze Sätze. Aktiv statt Passiv. Konkret statt abstrakt.
+- "Das bedeutet für Sie:" statt "Daraus ergibt sich die Rechtsfolge, dass..."
 - {voice_persona_hints}
 
 Geben Sie NUR den reinen HTML-Code für diesen Abschnitt zurück.

@@ -246,20 +246,36 @@ class OpenBlogDB:
         """
         Find Beck resources by topic word overlap with stored keywords.
 
-        Extracts significant words from the keyword and searches for Beck
-        resources whose stored keyword contains at least 2 of those words.
+        Uses two strategies:
+        1. Multi-word phrase matching: if a 2+ word phrase from the article keyword
+           appears in a Beck keyword, it's a strong topical match (score boosted to 5+)
+        2. Single-word overlap: counts individual significant words that appear in
+           the Beck keyword + leitsatz
+
+        Returns resources with a `_fuzzy_overlap` field indicating match quality.
         """
         # Extract significant words (4+ chars, skip common words)
         skip_words = {"und", "oder", "die", "der", "das", "den", "dem", "des",
                       "ein", "eine", "für", "mit", "von", "bei", "nach", "über",
                       "wie", "was", "sich", "ihre", "sein", "sind", "haben",
-                      "werden", "nicht", "auch", "noch", "alle", "kann", "muss"}
+                      "werden", "nicht", "auch", "noch", "alle", "kann", "muss",
+                      "checkliste", "richtig", "aufsetzen", "tipps", "ratgeber"}
         words = [
             w.lower() for w in re.split(r'[\s:,;!?\-—–]+', keyword)
             if len(w) >= 4 and w.lower() not in skip_words
         ]
         if not words:
             return []
+
+        # Build multi-word phrases from consecutive significant words in keyword
+        # e.g. "Berliner Testament" from "Testamentsgestaltung: Ehegattentestament und Berliner Testament"
+        keyword_lower = keyword.lower()
+        phrases = []
+        for i in range(len(words) - 1):
+            # Check if these words appear consecutively in the original keyword
+            phrase = words[i] + " " + words[i + 1]
+            if phrase in keyword_lower or (words[i] + " " + words[i + 1]) in keyword_lower:
+                phrases.append(phrase)
 
         conn = self._get_conn()
         try:
@@ -269,13 +285,38 @@ class OpenBlogDB:
 
             scored = []
             for row in all_rows:
-                kw_stored = (dict(row).get("keyword_normalized", "") or "").lower()
-                overlap = sum(1 for w in words if w in kw_stored)
-                if overlap >= 2:
-                    scored.append((overlap, row))
+                d = dict(row)
+                kw_stored = (d.get("keyword_normalized", "") or "").lower()
+                leitsatz = (d.get("leitsatz", "") or "").lower()
+                combined_text = kw_stored + " " + leitsatz
+
+                # Strategy 1: phrase match (strong signal — boost to 5+)
+                phrase_match = False
+                for phrase in phrases:
+                    if phrase in kw_stored:
+                        phrase_match = True
+                        break
+
+                # Strategy 2: word overlap
+                overlap = sum(1 for w in words if w in combined_text)
+
+                if phrase_match:
+                    # Phrase match = strong topical relevance, boost score
+                    score = max(overlap, 5)
+                elif overlap >= 2:
+                    score = overlap
+                else:
+                    continue
+
+                scored.append((score, row))
 
             scored.sort(key=lambda x: x[0], reverse=True)
-            return [self._row_to_court_decision(row) for _, row in scored[:max_results]]
+            results = []
+            for overlap_count, row in scored[:max_results]:
+                res = self._row_to_court_decision(row)
+                res["_fuzzy_overlap"] = overlap_count
+                results.append(res)
+            return results
         finally:
             conn.close()
 
@@ -368,19 +409,83 @@ class OpenBlogDB:
         """
         Get webinars linked to a keyword via webinar_keyword_links.
 
+        Falls back to topic-based matching if no exact keyword link exists:
+        extracts significant words from the article keyword and matches
+        against webinar topics and linked keywords.
+
         Returns list of webinar dicts with summary, key_points, legal_references.
         """
         conn = self._get_conn()
         kw_norm = _normalize_keyword(keyword)
 
         try:
+            # Strategy 1: exact keyword link
             rows = conn.execute("""
                 SELECT w.* FROM webinars w
                 JOIN webinar_keyword_links wkl ON w.id = wkl.webinar_id
                 WHERE wkl.keyword_normalized = ?
                 ORDER BY wkl.relevance_score DESC
             """, (kw_norm,)).fetchall()
-            return [self._row_to_webinar(row) for row in rows]
+
+            if rows:
+                return [self._row_to_webinar(row) for row in rows]
+
+            # Strategy 2: match by webinar title using phrase + distinctive word matching
+            # This avoids cross-contamination from generic topic words like "Testament"
+            skip = {"und", "oder", "die", "der", "das", "den", "für", "mit",
+                    "von", "wie", "was", "sich", "richtig", "aufsetzen", "tipps",
+                    "checkliste", "ratgeber", "muss", "drinstehen"}
+            kw_words = [
+                w.lower() for w in re.split(r'[\s:,;!?\-—–]+', keyword)
+                if len(w) >= 4 and w.lower() not in skip
+            ]
+            if not kw_words:
+                return []
+
+            # Build multi-word phrases from consecutive significant words
+            keyword_lower = keyword.lower()
+            phrases = []
+            for i in range(len(kw_words) - 1):
+                phrase = kw_words[i] + " " + kw_words[i + 1]
+                if phrase in keyword_lower:
+                    phrases.append(phrase)
+
+            # Distinctive words: long words (≥8 chars) are topic-specific
+            distinctive_words = {w for w in kw_words if len(w) >= 8}
+
+            all_webinars = conn.execute("SELECT * FROM webinars").fetchall()
+            matched = []
+            seen_ids = set()
+            for w_row in all_webinars:
+                w = dict(w_row)
+                w_id = w["id"]
+                if w_id in seen_ids:
+                    continue
+
+                w_title_lower = (w.get("title") or "").lower()
+                score = 0
+
+                # Phrase match against title (strong signal — score 3)
+                for phrase in phrases:
+                    if phrase in w_title_lower:
+                        score += 3
+                        break
+
+                # Distinctive word match against title (score 2 per match)
+                for dw in distinctive_words:
+                    if dw in w_title_lower:
+                        score += 2
+
+                if score >= 2:
+                    matched.append((score, w_row))
+                    seen_ids.add(w_id)
+
+            if matched:
+                matched.sort(key=lambda x: x[0], reverse=True)
+                logger.info(f"Found {len(matched)} webinars via title matching for '{keyword[:50]}'")
+                return [self._row_to_webinar(row) for _, row in matched]
+
+            return []
         finally:
             conn.close()
 
@@ -619,16 +724,21 @@ class OpenBlogDB:
             beck = self._get_beck_resources_fuzzy(keyword)
             if beck:
                 logger.info(
-                    f"Found {len(beck)} Beck resources via fuzzy keyword match"
+                    f"Found {len(beck)} Beck resources via fuzzy keyword match "
+                    f"(overlaps: {[r.get('_fuzzy_overlap', '?') for r in beck]})"
                 )
 
         # Fallback 2: search by rechtsgebiet (broader, cap at 5 most relevant)
+        # Mark these as rechtsgebiet-only matches so the pipeline can decide
         if not beck and rechtsgebiet:
             beck = self.get_beck_resources_by_rechtsgebiet(rechtsgebiet)[:5]
             if beck:
+                for r in beck:
+                    r["_match_type"] = "rechtsgebiet_only"
                 logger.info(
                     f"No Beck resources for exact keyword, "
-                    f"using {len(beck)} from rechtsgebiet '{rechtsgebiet}'"
+                    f"using {len(beck)} from rechtsgebiet '{rechtsgebiet}' "
+                    f"(rechtsgebiet-only match — may not be topically relevant)"
                 )
 
         webinars = self.get_webinars_for_keyword(keyword)
