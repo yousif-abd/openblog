@@ -290,6 +290,10 @@ class Stage1Input(BaseModel):
         default=True,
         description="Use mock legal data instead of Beck-Online (default: True)"
     )
+    extra_blog_urls: List[str] = Field(
+        default_factory=list,
+        description="Additional blog URLs for voice analysis (e.g. from related domains)"
+    )
 
     def get_keyword_configs(self) -> List[KeywordConfig]:
         """

@@ -13,7 +13,7 @@ Leitsatz: {decision_leitsatz}
 Relevante Normen der Entscheidung: {decision_normen}
 
 AUFGABE:
-Erstellen Sie einen HTML-Abschnitt (300-500 Wörter), der:
+Erstellen Sie einen HTML-Abschnitt ({word_budget} Wörter), der:
 
 1. ZWINGEND die zugewiesene Entscheidung zitiert im Format:
    "{decision_gericht}, Urt. v. {decision_datum} – {decision_aktenzeichen}"

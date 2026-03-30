@@ -117,12 +117,15 @@ class Stage2Input(BaseModel):
     visual_identity: Optional[VisualIdentity] = Field(default=None, description="Visual identity from Stage 1")
     language: str = Field(default="en", description="Target language code")
     country: str = Field(default="United States", description="Target country/region for localization")
-    word_count: int = Field(default=2000, ge=500, le=10000, description="Target word count (500-10000)")
+    word_count: int = Field(default=2000, ge=500, le=15000, description="Target word count (500-15000)")
     custom_instructions: Optional[str] = Field(default=None, description="Batch-level instructions")
     keyword_instructions: Optional[str] = Field(default=None, description="Keyword-specific instructions")
     skip_images: bool = Field(default=False, description="Skip image generation")
     job_id: Optional[str] = Field(default=None, description="Job ID from Stage 1")
     legal_context: Optional[Dict[str, Any]] = Field(default=None, description="Legal context from Stage 1 (for law firm content)")
+    humanization_research: Optional[Dict[str, Any]] = Field(default=None, description="Stage 0 humanization research (PAA, forums, competitors)")
+    legal_approach: Optional[str] = Field(default=None, description="Legal generation approach: 'approach_a' (decision-centric) or 'approach_b' (context synthesis)")
+    webinar_content: Optional[List[Dict[str, Any]]] = Field(default=None, description="Webinar extracts relevant to this keyword (from SQLite)")
 
 
 class ImageResult(BaseModel):
@@ -183,6 +186,9 @@ async def run_stage_2(input_data: Stage2Input) -> Stage2Output:
     # -----------------------------------------
     logger.info("  Generating article with Gemini...")
 
+    # Legal articles always use the decision-centric two-phase approach now
+    use_decision_centric = True
+
     article = await blog_writer.write_article(
         keyword=input_data.keyword,
         company_context=input_data.company_context.model_dump(),
@@ -192,6 +198,9 @@ async def run_stage_2(input_data: Stage2Input) -> Stage2Output:
         batch_instructions=input_data.custom_instructions,
         keyword_instructions=input_data.keyword_instructions,
         legal_context=input_data.legal_context,
+        use_decision_centric=use_decision_centric,
+        humanization_research=input_data.humanization_research,
+        webinar_content=input_data.webinar_content,
     )
     ai_calls += 1
 
@@ -217,10 +226,11 @@ async def run_stage_2(input_data: Stage2Input) -> Stage2Output:
         visual_identity = input_data.visual_identity.model_dump() if input_data.visual_identity else None
 
         # Build prompts for all 3 positions (using visual identity from Stage 1)
+        article_context = f"{article.Headline}. {article.Teaser}" if article else None
         prompts = {
-            "hero": build_image_prompt(input_data.keyword, company_data, input_data.language, "hero", visual_identity),
-            "mid": build_image_prompt(input_data.keyword, company_data, input_data.language, "mid", visual_identity),
-            "bottom": build_image_prompt(input_data.keyword, company_data, input_data.language, "bottom", visual_identity),
+            "hero": build_image_prompt(input_data.keyword, company_data, input_data.language, "hero", visual_identity, article_context),
+            "mid": build_image_prompt(input_data.keyword, company_data, input_data.language, "mid", visual_identity, article_context),
+            "bottom": build_image_prompt(input_data.keyword, company_data, input_data.language, "bottom", visual_identity, article_context),
         }
 
         # Generate images in parallel using async method

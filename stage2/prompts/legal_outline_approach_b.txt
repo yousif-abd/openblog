@@ -1,0 +1,94 @@
+Sie sind ein deutscher Rechtsexperte und Content-Stratege. Erstellen Sie eine strukturierte Artikelgliederung, die das Thema systematisch aufbaut (Approach B: Context Synthesis).
+
+KEYWORD: {keyword}
+RECHTSGEBIET: {rechtsgebiet}
+
+VERFÜGBARE GERICHTSENTSCHEIDUNGEN (für theorie-basierten Teil):
+{court_decisions_summary}
+
+ABSCHNITTSTYPEN:
+
+1. thematic_synthesis (ZENTRALER BAUSTEIN):
+   - Jeder Abschnitt behandelt ein übergreifendes THEMA (z.B. Voraussetzungen, Ausnahmen, Rechtsfolgen)
+   - Verwebt Erkenntnisse aus 1 bis 3 relevanten Gerichtsentscheidungen passend zum Thema
+   - MUSS zitieren, z.B. (BAG, Az. 6 AZR 123/23), aber der Fokus liegt auf der Synthese
+   - Beispiel: "Welche Voraussetzungen müssen erfüllt sein?" → Erklärt die Grundlagen und zitiert Entscheidungen als Beleg.
+
+2. context (Gesetzeskontext ohne Interpretation):
+   - NUR Gesetzesverweise (§ XYZ BGB, § ABC KSchG)
+   - KEINE rechtlichen Behauptungen, die Gerichtsentscheidungen erfordern
+   - Erklärt den gesetzlichen Rahmen ohne Interpretation
+   - Beispiel: "Gesetzliche Grundlagen" → Listet relevante Paragraphen auf
+
+3. practical_advice (Praktische Tipps):
+   - Handlungsempfehlungen ohne rechtliche Behauptungen
+   - Checklisten, Vorgehensweisen, Tipps
+   - KEINE Aussagen über Rechtsfolgen oder Ansprüche
+   - Beispiel: "So bereiten Sie sich vor" → Praktische Schritte ohne Rechtsaussagen
+
+ZUWEISUNG DER ABSCHNITTE (Für {word_count} Wörter!):
+Passen Sie die Anzahl der Abschnitte an die Zielwortanzahl an:
+- Bis 2000 Wörter: 4-6 Abschnitte (1x context, 2-3x thematic_synthesis, 1-2x practical_advice)
+- 2000-5000 Wörter: 6-8 Abschnitte (1x context, 4-5x thematic_synthesis, 1-2x practical_advice)
+- 5000-10000 Wörter: 8-12 Abschnitte (1-2x context, 6-8x thematic_synthesis, 2-3x practical_advice)
+- Über 10000 Wörter: 10-15 Abschnitte (1-2x context, 8-10x thematic_synthesis, 2-3x practical_advice)
+
+AUFGABE:
+Erstellen Sie eine JSON-Gliederung mit folgender Struktur:
+
+{{
+  "headline": "Prägnanter Titel mit Keyword (max 100 Zeichen)",
+  "teaser": "2-3 Sätze Hook - welches Problem wird gelöst?",
+  "direct_answer": "40-60 Wörter direkte Antwort auf die Kernfrage des Keywords",
+  "intro_brief": "Was soll die Einleitung abdecken? (2-3 Sätze)",
+  "target_sections": [
+    {{
+      "section_id": "section_01",
+      "title": "Gesetzliche Grundlagen (context)",
+      "section_type": "context",
+      "anchored_decision_aktenzeichen": null,
+      "content_brief": "Überblick über die relevanten Gesetzesnormen",
+      "relevant_statutes": ["§ 1767 BGB", "§ 1770 BGB"]
+    }},
+    {{
+      "section_id": "section_02",
+      "title": "Voraussetzungen der Erwachsenenadoption",
+      "section_type": "thematic_synthesis",
+      "anchored_decision_aktenzeichen": null,
+      "content_brief": "Dieser Abschnitt aggregiert die Entscheidungen XYZ und ABC zur Frage...",
+      "relevant_statutes": ["§ 1767 BGB"]
+    }},
+    {{
+      "section_id": "section_03",
+      "title": "Praktische Tipps zur Antragstellung",
+      "section_type": "practical_advice",
+      "anchored_decision_aktenzeichen": null,
+      "content_brief": "Ablaufschema und Checkliste",
+      "relevant_statutes": []
+    }}
+  ],
+  "faq_topics": [
+    "Frist für XYZ?",
+    "Was passiert wenn YZX?",
+    "Wer zahlt ABC?",
+    "Kann man DEF?",
+    "Wie oft GHI?"
+  ],
+  "key_takeaway_topics": [
+    "Wichtigster Punkt aus den Entscheidungen",
+    "Praktische Konsequenz",
+    "Handlungsempfehlung"
+  ]
+}}
+
+WICHTIGE REGELN:
+
+1. MANDANTEN-ORIENTIERT: Der Artikel ist ein Ratgeber für Laien, KEIN juristisches Fachbuch. Praktische Probleme und Fragen der Mandanten stehen im Vordergrund.
+2. CONTEXT-ABSCHNITT KURZ: Der "Gesetzliche Grundlagen" context-Abschnitt soll maximal 300 Wörter lang sein — ein kompakter Überblick, keine §-für-§-Abhandlung.
+3. PRAXIS ZUERST: Platzieren Sie die praktischsten Themen (Fallen, häufige Fehler, Handlungsempfehlungen) in den vorderen Abschnitten. Mandanten lesen vor allem den Anfang.
+4. thematic_synthesis-Abschnitte verweben Gerichtsentscheidungen als Belege — die Entscheidungen UNTERSTÜTZEN den praktischen Punkt, sie dominieren ihn nicht.
+5. practical_advice-Abschnitte enthalten konkrete Checklisten, Rechenbeispiele und Handlungsschritte OHNE rechtliche Behauptungen.
+6. MINDESTENS 2 practical_advice-Abschnitte für Artikel über 4000 Wörter — Mandanten wollen wissen, was sie TUN sollen.
+7. GIB IMMER EIN GÜLTIGES JSON-FORMAT ZURÜCK. GIB KEIN MARKDOWN ODER ERKLÄRENDEN TEXT ZURÜCK - NUR PURES JSON.
+
+Erstellen Sie jetzt die strukturierte JSON-Gliederung.

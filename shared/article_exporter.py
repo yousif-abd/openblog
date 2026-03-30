@@ -114,6 +114,15 @@ class ArticleExporter:
             except Exception as e:
                 logger.warning(f"XLSX export failed: {e}")
 
+        if "docx" in formats:
+            try:
+                docx_path = output_dir / f"{base_name}.docx"
+                ArticleExporter._export_docx(article, docx_path)
+                exported_files["docx"] = str(docx_path)
+                logger.info(f"✅ Exported DOCX: {docx_path}")
+            except Exception as e:
+                logger.warning(f"DOCX export failed: {e}")
+
         return exported_files
 
     @staticmethod
@@ -134,8 +143,13 @@ class ArticleExporter:
         if body_match:
             html_content = body_match.group(1)
 
+        # Remove script and style tags completely before markdown conversion
+        # (markdownify's strip parameter doesn't reliably remove them)
+        html_content = re.sub(r'<script[^>]*>.*?</script>', '', html_content, flags=re.DOTALL | re.IGNORECASE)
+        html_content = re.sub(r'<style[^>]*>.*?</style>', '', html_content, flags=re.DOTALL | re.IGNORECASE)
+
         # Convert to markdown
-        result = md(html_content, heading_style="ATX", strip=['style', 'script'])
+        result = md(html_content, heading_style="ATX")
 
         # Clean up extra whitespace
         result = re.sub(r'\n{3,}', '\n\n', result)
@@ -480,6 +494,264 @@ class ArticleExporter:
         except ImportError:
             logger.warning("openpyxl not installed, skipping XLSX export. Install with: pip install openpyxl")
             raise
+
+    @staticmethod
+    def _export_docx(article: Dict[str, Any], output_path: Path, language: str = "de") -> None:
+        """
+        Export article to a professionally formatted DOCX for lawyer review.
+
+        Produces a Word document with styled headings, colored highlight boxes,
+        proper paragraph spacing, and bold/italic preserved from HTML content.
+        """
+        from docx import Document
+        from docx.shared import Pt, Inches, RGBColor, Cm, Emu
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+        from docx.oxml.ns import qn, nsdecls
+        from docx.oxml import parse_xml
+        from html import unescape
+
+        def strip_html(text: str) -> str:
+            """Strip HTML tags and decode entities."""
+            if not text:
+                return ""
+            text = re.sub(r'<br\s*/?>', '\n', text)
+            text = re.sub(r'<li[^>]*>', '\n• ', text)
+            text = re.sub(r'</?(ul|ol|div|section|aside|article|nav|header|footer)[^>]*>', '', text)
+            text = re.sub(r'<[^>]+>', '', text)
+            text = unescape(text)
+            text = re.sub(r'\n{3,}', '\n\n', text)
+            return text.strip()
+
+        def add_rich_paragraphs(doc, html_content: str):
+            """Parse HTML content and add paragraphs with bold/italic formatting."""
+            if not html_content:
+                return
+            # Split on block-level tags
+            blocks = re.split(r'<(?:p|div|li)[^>]*>|</(?:p|div|li)>', html_content)
+            for block in blocks:
+                block = block.strip()
+                if not block or block in ('', '<ul>', '</ul>', '<ol>', '</ol>'):
+                    continue
+                # Check if it was a list item
+                is_bullet = False
+                if block.startswith('• ') or '<li' in block:
+                    is_bullet = True
+                    block = re.sub(r'^• ', '', block)
+
+                # Extract bold/italic runs
+                p = doc.add_paragraph(style='List Bullet' if is_bullet else 'Normal')
+                p.paragraph_format.space_after = Pt(6)
+                # Parse inline formatting
+                parts = re.split(r'(<strong>|</strong>|<b>|</b>|<em>|</em>|<i>|</i>)', block)
+                bold = False
+                italic = False
+                for part in parts:
+                    if part in ('<strong>', '<b>'):
+                        bold = True
+                        continue
+                    elif part in ('</strong>', '</b>'):
+                        bold = False
+                        continue
+                    elif part in ('<em>', '<i>'):
+                        italic = True
+                        continue
+                    elif part in ('</em>', '</i>'):
+                        italic = False
+                        continue
+                    # Strip remaining tags
+                    clean = re.sub(r'<[^>]+>', '', part)
+                    clean = unescape(clean).strip()
+                    if clean:
+                        run = p.add_run(clean + ' ')
+                        run.font.size = Pt(11)
+                        run.bold = bold
+                        run.italic = italic
+
+        def add_shaded_box(doc, label: str, content: str, shade_color: str = "E8F4E8"):
+            """Add a shaded box with a label and content (like the HTML callout boxes)."""
+            p = doc.add_paragraph()
+            p.paragraph_format.space_before = Pt(12)
+            p.paragraph_format.space_after = Pt(4)
+            # Add shading to paragraph
+            shading = parse_xml(f'<w:shd {nsdecls("w")} w:fill="{shade_color}" w:val="clear"/>')
+            p.paragraph_format.element.get_or_add_pPr().append(shading)
+            # Left border
+            pPr = p.paragraph_format.element.get_or_add_pPr()
+            pBdr = parse_xml(
+                f'<w:pBdr {nsdecls("w")}>'
+                f'  <w:left w:val="single" w:sz="24" w:space="8" w:color="1A5276"/>'
+                f'</w:pBdr>'
+            )
+            pPr.append(pBdr)
+            # Indent
+            p.paragraph_format.left_indent = Cm(0.5)
+            run = p.add_run(label.upper())
+            run.bold = True
+            run.font.size = Pt(9)
+            run.font.color.rgb = RGBColor(26, 82, 118)
+
+            p2 = doc.add_paragraph()
+            shading2 = parse_xml(f'<w:shd {nsdecls("w")} w:fill="{shade_color}" w:val="clear"/>')
+            p2.paragraph_format.element.get_or_add_pPr().append(shading2)
+            p2.paragraph_format.left_indent = Cm(0.5)
+            p2.paragraph_format.space_after = Pt(12)
+            run2 = p2.add_run(strip_html(content))
+            run2.font.size = Pt(11)
+
+        def add_takeaway_box(doc, label: str, items: list, shade_color: str = "FFF8E1"):
+            """Add a styled takeaway box with bullet points."""
+            p = doc.add_paragraph()
+            p.paragraph_format.space_before = Pt(12)
+            shading = parse_xml(f'<w:shd {nsdecls("w")} w:fill="{shade_color}" w:val="clear"/>')
+            p.paragraph_format.element.get_or_add_pPr().append(shading)
+            p.paragraph_format.left_indent = Cm(0.5)
+            run = p.add_run(f"⚡ {label}")
+            run.bold = True
+            run.font.size = Pt(13)
+            run.font.color.rgb = RGBColor(180, 95, 6)
+
+            for item in items:
+                bp = doc.add_paragraph()
+                shading_b = parse_xml(f'<w:shd {nsdecls("w")} w:fill="{shade_color}" w:val="clear"/>')
+                bp.paragraph_format.element.get_or_add_pPr().append(shading_b)
+                bp.paragraph_format.left_indent = Cm(1.0)
+                bp.paragraph_format.space_after = Pt(4)
+                run = bp.add_run(f"→  {item}")
+                run.font.size = Pt(11)
+
+            # Final spacer
+            spacer = doc.add_paragraph()
+            spacer.paragraph_format.space_after = Pt(6)
+
+        doc = Document()
+
+        # ---- Style configuration ----
+        style = doc.styles['Normal']
+        style.font.name = 'Calibri'
+        style.font.size = Pt(11)
+        style.paragraph_format.space_after = Pt(8)
+        style.paragraph_format.line_spacing = 1.15
+
+        # Heading styles
+        for level in range(1, 4):
+            h_style = doc.styles[f'Heading {level}']
+            h_style.font.name = 'Calibri'
+            h_style.font.color.rgb = RGBColor(26, 82, 118)
+            if level == 1:
+                h_style.font.size = Pt(22)
+                h_style.paragraph_format.space_before = Pt(0)
+                h_style.paragraph_format.space_after = Pt(6)
+            elif level == 2:
+                h_style.font.size = Pt(16)
+                h_style.paragraph_format.space_before = Pt(18)
+                h_style.paragraph_format.space_after = Pt(8)
+            else:
+                h_style.font.size = Pt(13)
+
+        # Page margins
+        for section in doc.sections:
+            section.top_margin = Cm(2.5)
+            section.bottom_margin = Cm(2.5)
+            section.left_margin = Cm(2.5)
+            section.right_margin = Cm(2.5)
+
+        # ---- Document content ----
+
+        # 1. Title
+        headline = strip_html(article.get("Headline", ""))
+        if headline:
+            doc.add_heading(headline, level=1)
+
+        # 2. Subtitle
+        subtitle = strip_html(article.get("Subtitle", ""))
+        if subtitle:
+            p = doc.add_paragraph()
+            run = p.add_run(subtitle)
+            run.font.size = Pt(14)
+            run.font.color.rgb = RGBColor(100, 100, 100)
+            p.paragraph_format.space_after = Pt(16)
+
+        # 3. Direct Answer (shaded box)
+        direct_answer = article.get("Direct_Answer", "")
+        if direct_answer:
+            label = "Kurze Antwort" if language == "de" else "Quick Answer"
+            add_shaded_box(doc, label, direct_answer)
+
+        # 4. Key Takeaways (yellow box)
+        takeaways = []
+        for i in range(1, 4):
+            t = article.get(f"key_takeaway_{i:02d}", "")
+            if t:
+                takeaways.append(strip_html(t))
+        if takeaways:
+            label = "Das Thema kurz und kompakt" if language == "de" else "Key Points at a Glance"
+            add_takeaway_box(doc, label, takeaways)
+
+        # 5. Intro
+        intro = article.get("Intro", "")
+        if intro:
+            add_rich_paragraphs(doc, intro)
+
+        # 6. Sections
+        for i in range(1, 10):
+            title = strip_html(article.get(f"section_{i:02d}_title", ""))
+            content = article.get(f"section_{i:02d}_content", "")
+            if not title and not content:
+                continue
+            if title:
+                doc.add_heading(title, level=2)
+            if content:
+                add_rich_paragraphs(doc, content)
+
+        # 7. FAQs
+        faq_label = "Häufig gestellte Fragen" if language == "de" else "FAQ"
+        has_faqs = False
+        for i in range(1, 7):
+            q = strip_html(article.get(f"faq_{i:02d}_question", ""))
+            a = article.get(f"faq_{i:02d}_answer", "")
+            if q and a:
+                if not has_faqs:
+                    doc.add_heading(faq_label, level=2)
+                    has_faqs = True
+                p = doc.add_paragraph()
+                p.paragraph_format.space_before = Pt(10)
+                run = p.add_run(q)
+                run.bold = True
+                run.font.size = Pt(12)
+                run.font.color.rgb = RGBColor(26, 82, 118)
+                add_rich_paragraphs(doc, a)
+
+        # 8. Legal disclaimer (gray box)
+        disclaimer = strip_html(article.get("legal_disclaimer", ""))
+        if disclaimer:
+            label = "Rechtlicher Hinweis" if language == "de" else "Legal Notice"
+            p = doc.add_paragraph()
+            p.paragraph_format.space_before = Pt(24)
+            shading = parse_xml(f'<w:shd {nsdecls("w")} w:fill="F0F0F0" w:val="clear"/>')
+            p.paragraph_format.element.get_or_add_pPr().append(shading)
+            p.paragraph_format.left_indent = Cm(0.5)
+            run = p.add_run(f"⚖ {label}: ")
+            run.bold = True
+            run.font.size = Pt(10)
+            run = p.add_run(disclaimer)
+            run.italic = True
+            run.font.size = Pt(10)
+            run.font.color.rgb = RGBColor(80, 80, 80)
+
+        # 9. Sources
+        sources = article.get("Sources", "")
+        if sources:
+            label = "Quellen" if language == "de" else "Sources"
+            doc.add_heading(label, level=2)
+            source_list = sources if isinstance(sources, list) else [
+                l.strip() for l in sources.strip().split('\n') if l.strip()
+            ]
+            for src in source_list:
+                p = doc.add_paragraph(str(src), style='List Number')
+                p.runs[0].font.size = Pt(9) if p.runs else None
+                p.runs[0].font.color.rgb = RGBColor(80, 80, 80) if p.runs else None
+
+        doc.save(str(output_path))
 
     @staticmethod
     def _html_to_single_line(html_content: str) -> str:

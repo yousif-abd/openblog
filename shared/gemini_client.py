@@ -152,12 +152,14 @@ class GeminiClient:
             logger.debug(f"Auto-selected timeout: {timeout}s (grounding={bool(tools)})")
 
         # Build config
+        # Note: Gemini 2.5 Pro doesn't support response_mime_type + tools together
+        use_json_mime = json_output and not tools
         config = self._types.GenerateContentConfig(
             system_instruction=system_instruction,
             temperature=temperature,
             max_output_tokens=max_tokens,
             tools=tools if tools else None,
-            response_mime_type="application/json" if json_output else None,
+            response_mime_type="application/json" if use_json_mime else None,
         )
 
         logger.debug(f"Generating with model={GEMINI_MODEL}, tools={len(tools)}, json={json_output}")
@@ -176,6 +178,11 @@ class GeminiClient:
                     timeout=timeout,
                 )
 
+                if response.text is None or response.text.strip() == "":
+                    raise ValueError(
+                        f"Gemini returned empty response (possibly blocked by safety filters). "
+                        f"Candidates: {getattr(response, 'candidates', 'N/A')}"
+                    )
                 text = response.text.strip()
 
                 if json_output:
@@ -202,7 +209,8 @@ class GeminiClient:
                 is_retryable = any(x in error_str for x in [
                     'rate limit', '429', '500', '502', '503', '504',
                     'overloaded', 'quota', 'temporarily unavailable',
-                    'connection', 'timeout', 'resource exhausted'
+                    'connection', 'timeout', 'resource exhausted',
+                    'empty response', 'could not find json',
                 ])
 
                 if not is_retryable or attempt >= self.max_retries:
@@ -463,6 +471,11 @@ class GeminiClient:
                         continue
                     if 'vertexaisearch.cloud.google.com' in real_url:
                         continue
+                    # Skip obviously irrelevant domains (tech companies, consent pages, etc.)
+                    if self._is_irrelevant_source(real_url):
+                        logger.debug(f"Skipping irrelevant source domain: {real_url[:60]}...")
+                        skipped_invalid += 1
+                        continue
 
                     seen_urls.add(real_url)
                     sources.append({
@@ -482,6 +495,50 @@ class GeminiClient:
         except Exception as e:
             logger.warning(f"Failed to extract grounding sources: {e}")
             return []
+
+    @staticmethod
+    def _is_irrelevant_source(url: str) -> bool:
+        """
+        Check if a grounding source URL is obviously irrelevant for legal articles.
+
+        Filters out tech companies, consent pages, non-legal domains, and other
+        URLs that Gemini's Google Search grounding sometimes injects randomly.
+        """
+        from urllib.parse import urlparse
+        try:
+            domain = urlparse(url).netloc.lower().replace('www.', '')
+        except Exception:
+            return False
+
+        # Blocklist of domains that are never relevant for German legal content
+        blocked_domains = {
+            # Tech companies
+            'huawei.com', 'e.huawei.com', 'apple.com', 'microsoft.com',
+            'google.com', 'amazon.com', 'meta.com', 'samsung.com',
+            # Non-German / non-legal
+            'visa.co.uk', 'visa.com', 'mastercard.com',
+            'wikipedia.org',  # Too generic, prefer legal sources
+            # Consent/redirect pages
+            'consent.google.com', 'consent.youtube.com',
+            'accounts.google.com', 'support.google.com',
+        }
+        if domain in blocked_domains:
+            return True
+
+        # Block if domain ends with obviously irrelevant TLDs for German legal
+        irrelevant_suffixes = (
+            '.cn', '.jp', '.kr', '.ru', '.in',
+            '.co.uk', '.com.au', '.co.nz',
+        )
+        if any(domain.endswith(s) for s in irrelevant_suffixes):
+            return True
+
+        # Block URLs that are clearly consent/redirect pages
+        path_lower = url.lower()
+        if any(p in path_lower for p in ('/consent', '/accounts/login', '/error_path/', '/404')):
+            return True
+
+        return False
 
     def _extract_domain(self, url: str) -> str:
         """Extract domain from URL for fallback title."""
@@ -552,12 +609,13 @@ class GeminiClient:
             timeout = GEMINI_TIMEOUT_GROUNDING if tools else GEMINI_TIMEOUT_DEFAULT
             logger.debug(f"Auto-selected timeout: {timeout}s (grounding={bool(tools)})")
 
+        # Note: Gemini 2.5 Pro doesn't support response_mime_type + tools together
         config = self._types.GenerateContentConfig(
             temperature=temperature,
             max_output_tokens=8192,
             tools=tools if tools else None,
-            response_mime_type="application/json",
-            response_schema=response_schema,
+            response_mime_type="application/json" if not tools else None,
+            response_schema=response_schema if not tools else None,
             system_instruction=system_instruction if system_instruction else None,
         )
 
@@ -606,7 +664,8 @@ class GeminiClient:
                 is_retryable = any(x in error_str for x in [
                     'rate limit', '429', '500', '502', '503', '504',
                     'overloaded', 'quota', 'temporarily unavailable',
-                    'connection', 'timeout', 'resource exhausted'
+                    'connection', 'timeout', 'resource exhausted',
+                    'empty response', 'could not find json',
                 ])
 
                 if not is_retryable or attempt >= self.max_retries:

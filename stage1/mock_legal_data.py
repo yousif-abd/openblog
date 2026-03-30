@@ -147,6 +147,38 @@ MOCK_DECISIONS = {
             "leitsatz": "Bei der Regelung des Umgangsrechts nach § 1684 BGB ist das Kindeswohl maßgeblich. Das Kind hat ein Recht auf Umgang mit beiden Elternteilen.",
             "relevante_normen": ["§ 1684 BGB", "§ 1684 Abs. 1 BGB"],
             "url": "https://www.beck-online.beck.de/Dokument/mock-olg-frankfurt-4-uf-189-23"
+        },
+        {
+            "gericht": "BGH",
+            "aktenzeichen": "XII ZB 10/22",
+            "datum_offset_days": 95,
+            "leitsatz": "Die Annahme eines Volljährigen als Kind (Erwachsenenadoption) setzt nach § 1767 Abs. 1 BGB voraus, dass die Annahme sittlich gerechtfertigt ist. Dies ist insbesondere der Fall, wenn zwischen dem Annehmenden und dem Anzunehmenden ein Eltern-Kind-Verhältnis entstanden ist.",
+            "relevante_normen": ["§ 1767 BGB", "§ 1767 Abs. 1 BGB", "§ 1770 BGB"],
+            "url": "https://www.beck-online.beck.de/Dokument/mock-bgh-xii-zb-10-22"
+        },
+        {
+            "gericht": "OLG München",
+            "aktenzeichen": "33 Wx 115/23",
+            "datum_offset_days": 70,
+            "leitsatz": "Für die sittliche Rechtfertigung einer Erwachsenenadoption genügt nicht allein ein langjähriger persönlicher Kontakt. Vielmehr muss ein dem natürlichen Eltern-Kind-Verhältnis entsprechendes Verhältnis bestehen oder zumindest angestrebt werden.",
+            "relevante_normen": ["§ 1767 BGB", "§ 1768 BGB"],
+            "url": "https://www.beck-online.beck.de/Dokument/mock-olg-muenchen-33-wx-115-23"
+        },
+        {
+            "gericht": "OLG Düsseldorf",
+            "aktenzeichen": "I-25 Wx 38/22",
+            "datum_offset_days": 160,
+            "leitsatz": "Bei der Erwachsenenadoption prüft das Familiengericht, ob überwiegende Interessen der leiblichen Kinder des Annehmenden der Adoption entgegenstehen (§ 1769 BGB). Ein angemessener Altersabstand zwischen Annehmendem und Anzunehmendem wird regelmäßig vorausgesetzt.",
+            "relevante_normen": ["§ 1767 BGB", "§ 1769 BGB", "§ 1772 BGB"],
+            "url": "https://www.beck-online.beck.de/Dokument/mock-olg-duesseldorf-i-25-wx-38-22"
+        },
+        {
+            "gericht": "KG Berlin",
+            "aktenzeichen": "17 UF 92/23",
+            "datum_offset_days": 40,
+            "leitsatz": "Die Erwachsenenadoption führt nach § 1770 Abs. 1 BGB zu den Wirkungen der Minderjährigenadoption, soweit nichts anderes bestimmt ist. Der Angenommene erhält den Familiennamen des Annehmenden, kann aber nach § 1767 Abs. 2 S. 3 BGB einen Doppelnamen bilden.",
+            "relevante_normen": ["§ 1767 BGB", "§ 1770 BGB", "§ 1757 BGB"],
+            "url": "https://www.beck-online.beck.de/Dokument/mock-kg-berlin-17-uf-92-23"
         }
     ],
     "Erbrecht": [

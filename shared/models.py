@@ -160,7 +160,7 @@ class ArticleOutput(BaseModel):
     image_03_credit: str = Field(default="", description="Image credit for bottom image")
 
     # TL;DR (optional, for long articles)
-    TLDR: str = Field(default="", description="TL;DR summary (2-3 sentences)")
+    TLDR: str = Field(default="", description="TL;DR summary (strictly 1 short sentence, max 15 words)")
 
     # Sources and research
     Sources: List[Source] = Field(default_factory=list, description="List of citation sources")

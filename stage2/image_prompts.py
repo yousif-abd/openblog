@@ -17,6 +17,7 @@ def build_image_prompt(
     language: str = "en",
     position: str = "hero",
     visual_identity: Optional[Dict[str, Any]] = None,
+    article_context: Optional[str] = None,
 ) -> str:
     """
     Build a simple image prompt.
@@ -27,6 +28,7 @@ def build_image_prompt(
         language: Language code (reserved for future localization)
         position: hero, mid, or bottom
         visual_identity: Optional visual identity from Stage 1
+        article_context: Optional text (like the article teaser) to ground the image
 
     Returns:
         Simple prompt for Imagen
@@ -49,6 +51,9 @@ def build_image_prompt(
     topic = topic.strip()
     if not topic:
         topic = keyword.strip() or "professional business"
+
+    # Add specific context if available
+    context_str = f" Context: {article_context}." if article_context else ""
 
     # Position-specific angle
     position_angle = {
@@ -85,12 +90,13 @@ def build_image_prompt(
     if style_prompt:
         # Avoid double period if base already ends with punctuation
         base = style_prompt.rstrip('.!?')
-        return build_prompt(f"{base}.", f"Topic: {topic}.", f"Style: {position_angle}.", no_text, avoid_elements)
+        return build_prompt(f"{base}.", f"Topic: {topic}.", context_str, f"Style: {position_angle}.", no_text, avoid_elements)
 
     # Simple industry-based prompt
     return build_prompt(
         f"Professional photo for {industry} blog.",
         f"Topic: {topic}.",
+        context_str,
         f"Style: {position_angle}.",
         "Modern, clean, realistic.",
         no_text,

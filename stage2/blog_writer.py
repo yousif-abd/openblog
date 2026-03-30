@@ -15,6 +15,7 @@ Requires:
 import asyncio
 import logging
 import os
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -96,6 +97,72 @@ def _normalize_field_names(result: Dict[str, Any]) -> Dict[str, Any]:
         normalized[normalized_key] = value
 
     return normalized
+
+
+def _filter_competitor_sources(sources: List[Dict[str, Any]], company_context: Dict[str, Any], humanization_research: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    """Filter out sources from company domain and competitors."""
+    if not sources:
+        return sources
+        
+    from urllib.parse import urlparse
+    blocked_domains = set()
+    
+    # Block company's own domain
+    company_url = company_context.get("company_url", "")
+    if company_url:
+        try:
+            parsed = urlparse(company_url)
+            domain = parsed.netloc.replace("www.", "")
+            if domain:
+                blocked_domains.add(domain)
+        except Exception:
+            pass
+            
+    # Block explicitly defined competitor domains
+    for comp in company_context.get("competitors", []):
+        if isinstance(comp, str) and comp.strip():
+            try:
+                parsed = urlparse(comp if "://" in comp else f"https://{comp}")
+                domain = parsed.netloc.replace("www.", "")
+                if domain:
+                    blocked_domains.add(domain)
+            except Exception:
+                pass
+                
+    # Block SERP competitors from humanization_research
+    if humanization_research:
+        for comp in humanization_research.get("competitor_headings", []):
+            comp_url = comp.get("url", "") if isinstance(comp, dict) else getattr(comp, "url", "")
+            if comp_url:
+                try:
+                    parsed = urlparse(comp_url)
+                    domain = parsed.netloc.replace("www.", "")
+                    if domain:
+                        blocked_domains.add(domain)
+                except Exception:
+                    pass
+
+    if not blocked_domains:
+        return sources
+        
+    original_count = len(sources)
+    filtered = []
+    for src in sources:
+        src_url = src.get("url", "") if isinstance(src, dict) else getattr(src, "url", "")
+        try:
+            src_domain = urlparse(src_url).netloc.replace("www.", "")
+            if src_domain not in blocked_domains:
+                filtered.append(src)
+            else:
+                logger.debug(f"Filtered source from blocked domain: {src_domain}")
+        except Exception:
+            filtered.append(src)  # Keep on parse error
+            
+    removed = original_count - len(filtered)
+    if removed > 0:
+        logger.info(f"Filtered {removed} source(s) from company/competitor domains")
+        
+    return filtered
 
 
 # =============================================================================
@@ -201,6 +268,8 @@ async def write_article(
     api_key: Optional[str] = None,
     legal_context: Optional[Dict[str, Any]] = None,
     use_decision_centric: bool = True,
+    humanization_research: Optional[Dict[str, Any]] = None,
+    webinar_content: Optional[List[Dict[str, Any]]] = None,
 ) -> ArticleOutput:
     """
     Generate a complete blog article using Gemini.
@@ -229,6 +298,11 @@ async def write_article(
     """
     logger.info(f"Writing article for: {keyword} ({language}/{country})")
 
+    # Enforce minimum word count for legal articles
+    if legal_context and word_count < 4000:
+        logger.info(f"Legal article: raising word_count from {word_count} to 4000")
+        word_count = 4000
+
     # Use decision-centric approach for legal articles with court decisions
     if use_decision_centric and legal_context and legal_context.get("court_decisions"):
         logger.info("Using decision-centric two-phase generation for legal article")
@@ -238,6 +312,8 @@ async def write_article(
             legal_context=legal_context,
             word_count=word_count,
             api_key=api_key,
+            humanization_research=humanization_research,
+            webinar_content=webinar_content,
         )
         return article
 
@@ -303,6 +379,46 @@ async def write_article(
                 custom_instructions_section=custom_instructions_section,
             )
 
+        # Inject humanization research data (Stage 0) into prompt
+        if humanization_research:
+            humanization_section = _format_humanization_research(humanization_research)
+            if humanization_section:
+                prompt = prompt + "\n\n" + humanization_section
+                logger.info("Injected Stage 0 humanization research into prompt")
+
+        # Inject webinar content into prompt
+        if webinar_content:
+            webinar_section = _format_webinar_content(webinar_content)
+            if webinar_section:
+                prompt = prompt + "\n\n" + webinar_section
+                logger.info("Injected webinar content into prompt")
+
+        # Final reinforcement block at end of prompt (Gemini reads end most carefully)
+        reinforcements = []
+        if word_count >= 4000:
+            reinforcements.append(
+                f"=== WORTANZAHL-PFLICHT ===\n"
+                f"Dieser Artikel MUSS mindestens {word_count} Wörter umfassen. "
+                f"Generieren Sie 6-8 Inhaltsabschnitte mit jeweils 400-700 Wörtern. "
+                f"Jeder Abschnitt soll mindestens ein Praxisbeispiel mit konkreten Zahlen enthalten. "
+                f"Ein Artikel unter {int(word_count * 0.8)} Wörtern ist NICHT akzeptabel."
+            )
+        if webinar_content:
+            reinforcements.append(
+                "=== WEBINAR-INTEGRATION PFLICHT ===\n"
+                "Sie MÜSSEN mindestens 4-5 konkrete Erkenntnisse aus den Webinar-Passagen "
+                "in verschiedene Abschnitte des Artikels einbauen. Verwenden Sie die "
+                "spezifischen Beispiele, Zahlen, Warnungen und Praxistipps des Experten. "
+                "Formulieren Sie als Fachwissen des Autors:\n"
+                "  - 'In unserer Beratungspraxis sehen wir immer wieder, dass...'\n"
+                "  - 'Ein häufiger Fehler ist die reine Quotenzuweisung...'\n"
+                "  - 'Wie aktuelle Erhebungen zeigen, verfügen nur etwa 15 bis 20 Prozent...'\n"
+                "Jeder Webinar-Einblick macht den Artikel authentischer und unterscheidet "
+                "ihn von generischem Content. IGNORIEREN SIE DIE WEBINAR-PASSAGEN NICHT."
+            )
+        if reinforcements:
+            prompt += "\n\n" + "\n\n".join(reinforcements)
+
         # Call with URL Context + Google Search grounding + source extraction
         # Note: Cannot use generate_with_schema() because ArticleOutput has additionalProperties
         # which Gemini API doesn't support. Instead, rely on detailed prompt instructions.
@@ -329,17 +445,33 @@ async def write_article(
                 result["Sources"] = grounding_sources
                 logger.info(f"Using {len(grounding_sources)} grounding sources (replaced {len(ai_sources) if ai_sources else 0} AI-generated)")
 
+        # Filter out sources from company domain and competitors
+        if result.get("Sources"):
+            result["Sources"] = _filter_competitor_sources(
+                result["Sources"],
+                company_context,
+                humanization_research
+            )
+
         logger.info(f"Article generated: {result.get('Headline', 'Unknown')[:50]}...")
 
         # Populate legal fields if in legal mode
-        if is_legal_mode and legal_context:
+        if is_legal_mode and not legal_context:
+            legal_context = {}
+        if is_legal_mode:
             if "rechtsgebiet" not in result or not result["rechtsgebiet"]:
                 result["rechtsgebiet"] = legal_context.get("rechtsgebiet")
             if "stand_der_rechtsprechung" not in result or not result["stand_der_rechtsprechung"]:
                 result["stand_der_rechtsprechung"] = legal_context.get("stand_der_rechtsprechung")
-            if "legal_disclaimer" not in result or not result["legal_disclaimer"]:
-                result["legal_disclaimer"] = legal_context.get("disclaimer_template", "")
             logger.info(f"Legal fields populated: rechtsgebiet={result.get('rechtsgebiet')}")
+
+        # Always set legal disclaimer for German-language articles
+        if not result.get("legal_disclaimer") and language and language.lower().startswith("de"):
+            disclaimer_src = legal_context.get("disclaimer_template", "") if legal_context else ""
+            result["legal_disclaimer"] = disclaimer_src or (
+                "Dieser Artikel dient ausschließlich der allgemeinen Information und stellt keine Rechtsberatung dar. "
+                "Für eine verbindliche Einschätzung Ihrer individuellen Situation wenden Sie sich bitte an einen Rechtsanwalt."
+            )
 
         return ArticleOutput(**result)
 
@@ -699,6 +831,148 @@ def _format_court_decisions(court_decisions: list) -> str:
     return "\n\n".join(parts)
 
 
+def _format_humanization_research(research: Dict[str, Any]) -> str:
+    """
+    Format Stage 0 humanization research data for prompt injection.
+
+    Formats PAA questions, forum questions, and competitor headings
+    into a prompt section that guides more human-like content generation.
+
+    Args:
+        research: Stage0Output dict with paa_questions, forum_questions, competitor_headings
+
+    Returns:
+        Formatted string to append to the prompt, or empty string if no data
+    """
+    if not research:
+        return ""
+
+    sections = []
+
+    # PAA Questions
+    paa = research.get("paa_questions", [])
+    if paa:
+        lines = ["GOOGLE \"ÄHNLICHE FRAGEN\" (PAA — beantworten Sie ALLE davon im Artikel):"]
+        for q in paa[:8]:
+            lines.append(f"- {q}")
+        sections.append("\n".join(lines))
+
+    # Forum Questions
+    forums = research.get("forum_questions", [])
+    if forums:
+        lines = ["ECHTE NUTZER-FRAGEN (aus Foren — Basis für FAQ/PAA, verwenden Sie die Sprache der Nutzer):"]
+        for q in forums[:8]:
+            source = q.get("source", "Forum") if isinstance(q, dict) else "Forum"
+            question = q.get("question", str(q)) if isinstance(q, dict) else str(q)
+            context = q.get("context", "") if isinstance(q, dict) else ""
+            lines.append(f'- [{source}] "{question}"')
+            if context:
+                lines.append(f"  Kontext: {context[:150]}")
+        sections.append("\n".join(lines))
+
+    # Competitor Headings
+    competitors = research.get("competitor_headings", [])
+    if competitors:
+        lines = ["WETTBEWERBER-STRUKTUR (Orientierung, NICHT kopieren):"]
+        for i, comp in enumerate(competitors[:3], 1):
+            url = comp.get("url", "unknown") if isinstance(comp, dict) else "unknown"
+            headings = comp.get("headings", []) if isinstance(comp, dict) else []
+            lines.append(f"Artikel {i} ({url[:60]}):")
+            for h in headings[:10]:
+                lines.append(f"  {h}")
+        lines.append("")
+        lines.append("Ihr Artikel MUSS alle Kernthemen der Wettbewerber abdecken UND mindestens 2 Aspekte hinzufügen, die Wettbewerber NICHT behandeln.")
+        sections.append("\n".join(lines))
+
+    if not sections:
+        return ""
+
+    return "=== HUMANIZATION RESEARCH (aus Schritt 0) ===\n\n" + "\n\n".join(sections)
+
+
+def _format_webinar_content(webinar_data: List[Dict[str, Any]]) -> str:
+    """
+    Format webinar extracts for prompt injection.
+
+    Provides the article writer with key insights AND actual transcript passages
+    from expert webinar recordings so the generated content can reference real
+    expert opinions, examples, case studies, and practical tips.
+
+    Args:
+        webinar_data: List of webinar dicts with title, summary, key_points,
+                      legal_references, and transcript_segments
+
+    Returns:
+        Formatted string to append to the prompt, or empty string if no data
+    """
+    if not webinar_data:
+        return ""
+
+    sections = []
+    for w in webinar_data:
+        title = w.get("title", "Webinar")
+        parts = [f"### {title}"]
+
+        summary = w.get("summary", "")
+        if summary:
+            parts.append(f"Zusammenfassung: {summary}")
+
+        key_points = w.get("key_points", [])
+        if key_points:
+            parts.append("Kernaussagen:")
+            for kp in key_points[:8]:
+                parts.append(f"  - {kp}")
+
+        legal_refs = w.get("legal_references", [])
+        if legal_refs:
+            parts.append(f"Rechtliche Bezüge: {', '.join(legal_refs[:10])}")
+
+        practical_tips = w.get("practical_tips", [])
+        if practical_tips:
+            parts.append("Praxistipps:")
+            for tip in practical_tips[:5]:
+                parts.append(f"  - {tip}")
+
+        # Include actual transcript passages — the real value
+        transcript_segments = w.get("transcript_segments", [])
+        if transcript_segments:
+            parts.append("")
+            parts.append("### ORIGINAL-PASSAGEN AUS DEM WEBINAR (PFLICHT-INTEGRATION)")
+            parts.append(
+                "Die folgenden Passagen sind wörtliche Auszüge aus dem Webinar unserer Kanzlei. "
+                "Sie MÜSSEN die konkreten Beispiele, Fallschilderungen, Zahlen, Statistiken "
+                "und Warnungen des Experten in den Artikel einbauen. Jede Passage enthält "
+                "einzigartiges Praxiswissen — übernehmen Sie die Fakten und Argumente in "
+                "Ihrem eigenen Stil. Besonders wichtig: konkrete Rechenbeispiele, "
+                "Prozentsätze, Fristen, und Fallkonstellationen aus der Beratungspraxis."
+            )
+            for i, seg in enumerate(transcript_segments, 1):
+                parts.append(f"\n--- Passage {i} ---")
+                parts.append(seg)
+
+        sections.append("\n".join(parts))
+
+    if not sections:
+        return ""
+
+    header = (
+        "=== WEBINAR-INHALTE (aus Experten-Aufzeichnungen) ===\n\n"
+        "PFLICHT-ANWEISUNG: Die folgenden Erkenntnisse und Original-Passagen stammen "
+        "aus Webinaren unserer Kanzlei. Sie MÜSSEN mindestens 3-5 konkrete Erkenntnisse, "
+        "Statistiken, Beispiele oder Praxistipps aus den unten stehenden Webinar-Passagen "
+        "direkt in den Artikel einbauen. Referenzieren Sie das Webinar natürlich, z.B.:\n"
+        "  - 'Wie unsere Erfahrung aus der Beratungspraxis zeigt...'\n"
+        "  - 'Ein typischer Fall aus unserer Kanzleipraxis verdeutlicht das Problem...'\n"
+        "  - 'In unserem Webinar zum Thema haben wir darauf hingewiesen, dass...'\n\n"
+        "Übernehmen Sie konkrete Zahlen, Rechenbeispiele, Fallschilderungen und "
+        "Praxis-Warnungen aus den Passagen. Diese machen den Artikel authentisch und "
+        "unterscheiden ihn von generischem Content. Formulieren Sie als Fachwissen "
+        "des Autors, NICHT als wörtliches Zitat.\n\n"
+    )
+
+    return header + "\n\n".join(sections)
+
+
 def _log_legal_context_usage(legal_context: Optional[dict]) -> None:
     """
     Log which Beck-Online court decisions are being used in article generation.
@@ -742,6 +1016,8 @@ async def write_legal_article_decision_centric(
     legal_context: Dict[str, Any],
     word_count: int = 2000,
     api_key: Optional[str] = None,
+    humanization_research: Optional[Dict[str, Any]] = None,
+    webinar_content: Optional[List[Dict[str, Any]]] = None,
 ) -> tuple[ArticleOutput, int]:
     """
     Generate a legal article using decision-centric two-phase approach.
@@ -776,12 +1052,15 @@ async def write_legal_article_decision_centric(
     if not court_decisions:
         logger.warning("No court decisions provided - falling back to standard legal generation")
         # Fall back to standard approach
+        from .blog_writer import write_article # To avoid circular import
         article = await write_article(
             keyword=keyword,
             company_context=company_context,
             word_count=word_count,
             legal_context=legal_context,
             api_key=api_key,
+            humanization_research=humanization_research,
+            webinar_content=webinar_content,
         )
         return article, 1
 
@@ -793,11 +1072,15 @@ async def write_legal_article_decision_centric(
 
     logger.info("Phase 1: Generating structured outline...")
 
+    legal_approach = legal_context.get("legal_approach", "approach_b")
+
     outline = await _generate_legal_outline(
         client=client,
         keyword=keyword,
         rechtsgebiet=rechtsgebiet,
         court_decisions=court_decisions,
+        legal_approach=legal_approach,
+        word_count=word_count,
     )
     ai_calls += 1
 
@@ -812,8 +1095,25 @@ async def write_legal_article_decision_centric(
 
     logger.info("Phase 2: Generating section content...")
 
+    # Calculate per-section word budget (reserve ~20% for intro, FAQs, meta)
+    num_sections = len(outline.target_sections)
+    context_sections = sum(1 for s in outline.target_sections if s.section_type == "context")
+    non_context_sections = num_sections - context_sections
+    # Cap context sections at 300 words, distribute rest to thematic/practical
+    context_budget = min(300, int(word_count * 0.08))
+    remaining_budget = int(word_count * 0.80) - (context_budget * context_sections)
+    per_section_budget = max(300, remaining_budget // max(non_context_sections, 1))
+    logger.info(f"  Word budget: {word_count} total, context={context_budget}, "
+               f"other={per_section_budget} per section ({num_sections} sections)")
+
     sections_content = {}
     decisions_by_az = {d.get("aktenzeichen"): d for d in court_decisions}
+
+    # Format webinar content once for injection into section prompts
+    webinar_prompt_section = ""
+    if webinar_content:
+        webinar_prompt_section = _format_webinar_content(webinar_content)
+        logger.info(f"  Webinar content available for section injection ({len(webinar_prompt_section)} chars)")
 
     for section in outline.target_sections:
         logger.info(f"  Generating {section.section_id} ({section.section_type})...")
@@ -828,20 +1128,44 @@ async def write_legal_article_decision_centric(
                 client=client,
                 section=section,
                 decision=decision,
+                word_budget=per_section_budget,
             )
         elif section.section_type == "context":
             content = await _generate_context_section(
                 client=client,
                 section=section,
+                word_budget=context_budget,
+            )
+        elif section.section_type == "thematic_synthesis":
+            content = await _generate_thematic_synthesis_section(
+                client=client,
+                section=section,
+                court_decisions=court_decisions,
+                legal_context=legal_context,
+                company_context=company_context,
+                word_budget=per_section_budget,
+                webinar_prompt_section=webinar_prompt_section,
             )
         else:  # practical_advice
             content = await _generate_practical_section(
                 client=client,
                 section=section,
+                word_budget=per_section_budget,
+                webinar_prompt_section=webinar_prompt_section,
             )
 
+        # Strip code fences (Gemini sometimes wraps output in ```html ... ```)
+        content = re.sub(r'^```(?:html)?\s*\n?', '', content.strip())
+        content = re.sub(r'\n?```\s*$', '', content.strip())
+
+        # Strip section type metadata from title (e.g. "Title (thematic_synthesis)" → "Title")
+        clean_title = re.sub(
+            r'\s*\((decision_anchor|context|practical_advice|thematic_synthesis)\)\s*$',
+            '', section.title
+        ).strip()
+
         sections_content[section.section_id] = {
-            "title": section.title,
+            "title": clean_title,
             "content": content,
             "type": section.section_type,
         }
@@ -860,6 +1184,8 @@ async def write_legal_article_decision_centric(
         outline=outline,
         court_decisions=court_decisions,
         legal_context=legal_context,
+        humanization_research=humanization_research,
+        webinar_content=webinar_content,
     )
     ai_calls += 1
 
@@ -880,6 +1206,22 @@ async def write_legal_article_decision_centric(
     # Normalize field names
     article_dict = _normalize_field_names(article_dict)
 
+    # Filter out competitor URLs from Sources
+    if article_dict.get("Sources"):
+        article_dict["Sources"] = _filter_competitor_sources(
+            article_dict["Sources"], 
+            company_context, 
+            humanization_research
+        )
+
+    # Ensure legal disclaimer is set for German articles
+    if not article_dict.get("legal_disclaimer"):
+        disclaimer_src = legal_context.get("disclaimer_template", "") if legal_context else ""
+        article_dict["legal_disclaimer"] = disclaimer_src or (
+            "Dieser Artikel dient ausschließlich der allgemeinen Information und stellt keine Rechtsberatung dar. "
+            "Für eine verbindliche Einschätzung Ihrer individuellen Situation wenden Sie sich bitte an einen Rechtsanwalt."
+        )
+
     logger.info(f"Decision-centric generation complete: {ai_calls} AI calls")
 
     return ArticleOutput(**article_dict), ai_calls
@@ -890,6 +1232,8 @@ async def _generate_legal_outline(
     keyword: str,
     rechtsgebiet: str,
     court_decisions: List[Dict[str, Any]],
+    legal_approach: str = "approach_b",
+    word_count: int = 2000,
 ) -> ArticleOutline:
     """
     Phase 1: Generate structured outline mapping sections to decisions.
@@ -899,6 +1243,8 @@ async def _generate_legal_outline(
         keyword: Article keyword
         rechtsgebiet: Legal area
         court_decisions: List of court decision dicts
+        legal_approach: Approach A or B
+        word_count: Target word count
 
     Returns:
         ArticleOutline with section assignments
@@ -907,14 +1253,16 @@ async def _generate_legal_outline(
     decisions_summary = _format_court_decisions(court_decisions)
 
     # Load outline prompt
-    prompt_template = _load_prompt("legal_outline.txt", "")
+    prompt_file = "legal_outline_approach_b.txt" if legal_approach == "approach_b" else "legal_outline.txt"
+    prompt_template = _load_prompt(prompt_file, "")
     if not prompt_template:
-        raise ValueError("legal_outline.txt prompt not found")
+        raise ValueError(f"{prompt_file} prompt not found")
 
     prompt = prompt_template.format(
         keyword=keyword,
         rechtsgebiet=rechtsgebiet,
         court_decisions_summary=decisions_summary,
+        word_count=word_count,
     )
 
     # Define schema for outline
@@ -932,7 +1280,7 @@ async def _generate_legal_outline(
                     "properties": {
                         "section_id": {"type": "string"},
                         "title": {"type": "string"},
-                        "section_type": {"type": "string", "enum": ["decision_anchor", "context", "practical_advice"]},
+                        "section_type": {"type": "string", "enum": ["decision_anchor", "context", "practical_advice", "thematic_synthesis"]},
                         "anchored_decision_aktenzeichen": {"type": "string"},
                         "content_brief": {"type": "string"},
                         "relevant_statutes": {"type": "array", "items": {"type": "string"}}
@@ -959,6 +1307,7 @@ async def _generate_decision_anchor_section(
     client: GeminiClient,
     section: SectionOutline,
     decision: Dict[str, Any],
+    word_budget: int = 300,
 ) -> str:
     """
     Generate a section anchored to a specific court decision.
@@ -999,6 +1348,7 @@ async def _generate_decision_anchor_section(
         decision_datum=datum_german,
         decision_leitsatz=decision.get("leitsatz", ""),
         decision_normen=normen,
+        word_budget=word_budget,
     )
 
     result = await client.generate(
@@ -1007,15 +1357,19 @@ async def _generate_decision_anchor_section(
         use_google_search=False,
         json_output=False,
         temperature=0.3,
-        max_tokens=2048,
+        max_tokens=8192,
     )
 
+    if not result:
+        logger.warning(f"Gemini returned empty for decision section: {section.title}")
+        return f"<p>[Inhalt konnte nicht generiert werden für: {section.title}]</p>"
     return result.strip()
 
 
 async def _generate_context_section(
     client: GeminiClient,
     section: SectionOutline,
+    word_budget: int = 200,
 ) -> str:
     """
     Generate a context section with statutory references only.
@@ -1037,6 +1391,7 @@ async def _generate_context_section(
         section_title=section.title,
         content_brief=section.content_brief,
         relevant_statutes=", ".join(section.relevant_statutes) or "keine",
+        word_budget=word_budget,
     )
 
     result = await client.generate(
@@ -1045,24 +1400,98 @@ async def _generate_context_section(
         use_google_search=False,
         json_output=False,
         temperature=0.3,
-        max_tokens=2048,
+        max_tokens=8192,
     )
 
+    if not result:
+        logger.warning(f"Gemini returned empty for context section: {section.title}")
+        return f"<p>[Inhalt konnte nicht generiert werden für: {section.title}]</p>"
+    return result.strip()
+
+
+async def _generate_thematic_synthesis_section(
+    client: GeminiClient,
+    section: SectionOutline,
+    court_decisions: List[Dict[str, Any]],
+    legal_context: Dict[str, Any],
+    company_context: Dict[str, Any],
+    word_budget: int = 250,
+    webinar_prompt_section: str = "",
+) -> str:
+    """
+    Generate a thematic synthesis section (Approach B).
+    Weaves insights from multiple decisions based on the section theme.
+
+    Args:
+        client: GeminiClient instance
+        section: Section outline
+        court_decisions: All available decisions for context
+        legal_context: Legal context
+        company_context: Company info
+        webinar_prompt_section: Formatted webinar content for injection
+
+    Returns:
+        HTML content for the section
+    """
+    prompt_template = _load_prompt("legal_section_thematic.txt", "")
+    if not prompt_template:
+        raise ValueError("legal_section_thematic.txt prompt not found")
+
+    decisions_summary = _format_court_decisions(court_decisions)
+
+    # Extract voice persona hints
+    voice_persona_hints = []
+    tone = company_context.get("tone", "professionell")
+    voice_persona_hints.append(f"Tone: {tone}")
+
+    prompt = prompt_template.format(
+        section_title=section.title,
+        content_brief=section.content_brief,
+        relevant_statutes=", ".join(section.relevant_statutes) or "keine",
+        court_decisions_summary=decisions_summary,
+        voice_persona_hints="; ".join(voice_persona_hints),
+        word_budget=word_budget,
+    )
+
+    # Inject webinar content into thematic sections
+    if webinar_prompt_section:
+        prompt += "\n\n" + webinar_prompt_section
+        prompt += (
+            "\n\nWICHTIG: Bauen Sie mindestens 1-2 konkrete Erkenntnisse aus den obigen "
+            "Webinar-Passagen in diesen Abschnitt ein. Verwenden Sie die Fakten, Beispiele "
+            "und Praxistipps des Experten und formulieren Sie sie als Ihr eigenes Fachwissen."
+        )
+
+    result = await client.generate(
+        prompt=prompt,
+        use_url_context=False,
+        use_google_search=False,
+        json_output=False,
+        temperature=0.4,
+        max_tokens=8192,
+    )
+
+    if not result:
+        logger.warning(f"Gemini returned empty for thematic section: {section.title}")
+        return f"<p>[Inhalt konnte nicht generiert werden für: {section.title}]</p>"
     return result.strip()
 
 
 async def _generate_practical_section(
     client: GeminiClient,
     section: SectionOutline,
+    word_budget: int = 200,
+    webinar_prompt_section: str = "",
 ) -> str:
     """
     Generate a practical advice section with no legal claims.
 
-    Tips and recommendations only.
+    Tips and recommendations only. Integrates webinar insights when available.
 
     Args:
         client: GeminiClient instance
         section: Section outline
+        webinar_prompt_section: Formatted webinar content for injection
 
     Returns:
         HTML content for the section
@@ -1074,17 +1503,31 @@ async def _generate_practical_section(
     prompt = prompt_template.format(
         section_title=section.title,
         content_brief=section.content_brief,
+        word_budget=word_budget,
     )
+
+    # Inject webinar content — practical sections benefit most from expert tips
+    if webinar_prompt_section:
+        prompt += "\n\n" + webinar_prompt_section
+        prompt += (
+            "\n\nWICHTIG: Dieser praktische Abschnitt ist der ideale Ort für konkrete "
+            "Praxistipps aus dem Webinar. Verwenden Sie Checklisten-Punkte, Warnungen, "
+            "und Handlungsempfehlungen des Experten. Formulieren Sie als 'Aus unserer "
+            "Beratungspraxis wissen wir...' oder 'Ein häufiger Fehler ist...'."
+        )
 
     result = await client.generate(
         prompt=prompt,
         use_url_context=False,
         use_google_search=False,
         json_output=False,
-        temperature=0.4,  # Slightly higher for practical tips
-        max_tokens=2048,
+        temperature=0.4,
+        max_tokens=8192,
     )
 
+    if not result:
+        logger.warning(f"Gemini returned empty for practical section: {section.title}")
+        return f"<p>[Inhalt konnte nicht generiert werden für: {section.title}]</p>"
     return result.strip()
 
 
@@ -1095,6 +1538,8 @@ async def _generate_supporting_content(
     outline: ArticleOutline,
     court_decisions: List[Dict[str, Any]],
     legal_context: Dict[str, Any],
+    humanization_research: Optional[Dict[str, Any]] = None,
+    webinar_content: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """
     Generate supporting content: intro, FAQs, meta tags, key takeaways.
@@ -1106,6 +1551,7 @@ async def _generate_supporting_content(
         outline: Generated article outline
         court_decisions: Court decisions for citations
         legal_context: Full legal context
+        humanization_research: Extracted PAAs and Forums from Stage 0
 
     Returns:
         Dict with intro, faqs, meta, takeaways
@@ -1151,6 +1597,18 @@ WICHTIG:
 Geben Sie NUR das JSON zurück.
 """
 
+    if humanization_research:
+        humanization_section = _format_humanization_research(humanization_research)
+        if humanization_section:
+            prompt = prompt + "\n\n" + humanization_section
+            logger.info("Injected Stage 0 humanization research into supporting content prompt")
+
+    if webinar_content:
+        webinar_section = _format_webinar_content(webinar_content)
+        if webinar_section:
+            prompt = prompt + "\n\n" + webinar_section
+            logger.info("Injected webinar content into supporting content prompt")
+
     schema = {
         "type": "object",
         "properties": {
@@ -1176,9 +1634,17 @@ Geben Sie NUR das JSON zurück.
             "key_takeaway_01": {"type": "string"},
             "key_takeaway_02": {"type": "string"},
             "key_takeaway_03": {"type": "string"},
+            "key_takeaway_03": {"type": "string"},
             "TLDR": {"type": "string"},
         },
-        "required": ["Intro", "Meta_Title", "Meta_Description"]
+        "required": [
+            "Intro", "Meta_Title", "Meta_Description", "TLDR",
+            "faq_01_question", "faq_01_answer", "faq_02_question", "faq_02_answer",
+            "faq_03_question", "faq_03_answer", "faq_04_question", "faq_04_answer",
+            "paa_01_question", "paa_01_answer", "paa_02_question", "paa_02_answer",
+            "paa_03_question", "paa_03_answer", "paa_04_question", "paa_04_answer",
+            "key_takeaway_01", "key_takeaway_02", "key_takeaway_03"
+        ]
     }
 
     result = await client.generate_with_schema(
@@ -1210,14 +1676,23 @@ def _assemble_article(
     Returns:
         Complete ArticleOutput dict
     """
+    # Generate supporting content (Intro, Meta, FAQs) using a dedicated call
+    logger.info("  Generating supporting content (Intro, Meta, FAQs)...")
+    # The supporting content is already generated by _generate_supporting_content
+    # and passed as an argument. No need to call it again here.
+
+    # Build complete article dictate
     article = {
         "Headline": outline.headline,
+        "Subtitle": getattr(outline, "subtitle", ""),
         "Teaser": outline.teaser,
         "Direct_Answer": outline.direct_answer,
         "Intro": supporting.get("Intro", ""),
         "Meta_Title": supporting.get("Meta_Title", ""),
         "Meta_Description": supporting.get("Meta_Description", ""),
         "TLDR": supporting.get("TLDR", ""),
+        "Lead_Survey_Title": "",
+        "Lead_Survey_Button": "",
     }
 
     # Add sections
@@ -1320,6 +1795,8 @@ class BlogWriter:
         keyword_instructions: Optional[str] = None,
         legal_context: Optional[Dict[str, Any]] = None,
         use_decision_centric: bool = True,
+        humanization_research: Optional[Dict[str, Any]] = None,
+        webinar_content: Optional[List[Dict[str, Any]]] = None,
     ) -> ArticleOutput:
         """Generate article using write_article function."""
         return await write_article(
@@ -1333,6 +1810,8 @@ class BlogWriter:
             api_key=self.api_key,
             legal_context=legal_context,
             use_decision_centric=use_decision_centric,
+            humanization_research=humanization_research,
+            webinar_content=webinar_content,
         )
 
 

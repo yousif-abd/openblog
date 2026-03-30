@@ -66,6 +66,32 @@ class CourtDecision(BaseModel):
         description="Legal area (e.g., Arbeitsrecht, Mietrecht)"
     )
 
+    # Extended content fields (populated when available)
+    volltext_auszug: str = Field(
+        default="",
+        description="300-500 word excerpt from the decision reasoning (Entscheidungsgruende)"
+    )
+
+    orientierungssatz: str = Field(
+        default="",
+        description="Orientierungssatz if available (shorter summary than Leitsatz)"
+    )
+
+    kommentar_titel: str = Field(
+        default="",
+        description="Title of linked commentary article from Beck-Online"
+    )
+
+    kommentar_auszug: str = Field(
+        default="",
+        description="First 200 words from linked commentary"
+    )
+
+    relevance_score: float = Field(
+        default=0.0,
+        description="AI-assessed relevance to the keyword (0.0-1.0)"
+    )
+
     @field_validator('gericht', 'aktenzeichen', 'datum', 'rechtsgebiet')
     @classmethod
     def validate_non_empty(cls, v: str, info) -> str:
@@ -77,11 +103,12 @@ class CourtDecision(BaseModel):
     @field_validator('url')
     @classmethod
     def validate_beck_url(cls, v: str) -> str:
-        """Ensure URL is from Beck-Online."""
+        """Ensure URL is from Beck-Online (with or without www)."""
         if not v or not v.strip():
             raise ValueError("URL cannot be empty")
         v = v.strip()
-        if not v.startswith("https://beck-online.beck.de"):
+        if not (v.startswith("https://beck-online.beck.de") or
+                v.startswith("https://www.beck-online.beck.de")):
             raise ValueError(f"URL must be from beck-online.beck.de, got: {v}")
         return v
 
