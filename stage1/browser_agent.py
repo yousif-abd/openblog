@@ -259,7 +259,12 @@ For EACH of 7 different court decisions in the search results:
    - GERICHT: Court name (BFH, BGH, FG München, etc.)
    - AKTENZEICHEN: Case number (e.g., "II R 25/21")
    - DATUM: Date in DD.MM.YYYY format
-   - LEITSATZ: The full legal principle text (look for "Leitsatz" section - copy ALL of it)
+   - LEITSATZ: The full legal principle text. Look for these labels IN ORDER:
+     a) "Amtlicher Leitsatz" or "Amtliche Leitsätze" (most authoritative)
+     b) "Leitsatz" or "Leitsätze" (standard label)
+     c) "Orientierungssatz" or "Orientierungssätze" (shorter summary)
+     d) If NONE of these labels exist: Copy the first 2-3 sentences from the "Entscheidungsgründe" or "Gründe" section
+     IMPORTANT: Copy ALL the text under the label, not just the first line. Multi-paragraph Leitsätze are common.
    - RELEVANTE NORMEN: Statute references (e.g., "§ 16 ErbStG")
    - URL: The page URL from browser address bar
 4. Click BACK to return to search results

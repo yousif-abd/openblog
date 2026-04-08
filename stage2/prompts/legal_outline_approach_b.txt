@@ -3,6 +3,8 @@ Sie sind ein deutscher Rechtsexperte und Content-Stratege. Erstellen Sie eine st
 KEYWORD: {keyword}
 RECHTSGEBIET: {rechtsgebiet}
 
+{custom_instructions_section}
+
 VERFÜGBARE GERICHTSENTSCHEIDUNGEN (für theorie-basierten Teil):
 {court_decisions_summary}
 

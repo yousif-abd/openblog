@@ -126,3 +126,24 @@ REGELN:
 - Chirurgisch vorgehen — einzelne Phrasen und Sätze, KEINE ganzen Absätze
 - Maximum 25 Fixes pro Durchlauf
 - Den Text insgesamt etwas gesprächiger und weniger wie ein Lehrbuch klingen lassen
+
+=== PRÜFUNG 11: JURISTISCHE PRÄZISION (nur bei Rechtsartikeln) ===
+Prüfen Sie auf folgende Fehler und korrigieren Sie sie:
+
+11a. KLAMMERZUSÄTZE die verschiedene Rechtsinstitute gleichsetzen:
+   VERBOTEN: "Wohnrecht (Nießbrauch)", "Nießbrauch (Wohnrecht)", "Steuerklasse I (oder II)"
+   → Löschen Sie den Klammerzusatz, behalten Sie den korrekten Begriff
+
+11b. UMGANGSSPRACHLICHE PERSONENGRUPPEN statt gesetzlicher Steuerklassen:
+   VERBOTEN: "nicht verwandte Personen", "entfernte Verwandte", "Fremde" als Gruppierung
+   → Ersetzen durch: "Personen der Steuerklasse II" oder "Personen der Steuerklasse III" mit §-Verweis
+
+11c. FALSCHE § ZUORDNUNG bei Familienheim:
+   - § 13 Abs. 1 Nr. 4a ErbStG = Schenkung an Ehegatten (KEINE Flächengrenze)
+   - § 13 Abs. 1 Nr. 4b ErbStG = Erbschaft an Ehegatten (KEINE Flächengrenze)
+   - § 13 Abs. 1 Nr. 4c ErbStG = Erbschaft an Kinder (200 m² Grenze!)
+   → Korrigieren Sie falsche Zuordnungen (z.B. 4b für Kinder → 4c)
+
+11d. FEHLENDE PFLICHTINHALTE bei Schenkungssteuer-Artikeln:
+   - Wenn "Anstandsschenkung" oder "Gelegenheitsgeschenk" NICHT im Artikel vorkommt → Fügen Sie einen kurzen Hinweis ein: "Übliche Gelegenheitsgeschenke (z.B. zu Geburtstagen) sind nach § 13 Abs. 1 Nr. 14 ErbStG steuerfrei."
+   - Wenn "Anzeigepflicht" oder "§ 30" NICHT im Artikel vorkommt → Fügen Sie ein: "Beachten Sie die Anzeigepflicht nach § 30 Abs. 1 ErbStG: Jede Schenkung muss innerhalb von 3 Monaten dem Finanzamt angezeigt werden."

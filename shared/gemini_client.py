@@ -66,6 +66,7 @@ class GeminiClient:
         max_retries: int = DEFAULT_MAX_RETRIES,
         base_delay: float = DEFAULT_BASE_DELAY,
         max_delay: float = DEFAULT_MAX_DELAY,
+        model_override: Optional[str] = None,
     ):
         """
         Initialize Gemini client.
@@ -75,7 +76,9 @@ class GeminiClient:
             max_retries: Maximum number of retries for transient failures (default: 3)
             base_delay: Base delay in seconds for exponential backoff (default: 1.0)
             max_delay: Maximum delay between retries in seconds (default: 30.0)
+            model_override: Override the default model (e.g., "gemini-2.5-pro" for legal articles)
         """
+        self.model_override = model_override
         self.api_key = api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
         if not self.api_key:
             raise ValueError(
@@ -171,7 +174,7 @@ class GeminiClient:
                 response = await asyncio.wait_for(
                     asyncio.to_thread(
                         self._client.models.generate_content,
-                        model=GEMINI_MODEL,
+                        model=self.model_override or GEMINI_MODEL,
                         contents=prompt,
                         config=config,
                     ),
@@ -625,7 +628,7 @@ class GeminiClient:
                 response = await asyncio.wait_for(
                     asyncio.to_thread(
                         self._client.models.generate_content,
-                        model=GEMINI_MODEL,
+                        model=self.model_override or GEMINI_MODEL,
                         contents=prompt,
                         config=config,
                     ),

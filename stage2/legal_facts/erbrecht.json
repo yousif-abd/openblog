@@ -1,0 +1,55 @@
+{
+  "rechtsgebiet": "Erbrecht",
+  "hinweis": "GESETZESREFERENZ — Diese Werte sind verbindlich. Verwenden Sie diese exakten Beträge und §§, nicht aus dem Gedächtnis.",
+
+  "freibetraege_§16_ErbStG": [
+    {"paragraph": "§ 16 Abs. 1 Nr. 1 ErbStG", "person": "Ehegatten und eingetragene Lebenspartner", "steuerklasse": "I", "betrag": "500.000 €"},
+    {"paragraph": "§ 16 Abs. 1 Nr. 2 ErbStG", "person": "Kinder und Stiefkinder (auch Kinder verstorbener Kinder)", "steuerklasse": "I", "betrag": "400.000 €"},
+    {"paragraph": "§ 16 Abs. 1 Nr. 3 ErbStG", "person": "Enkelkinder (wenn Elternteil noch lebt)", "steuerklasse": "I", "betrag": "200.000 €"},
+    {"paragraph": "§ 16 Abs. 1 Nr. 3 ErbStG", "person": "Enkelkinder (wenn Elternteil vorverstorben)", "steuerklasse": "I", "betrag": "400.000 € (rücken in Position der Kinder)"},
+    {"paragraph": "§ 16 Abs. 1 Nr. 4 ErbStG", "person": "Eltern und Großeltern (nur bei Erbschaft)", "steuerklasse": "I", "betrag": "100.000 €"},
+    {"paragraph": "§ 16 Abs. 1 Nr. 5 ErbStG", "person": "Personen der Steuerklasse II (Geschwister, Neffen/Nichten, Stiefeltern, Schwiegerkinder, Schwiegereltern, geschiedene Ehegatten)", "steuerklasse": "II", "betrag": "20.000 €"},
+    {"paragraph": "§ 16 Abs. 1 Nr. 6 ErbStG", "person": "Personen der Steuerklasse III (alle übrigen: Lebensgefährten, Freunde, entfernte Verwandte)", "steuerklasse": "III", "betrag": "20.000 €"},
+    {"paragraph": "§ 16 Abs. 1 Nr. 4 ErbStG", "person": "Eltern und Großeltern (bei Schenkung)", "steuerklasse": "II", "betrag": "20.000 € (NICHT 100.000 € — das gilt nur bei Erbschaft)"}
+  ],
+
+  "steuerklassen_§15_ErbStG": {
+    "I": "Ehegatten, eingetragene Lebenspartner, Kinder, Stiefkinder, Enkelkinder, Urenkel, Eltern und Großeltern (nur bei Erbschaft)",
+    "II": "Eltern und Großeltern (bei Schenkung), Geschwister, Neffen/Nichten, Stiefeltern, Schwiegerkinder, Schwiegereltern, geschiedene Ehegatten",
+    "III": "Alle übrigen Erwerber (Lebensgefährten, Freunde, nicht verwandte Personen)"
+  },
+
+  "befreiungen": [
+    {"paragraph": "§ 13 Abs. 1 Nr. 4a ErbStG", "regelung": "Familienheim-Schenkung an Ehegatten/Lebenspartner", "details": "Steuerfrei, KEINE Flächengrenze, Selbstnutzung erforderlich"},
+    {"paragraph": "§ 13 Abs. 1 Nr. 4b ErbStG", "regelung": "Familienheim-Erbschaft an Ehegatten/Lebenspartner", "details": "Steuerfrei, KEINE Flächengrenze, 10 Jahre Selbstnutzung"},
+    {"paragraph": "§ 13 Abs. 1 Nr. 4c ErbStG", "regelung": "Familienheim-Erbschaft an Kinder", "details": "Steuerfrei bis 200 m² Wohnfläche, 10 Jahre Selbstnutzung, Kinder = Steuerklasse I"},
+    {"paragraph": "§ 13 Abs. 1 Nr. 14 ErbStG", "regelung": "Anstandsschenkungen und Gelegenheitsgeschenke", "details": "Übliche Geschenke zu Geburtstagen, Hochzeiten etc. sind steuerfrei — zählen NICHT zum Freibetrag"},
+    {"paragraph": "§ 13 Abs. 1 Nr. 1 ErbStG", "regelung": "Hausrat", "details": "Steuerklasse I: bis 41.000 € steuerfrei, andere Steuerklassen: bis 12.000 €"},
+    {"paragraph": "§ 13a ErbStG", "regelung": "Betriebsvermögen", "details": "85% Verschonung (Regelverschonung) oder 100% (Optionsverschonung) unter Haltefristen"}
+  ],
+
+  "fristen": [
+    {"paragraph": "§ 14 Abs. 1 ErbStG", "regelung": "10-Jahres-Frist", "details": "Freibetrag erneuert sich alle 10 Jahre vollständig. Schenkungen innerhalb von 10 Jahren werden zusammengerechnet."},
+    {"paragraph": "§ 30 Abs. 1 ErbStG", "regelung": "Anzeigepflicht", "details": "Jede Schenkung muss innerhalb von 3 Monaten nach Kenntnis dem zuständigen Finanzamt angezeigt werden."},
+    {"paragraph": "§ 1944 BGB", "regelung": "Erbausschlagungsfrist", "details": "6 Wochen ab Kenntnis des Erbfalls (6 Monate bei Auslandsaufenthalt)"}
+  ],
+
+  "begriffe_abgrenzung": [
+    {"begriff_a": "Nießbrauch", "paragraph_a": "§ 1030 BGB", "bedeutung_a": "Fruchtziehungsrecht: Recht auf Nutzungen (inkl. Mieteinnahmen, Erträge). Umfassender als Wohnrecht.",
+     "begriff_b": "Wohnrecht", "paragraph_b": "§ 1093 BGB", "bedeutung_b": "Recht zur persönlichen Nutzung der Wohnung. KEINE Vermietung erlaubt. Enger als Nießbrauch.",
+     "warnung": "NIEMALS als Synonyme verwenden. Verschiedene Rechtsinstitute mit verschiedenen Rechtsfolgen."},
+    {"begriff_a": "Steuerklasse", "paragraph_a": "§ 15 ErbStG",
+     "begriff_b": "Verwandtschaftsverhältnis", "paragraph_b": "BGB",
+     "warnung": "Das Verwandtschaftsverhältnis BESTIMMT die Steuerklasse. Freibeträge hängen von der Steuerklasse ab, nicht direkt vom Verwandtschaftsgrad."},
+    {"begriff_a": "EU-Inland", "bedeutung_a": "Alle EU-Mitgliedstaaten (z.B. Spanien, Frankreich, Italien). Kapitalverkehrsfreiheit Art. 63 AEUV gilt.",
+     "begriff_b": "Drittstaaten", "bedeutung_b": "Nicht-EU-Staaten (z.B. Schweiz, USA, Türkei). Eingeschränkter Schutz.",
+     "warnung": "EU-Mitgliedstaaten sind KEIN 'EU-Ausland'. Der Begriff 'EU-Ausland' ist rechtlich falsch."}
+  ],
+
+  "optimierungsstrategien": [
+    {"strategie": "Kettenschenkung", "details": "Zwischenschaltung eines Dritten (z.B. Ehepartner) zur Ausnutzung mehrerer Freibeträge. Vorsicht: Finanzamt kann bei zeitlicher Nähe Gesamtschenkung annehmen."},
+    {"strategie": "Nießbrauchvorbehalt bei Immobilien", "details": "Schenkung mit Nießbrauchvorbehalt: Reduziert den steuerlichen Wert der Schenkung (Kapitalwert des Nießbrauchs wird abgezogen). Je jünger der Schenker, desto höher die Wertminderung."},
+    {"strategie": "Ratierliche Schenkung", "details": "Verteilung der Schenkung über mehrere 10-Jahres-Zeiträume zur mehrfachen Freibetragsnutzung."},
+    {"strategie": "Gemischte Schenkung", "details": "Übertragung gegen Teilentgelt (z.B. Übernahme von Schulden). Nur der unentgeltliche Teil ist schenkungsteuerpflichtig."}
+  ]
+}

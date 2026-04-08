@@ -18,6 +18,8 @@ KANZLEI-KONTEXT:
 VOICE PERSONA:
 {voice_persona}
 
+{custom_instructions_section}
+
 AUFGABE:
 Erstellen Sie einen umfassenden, rechtlich fundierten Artikel, der:
 

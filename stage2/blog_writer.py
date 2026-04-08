@@ -314,6 +314,7 @@ async def write_article(
             api_key=api_key,
             humanization_research=humanization_research,
             webinar_content=webinar_content,
+            keyword_instructions=keyword_instructions,
         )
         return article
 
@@ -358,6 +359,7 @@ async def write_article(
                     word_count,
                     language,
                     country,
+                    custom_instructions_section=custom_instructions_section,
                 )
             else:
                 prompt = user_prompt_template.format(
@@ -691,6 +693,75 @@ def _build_custom_instructions(
 # Legal Mode Functions
 # =============================================================================
 
+def _load_legal_fact_sheet(rechtsgebiet: str) -> str:
+    """
+    Load structured legal fact sheet for a Rechtsgebiet.
+
+    Returns formatted text to append to the system instruction,
+    or empty string if no fact sheet exists.
+    """
+    import json as _json
+    facts_dir = Path(__file__).parent / "legal_facts"
+    # Map rechtsgebiet to file name
+    mapping = {
+        "Erbrecht": "erbrecht.json",
+        "Steuerrecht": "erbrecht.json",  # Schenkungssteuer falls under Erbrecht facts
+    }
+    filename = mapping.get(rechtsgebiet)
+    if not filename:
+        return ""
+
+    facts_path = facts_dir / filename
+    if not facts_path.exists():
+        return ""
+
+    try:
+        with open(facts_path, "r", encoding="utf-8") as f:
+            facts = _json.load(f)
+
+        lines = [
+            "\n\n=== GESETZESREFERENZ (PFLICHT — diese exakten Werte verwenden, NICHT aus dem Gedächtnis) ===\n",
+        ]
+
+        # Freibeträge
+        if "freibetraege_§16_ErbStG" in facts:
+            lines.append("FREIBETRÄGE (§ 16 ErbStG):")
+            for fb in facts["freibetraege_§16_ErbStG"]:
+                lines.append(f"  {fb['paragraph']}: {fb['person']} → {fb['betrag']} (Steuerklasse {fb['steuerklasse']})")
+
+        # Steuerklassen
+        if "steuerklassen_§15_ErbStG" in facts:
+            lines.append("\nSTEUERKLASSEN (§ 15 ErbStG):")
+            for klasse, personen in facts["steuerklassen_§15_ErbStG"].items():
+                lines.append(f"  Steuerklasse {klasse}: {personen}")
+
+        # Befreiungen
+        if "befreiungen" in facts:
+            lines.append("\nBEFREIUNGEN:")
+            for bf in facts["befreiungen"]:
+                lines.append(f"  {bf['paragraph']}: {bf['regelung']} — {bf['details']}")
+
+        # Fristen
+        if "fristen" in facts:
+            lines.append("\nFRISTEN:")
+            for fr in facts["fristen"]:
+                lines.append(f"  {fr['paragraph']}: {fr['regelung']} — {fr['details']}")
+
+        # Begriffe
+        if "begriffe_abgrenzung" in facts:
+            lines.append("\nBEGRIFFSABGRENZUNGEN (NIEMALS verwechseln):")
+            for bg in facts["begriffe_abgrenzung"]:
+                if "bedeutung_a" in bg:
+                    lines.append(f"  {bg.get('begriff_a', '?')} ({bg.get('paragraph_a', '')}) ≠ {bg.get('begriff_b', '?')} ({bg.get('paragraph_b', '')})")
+                    lines.append(f"    → {bg.get('warnung', '')}")
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        logger.warning(f"Failed to load legal fact sheet for {rechtsgebiet}: {e}")
+        return ""
+
+
 def _format_legal_system_instruction(legal_context: Dict[str, Any]) -> str:
     """Format legal-specific system instruction with legal context."""
     template = _load_prompt("system_instruction_legal.txt", "")
@@ -704,19 +775,25 @@ def _format_legal_system_instruction(legal_context: Dict[str, Any]) -> str:
     decisions_summary = _format_court_decisions(court_decisions)
 
     try:
-        return template.format(
+        result = template.format(
             current_date=current_date,
             rechtsgebiet=rechtsgebiet,
             court_decisions_summary=decisions_summary,
         )
     except KeyError as e:
         logger.error(f"Legal system instruction template has unknown placeholder: {e}")
-        # Fallback with manual replacement
         result = template
         result = result.replace("{current_date}", current_date)
         result = result.replace("{rechtsgebiet}", rechtsgebiet)
         result = result.replace("{court_decisions_summary}", decisions_summary)
-        return result
+
+    # Append structured legal fact sheet if available for this Rechtsgebiet
+    fact_sheet = _load_legal_fact_sheet(rechtsgebiet)
+    if fact_sheet:
+        result += fact_sheet
+        logger.info(f"Appended legal fact sheet for {rechtsgebiet} ({len(fact_sheet)} chars)")
+
+    return result
 
 
 def _get_legal_user_prompt() -> str:
@@ -736,6 +813,7 @@ def _build_legal_prompt(
     word_count: int,
     language: str,
     country: str,
+    custom_instructions_section: str = "",
 ) -> str:
     """
     Build prompt for legal article generation.
@@ -780,6 +858,7 @@ def _build_legal_prompt(
             company_name=company_str.split("\n")[0].replace("Company: ", "") if company_str else "Braun & Kollegen",
             company_description="Rechtsanwaltskanzlei",
             voice_persona=voice_persona,
+            custom_instructions_section=custom_instructions_section,
         )
     except KeyError as e:
         logger.error(f"Legal prompt template missing placeholder: {e}")
@@ -790,6 +869,7 @@ def _build_legal_prompt(
         result = result.replace("{word_count}", str(word_count))
         result = result.replace("{court_decisions_summary}", decisions_summary)
         result = result.replace("{disclaimer_template}", disclaimer_template)
+        result = result.replace("{custom_instructions_section}", custom_instructions_section)
         return result
 
 
@@ -1030,6 +1110,7 @@ async def write_legal_article_decision_centric(
     api_key: Optional[str] = None,
     humanization_research: Optional[Dict[str, Any]] = None,
     webinar_content: Optional[List[Dict[str, Any]]] = None,
+    keyword_instructions: Optional[str] = None,
 ) -> tuple[ArticleOutput, int]:
     """
     Generate a legal article using decision-centric two-phase approach.
@@ -1054,7 +1135,9 @@ async def write_legal_article_decision_centric(
     """
     logger.info(f"Starting decision-centric generation for: {keyword}")
 
-    client = GeminiClient(api_key=api_key)
+    # Use Pro for legal articles (better instruction-following), fall back to env default
+    legal_model = os.getenv("LEGAL_ARTICLE_MODEL", "gemini-2.5-pro")
+    client = GeminiClient(api_key=api_key, model_override=legal_model)
     ai_calls = 0
 
     # Extract court decisions
@@ -1086,6 +1169,9 @@ async def write_legal_article_decision_centric(
 
     legal_approach = legal_context.get("legal_approach", "approach_b")
 
+    # Build custom instructions for injection into outline and section prompts
+    custom_instructions_section = _build_custom_instructions(None, keyword_instructions)
+
     outline = await _generate_legal_outline(
         client=client,
         keyword=keyword,
@@ -1093,6 +1179,7 @@ async def write_legal_article_decision_centric(
         court_decisions=court_decisions,
         legal_approach=legal_approach,
         word_count=word_count,
+        custom_instructions_section=custom_instructions_section,
     )
     ai_calls += 1
 
@@ -1246,6 +1333,7 @@ async def _generate_legal_outline(
     court_decisions: List[Dict[str, Any]],
     legal_approach: str = "approach_b",
     word_count: int = 2000,
+    custom_instructions_section: str = "",
 ) -> ArticleOutline:
     """
     Phase 1: Generate structured outline mapping sections to decisions.
@@ -1275,6 +1363,7 @@ async def _generate_legal_outline(
         rechtsgebiet=rechtsgebiet,
         court_decisions_summary=decisions_summary,
         word_count=word_count,
+        custom_instructions_section=custom_instructions_section,
     )
 
     # Define schema for outline
