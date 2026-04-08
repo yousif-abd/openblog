@@ -248,10 +248,11 @@ Step 9: USE THE SEARCH BAR (this is your main goal!)
 Step 10: LOOK AT SEARCH RESULTS
 - Wait for the search results to fully load
 - Look at the results list - each result has a TITLE link
-- You need to extract data from 3 DIFFERENT court decisions
+- You need to extract data from 7 DIFFERENT court decisions
+- If there are multiple pages of results, navigate to page 2 after extracting from page 1
 
-Step 11: EXTRACT 3 COURT DECISIONS
-For EACH of 3 different court decisions in the search results:
+Step 11: EXTRACT 7 COURT DECISIONS
+For EACH of 7 different court decisions in the search results:
 1. Look at the result entry (you can often see Gericht, Aktenzeichen, Datum in the result preview)
 2. Click on the TITLE LINK to open the full decision
 3. From the decision page, extract:
@@ -264,10 +265,10 @@ For EACH of 3 different court decisions in the search results:
 4. Click BACK to return to search results
 5. Click on a DIFFERENT result and repeat
 
-Extract 3 total decisions, then call done with all the data.
+Extract 7 total decisions, then call done with all the data.
 
 === OUTPUT FORMAT ===
-After extracting ALL 3 decisions, call the "done" action with this format:
+After extracting ALL 7 decisions, call the "done" action with this format:
 
 SEARCH_SUCCESS
 
@@ -287,23 +288,17 @@ Leitsatz: [full legal principle text]
 Relevante Normen: [statutes]
 URL: [beck-online URL]
 
-Decision 3:
-Gericht: [court name]
-Aktenzeichen: [case number]
-Datum: [date]
-Leitsatz: [full legal principle text]
-Relevante Normen: [statutes]
-URL: [beck-online URL]
+(... continue for all 7 decisions ...)
 
 === CRITICAL ===
-- Extract 3 decisions before calling done
+- Extract 7 decisions before calling done
 - Include the FULL Leitsatz text for each
 - Call done with all the data at the end
 
 === IF SOMETHING FAILS ===
 - If login fails: call done with "LOGIN_FAILED"
 - If no search results: call done with "NO_RESULTS_FOUND"
-- If less than 3 decisions found: report what you found and call done
+- If less than 7 decisions found: report what you found and call done
 """
 
 
@@ -336,8 +331,9 @@ async def _execute_beck_research_single_agent(
         Exception: If browser automation fails
     """
     # Initialize Gemini LLM for browser-use
+    browser_model = os.getenv("BECK_BROWSER_MODEL", "gemini-2.5-pro")
     llm = ChatGoogle(
-        model="gemini-2.5-pro",
+        model=browser_model,
         api_key=gemini_api_key,
         temperature=0.1
     )
@@ -634,6 +630,9 @@ PLACEHOLDER_PATTERNS = [
     # Format instruction echoes
     "dd.mm.yyyy", "court name here", "case number here",
     "legal principle text", "statute citations",
+    # Generated fallback placeholders
+    "entscheidung des",
+    "leitsatz nicht verfügbar",
 ]
 
 
@@ -740,7 +739,7 @@ def _parse_beck_online_results(browser_output, rechtsgebiet: str) -> List[CourtD
             gericht_match = re.search(r'Gericht:\s*([^\n]+)', block)
             aktenzeichen_match = re.search(r'Aktenzeichen:\s*([^\n]+)', block)
             datum_match = re.search(r'Datum:\s*([^\n]+)', block)
-            leitsatz_match = re.search(r'Leitsatz:\s*([^\n]+)', block)
+            leitsatz_match = re.search(r'Leitsatz:\s*(.+?)(?=\nRelevante Normen:|\nURL:|\nDecision \d|\Z)', block, re.DOTALL)
             normen_match = re.search(r'Relevante Normen:\s*([^\n]+)', block)
             url_match = re.search(r'URL:\s*([^\n]+)', block)
 
@@ -751,7 +750,7 @@ def _parse_beck_online_results(browser_output, rechtsgebiet: str) -> List[CourtD
             gericht = gericht_match.group(1).strip()
             aktenzeichen = aktenzeichen_match.group(1).strip()
             datum_str = datum_match.group(1).strip() if datum_match else ""
-            leitsatz = leitsatz_match.group(1).strip() if leitsatz_match else ""
+            leitsatz = " ".join(leitsatz_match.group(1).strip().split()) if leitsatz_match else ""
             normen_str = normen_match.group(1).strip() if normen_match else ""
             url = url_match.group(1).strip() if url_match else ""
 

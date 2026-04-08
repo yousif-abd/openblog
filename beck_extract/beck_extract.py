@@ -116,6 +116,10 @@ def main():
         help="Filter keyword for --list"
     )
     parser.add_argument(
+        "--force", action="store_true",
+        help="Re-extract even if resources already exist (adds new decisions, skips duplicates)"
+    )
+    parser.add_argument(
         "--output", "-o",
         help="Save extraction results as JSON"
     )
@@ -132,6 +136,7 @@ def main():
                 keywords=args.titles,
                 rechtsgebiet=args.rechtsgebiet,
                 use_mock=args.mock,
+                force=args.force,
             )
         )
     elif args.from_plan:

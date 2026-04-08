@@ -44,6 +44,7 @@ async def extract_for_keyword(
     rechtsgebiet: Optional[str] = None,
     use_mock: bool = False,
     db: Optional[OpenBlogDB] = None,
+    force: bool = False,
 ) -> Dict:
     """
     Extract Beck-Online resources for a single keyword and store in DB.
@@ -53,6 +54,7 @@ async def extract_for_keyword(
         rechtsgebiet: German legal area (auto-detected if None)
         use_mock: Use mock data instead of live Beck-Online
         db: Database instance (creates new one if None)
+        force: Re-extract even if resources already exist (new decisions are added, duplicates skipped via unique constraint)
 
     Returns:
         Dict with keyword, rechtsgebiet, resources_count, resources, error
@@ -70,12 +72,14 @@ async def extract_for_keyword(
 
     # Check if we already have resources for this keyword
     existing = db.get_beck_resources(keyword)
-    if existing:
+    if existing and not force:
         logger.info(f"Found {len(existing)} existing resources for '{keyword}', skipping extraction")
         result["resources"] = existing
         result["resources_count"] = len(existing)
         result["rechtsgebiet"] = existing[0].get("rechtsgebiet", "")
         return result
+    elif existing and force:
+        logger.info(f"Found {len(existing)} existing resources for '{keyword}', but --force is set — re-extracting for more")
 
     try:
         if use_mock:
@@ -137,6 +141,7 @@ async def extract_for_keywords(
     keywords: List[str],
     rechtsgebiet: Optional[str] = None,
     use_mock: bool = False,
+    force: bool = False,
 ) -> Dict:
     """
     Extract Beck-Online resources for multiple keywords sequentially.
@@ -147,6 +152,7 @@ async def extract_for_keywords(
         keywords: List of article titles/keywords
         rechtsgebiet: German legal area (applied to all)
         use_mock: Use mock data
+        force: Re-extract even if resources already exist
 
     Returns:
         BeckExtractionOutput-compatible dict
@@ -163,6 +169,7 @@ async def extract_for_keywords(
             rechtsgebiet=rechtsgebiet,
             use_mock=use_mock,
             db=db,
+            force=force,
         )
         results.append(result)
         total_resources += result["resources_count"]

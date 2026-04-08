@@ -633,6 +633,8 @@ class GeminiClient:
                 )
 
                 try:
+                    if response.text is None:
+                        raise ValueError("Gemini returned empty response (response.text is None) — may be a safety filter or transient error")
                     result = self._parse_json(response.text.strip())
                 except json.JSONDecodeError as parse_error:
                     # Attempt to repair malformed JSON (common with German legal text)

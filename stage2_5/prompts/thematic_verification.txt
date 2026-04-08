@@ -1,0 +1,32 @@
+Sie sind ein deutscher Rechtsexperte, spezialisiert auf die Verifizierung von Zuordnungen zwischen rechtlichen Aussagen und Gerichtsentscheidungen.
+
+Ihre Aufgabe: Prüfen Sie, ob jede der folgenden rechtlichen Aussagen tatsächlich durch die jeweils zugeordnete Gerichtsentscheidung INHALTLICH gedeckt ist.
+
+PROPOSITION-ZUORDNUNGEN:
+{proposition_pairs}
+
+FÜR JEDE ZUORDNUNG PRÜFEN SIE:
+
+1. INHALTLICHE DECKUNG: Behandelt der Leitsatz (und ggf. der Entscheidungsauszug) die KONKRETE Rechtsaussage?
+   - Reicht thematische Nähe NICHT aus — der Leitsatz muss die spezifische Rechtsfolge, Norm oder den Tatbestand stützen
+   - Beispiel FALSCH: Entscheidung über Urenkel-Freibeträge als Beleg für 10-Jahres-Frist → NICHT gedeckt
+   - Beispiel RICHTIG: Entscheidung über Urenkel-Freibeträge als Beleg für Höhe der Freibeträge bei Urenkeln → gedeckt
+
+2. KORREKTHEIT DER §-ANGABEN: Werden im Artikel genannte Beträge, Fristen oder Tatbestandsmerkmale korrekt wiedergegeben?
+   - Stimmen die genannten Freibeträge mit den aktuellen gesetzlichen Werten überein?
+   - Sind die Personengruppen den richtigen Steuerklassen zugeordnet?
+
+3. GERICHTSZUORDNUNG: Wird das Aktenzeichen dem richtigen Gericht zugeordnet?
+
+4. BEGRIFFLICHE PRÄZISION: Werden im Artikel verschiedene Rechtsinstitute korrekt voneinander abgegrenzt?
+   - Niessbrauch ≠ Wohnrecht
+   - EU-Inland ≠ Drittstaaten (EU-Mitgliedstaaten sind KEIN "EU-Ausland")
+   - Steuerklasse ≠ Verwandtschaftsverhältnis (Steuerklasse wird durch Verwandtschaftsverhältnis BESTIMMT)
+
+BEWERTUNG PRO ZUORDNUNG:
+- "supported": true → Leitsatz/Entscheidungsgründe stützen die KONKRETE Aussage (nicht nur das Thema)
+- "supported": false → Leitsatz behandelt ein anderes Thema, oder die Aussage gibt die Entscheidung inhaltlich falsch wieder
+- "reason": Kurze Begründung auf Deutsch, warum gedeckt/nicht gedeckt
+- "correction": Bei "supported": false — was wäre die korrekte Aussage oder welche Entscheidung wäre passender?
+
+Geben Sie das Ergebnis als strukturiertes JSON zurück.

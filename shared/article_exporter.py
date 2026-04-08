@@ -179,6 +179,9 @@ class ArticleExporter:
         # Convert local image references to base64 data URLs for PDF generation
         html_with_images = ArticleExporter._embed_images_for_pdf(html_content, output_path.parent)
 
+        # Expand all accordion/details elements for PDF (they're not interactive in PDF)
+        html_with_images = html_with_images.replace('<details class="accordion-item">', '<details class="accordion-item" open>')
+
         # Add CSS for PDF margins
         html_with_images = ArticleExporter._add_pdf_margins(html_with_images)
 
@@ -267,6 +270,8 @@ class ArticleExporter:
         """
         import re
         
+        import base64
+
         def replace_image_src(match):
             img_tag = match.group(0)
             src = match.group(1)
@@ -747,7 +752,15 @@ class ArticleExporter:
                 l.strip() for l in sources.strip().split('\n') if l.strip()
             ]
             for src in source_list:
-                p = doc.add_paragraph(str(src), style='List Number')
+                if isinstance(src, dict):
+                    title = src.get("title", "")
+                    url = src.get("url", "")
+                    display = f"{title} — {url}" if title and url else title or url or str(src)
+                elif hasattr(src, "title"):
+                    display = f"{src.title} — {src.url}" if src.url else src.title
+                else:
+                    display = str(src)
+                p = doc.add_paragraph(display, style='List Number')
                 p.runs[0].font.size = Pt(9) if p.runs else None
                 p.runs[0].font.color.rgb = RGBColor(80, 80, 80) if p.runs else None
 

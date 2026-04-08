@@ -11,6 +11,7 @@ AUFGABE:
 1. Schreiben Sie einen mandantenorientierten Abschnitt ({word_budget} Wörter). Der Leser ist ein juristischer Laie.
 2. STRUKTUR: Beginnen Sie mit dem praktischen Problem oder der Mandanten-Frage, DANN erklären Sie die Rechtslage, DANN belegen Sie mit Entscheidungen.
 3. Gerichtsentscheidungen sind BELEGE, nicht der Hauptinhalt. Zitieren Sie im Format "(Gericht, Az. XXX)" — maximal 1-2 Sätze pro Entscheidung.
+   ZUORDNUNGSPRÜFUNG: Bevor Sie eine Entscheidung als Beleg zitieren, prüfen Sie: Behandelt der Leitsatz TATSÄCHLICH die Aussage, die Sie belegen wollen? Zitieren Sie eine Entscheidung NUR, wenn deren Leitsatz die KONKRETE Rechtsaussage stützt — thematische Nähe reicht NICHT.
 4. Bauen Sie mindestens ein konkretes Praxisbeispiel mit Zahlen ein (z.B. "Immobilie 500.000 EUR, 2 Kinder → Pflichtteil je 62.500 EUR").
 5. Verwenden Sie direkte Anrede ("Sie", "Ihr") — NICHT "der Erblasser", "der Vollmachtgeber" (außer wenn juristisch nötig).
 6. HTML-Tags: <p>, <ul>, <li>, <ol>, <strong>, <em>. Kein Markdown.

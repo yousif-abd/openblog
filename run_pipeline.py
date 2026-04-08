@@ -376,9 +376,9 @@ async def process_single_article(
         logger.info(f"    [Stage 2] ✓ Generated: {stage2_output.article.Headline[:50]}...")
 
         # -----------------------------------------
-        # Stage 2.5: Legal Verification (if legal research enabled)
+        # Stage 2.5: Legal Verification (runs whenever legal context exists)
         # -----------------------------------------
-        if legal_research_enabled and legal_context:
+        if legal_context:
             logger.info(f"    [Stage 2.5] Legal verification...")
 
             stage25_output = await run_stage_25({
@@ -400,6 +400,9 @@ async def process_single_article(
                 f"    [Stage 2.5] ✓ Verified {stage25_output['claims_extracted']} claims "
                 f"({stage25_output['claims_supported']} supported, {stage25_output['claims_unsupported']} unsupported)"
             )
+        else:
+            # No legal context — mark explicitly so articles never export with "pending"
+            article_dict["legal_verification_status"] = "skipped_no_context"
 
         # -----------------------------------------
         # Stage 3: Quality Check

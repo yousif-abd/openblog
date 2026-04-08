@@ -228,9 +228,13 @@ async def _verify_decision_centric(
     # Track statistics
     stats = {
         "decision_anchor": {"total": 0, "verified": 0},
+        "thematic_synthesis": {"total": 0, "verified": 0},
         "context": {"total": 0, "verified": 0},
         "practical_advice": {"total": 0, "skipped": 0},
     }
+
+    # Collect thematic_synthesis sections for batched verification
+    thematic_sections_to_verify = []
 
     for section_id, section_type in section_types.items():
         content_field = f"{section_id}_content"
@@ -290,15 +294,71 @@ async def _verify_decision_centric(
                         confidence="medium"
                     ))
 
+        elif section_type == "thematic_synthesis":
+            stats["thematic_synthesis"]["total"] += 1
+
+            # Extract all cited Aktenzeichen and their surrounding propositions
+            cited_az = _extract_citations_with_context(content, available_aktenzeichen)
+
+            if not cited_az:
+                logger.warning(f"    ✗ No decision citations found in thematic_synthesis section")
+                issues.append(f"{section_id}: No decision citations in thematic_synthesis section")
+            else:
+                # Collect for batched AI verification
+                for az, proposition in cited_az:
+                    # Find the matching decision's Leitsatz
+                    decision_data = next(
+                        (d for d in court_decisions if d.get("aktenzeichen") == az), None
+                    )
+                    if decision_data:
+                        thematic_sections_to_verify.append({
+                            "section_id": section_id,
+                            "content_field": content_field,
+                            "aktenzeichen": az,
+                            "proposition": proposition,
+                            "leitsatz": decision_data.get("leitsatz", ""),
+                            "volltext_auszug": decision_data.get("volltext_auszug", ""),
+                            "relevante_normen": decision_data.get("relevante_normen", []),
+                        })
+                    else:
+                        logger.warning(f"    ✗ Cited decision {az} not in provided list")
+                        issues.append(f"{section_id}: Cites unknown decision {az}")
+                        claims.append(LegalClaim(
+                            claim_text=f"Cites decision {az} which is not in the provided court decisions",
+                            field=content_field,
+                            supported=False,
+                            confidence="high"
+                        ))
+
+                logger.info(f"    → {len(cited_az)} citations queued for proposition-level verification")
+
         elif section_type == "practical_advice":
             stats["practical_advice"]["total"] += 1
             stats["practical_advice"]["skipped"] += 1
             logger.info(f"    ○ Skipped (practical advice - no legal claims expected)")
 
+    # Batch-verify all thematic_synthesis proposition-citation pairs
+    if thematic_sections_to_verify:
+        logger.info(f"  Verifying {len(thematic_sections_to_verify)} thematic proposition-citation pairs...")
+        thematic_claims, thematic_issues, thematic_ai_calls = await _verify_thematic_propositions(
+            thematic_sections_to_verify, court_decisions
+        )
+        claims.extend(thematic_claims)
+        issues.extend(thematic_issues)
+        ai_calls += thematic_ai_calls
+
+        # Count verified thematic sections
+        verified_sections = set()
+        for claim in thematic_claims:
+            if claim.supported:
+                verified_sections.add(claim.field)
+        stats["thematic_synthesis"]["verified"] = len(verified_sections)
+
     # Log summary
     logger.info("-" * 60)
     logger.info("VERIFICATION SUMMARY:")
     logger.info(f"  decision_anchor: {stats['decision_anchor']['verified']}/{stats['decision_anchor']['total']} verified")
+    logger.info(f"  thematic_synthesis: {stats['thematic_synthesis']['verified']}/{stats['thematic_synthesis']['total']} verified")
     logger.info(f"  context: {stats['context']['verified']}/{stats['context']['total']} verified")
     logger.info(f"  practical_advice: {stats['practical_advice']['skipped']}/{stats['practical_advice']['total']} skipped")
     logger.info(f"  Issues found: {len(issues)}")
@@ -400,6 +460,193 @@ def _check_prohibited_patterns(content: str) -> List[str]:
     return prohibited
 
 
+def _extract_citations_with_context(
+    content: str, available_aktenzeichen: set
+) -> List[Tuple[str, str]]:
+    """
+    Extract all cited Aktenzeichen from content along with the surrounding proposition.
+
+    For each citation found, extracts the sentence or paragraph that contains it,
+    which represents the legal proposition the citation is supposed to support.
+
+    Args:
+        content: Section content (HTML)
+        available_aktenzeichen: Set of valid Aktenzeichen
+
+    Returns:
+        List of (aktenzeichen, proposition_text) tuples
+    """
+    # Strip HTML tags for text extraction
+    text = re.sub(r'<[^>]+>', ' ', content)
+    text = re.sub(r'\s+', ' ', text).strip()
+
+    results = []
+
+    az_patterns = [
+        r'\b(\d+\s*(?:AZR|ZR|AR|StR|BVR|B|K|S|O|U|L|T|V|W)\s*\d+/\d+)\b',
+        r'\b([IVXLC]+\s*(?:R|ZR|AR|B|BVR)\s*\d+/\d+)\b',
+    ]
+
+    for pattern in az_patterns:
+        for match in re.finditer(pattern, text, re.IGNORECASE):
+            az_text = match.group(1)
+            normalized = re.sub(r'\s+', ' ', az_text.upper())
+
+            # Find the matching available Aktenzeichen
+            matched_az = None
+            for az in available_aktenzeichen:
+                if az:
+                    normalized_az = re.sub(r'\s+', ' ', az.upper())
+                    if normalized == normalized_az or normalized in normalized_az or normalized_az in normalized:
+                        matched_az = az
+                        break
+
+            if matched_az:
+                # Extract surrounding context (the sentence containing this citation)
+                start = max(0, match.start() - 300)
+                end = min(len(text), match.end() + 300)
+                context_text = text[start:end].strip()
+
+                # Try to extract just the sentence
+                sentences = re.split(r'(?<=[.!?])\s+', context_text)
+                proposition = context_text  # fallback to full context
+                for sentence in sentences:
+                    if az_text in sentence or normalized.lower() in sentence.lower():
+                        proposition = sentence.strip()
+                        break
+
+                results.append((matched_az, proposition))
+
+    return results
+
+
+async def _verify_thematic_propositions(
+    pairs: List[Dict[str, Any]],
+    court_decisions: List[Dict[str, Any]],
+) -> Tuple[List[LegalClaim], List[str], int]:
+    """
+    Batch-verify proposition-citation pairs for thematic_synthesis sections.
+
+    Sends all pairs to Gemini in ONE call and checks whether each cited
+    decision's Leitsatz actually supports the specific legal proposition.
+
+    Args:
+        pairs: List of dicts with section_id, content_field, aktenzeichen,
+               proposition, leitsatz, volltext_auszug, relevante_normen
+        court_decisions: Full list of court decisions for context
+
+    Returns:
+        Tuple of (claims_list, issues_list, ai_calls_count)
+    """
+    if not pairs:
+        return [], [], 0
+
+    # Format proposition pairs for the prompt
+    pair_texts = []
+    for i, pair in enumerate(pairs, 1):
+        normen_str = ", ".join(pair["relevante_normen"]) if pair["relevante_normen"] else "keine"
+        volltext_snippet = pair.get("volltext_auszug", "")
+        if volltext_snippet:
+            volltext_snippet = " ".join(volltext_snippet.split()[:150])
+            volltext_line = f"\n   Entscheidungsgründe (Auszug): {volltext_snippet}"
+        else:
+            volltext_line = ""
+
+        pair_texts.append(
+            f"Zuordnung {i}:\n"
+            f"   Abschnitt: {pair['section_id']}\n"
+            f"   Rechtliche Aussage im Artikel: \"{pair['proposition']}\"\n"
+            f"   Zitierte Entscheidung: {pair['aktenzeichen']}\n"
+            f"   Leitsatz der Entscheidung: {pair['leitsatz']}\n"
+            f"   Relevante Normen: {normen_str}"
+            f"{volltext_line}"
+        )
+
+    proposition_pairs_text = "\n\n".join(pair_texts)
+
+    # Load and format the verification prompt
+    prompt_template = load_prompt("stage2_5", "thematic_verification")
+    prompt = prompt_template.format(proposition_pairs=proposition_pairs_text)
+
+    # Schema for structured response
+    verification_schema = {
+        "type": "object",
+        "properties": {
+            "verifications": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "zuordnung_nr": {"type": "integer"},
+                        "supported": {"type": "boolean"},
+                        "reason": {"type": "string"},
+                        "correction": {"type": "string"}
+                    },
+                    "required": ["zuordnung_nr", "supported", "reason"]
+                }
+            }
+        },
+        "required": ["verifications"]
+    }
+
+    claims = []
+    issues_list = []
+    ai_calls = 0
+
+    try:
+        gemini_client = GeminiClient()
+        result = await gemini_client.generate_with_schema(
+            prompt=prompt,
+            response_schema=verification_schema,
+            temperature=0.2,
+        )
+        ai_calls = 1
+
+        verifications = result.get("verifications", [])
+        logger.info(f"  Thematic verification returned {len(verifications)} results")
+
+        for v in verifications:
+            idx = v.get("zuordnung_nr", 0) - 1
+            if 0 <= idx < len(pairs):
+                pair = pairs[idx]
+                supported = v.get("supported", False)
+                reason = v.get("reason", "")
+                correction = v.get("correction", "")
+
+                claims.append(LegalClaim(
+                    claim_text=pair["proposition"][:200],
+                    field=pair["content_field"],
+                    cited_source=pair["aktenzeichen"],
+                    supported=supported,
+                    matching_decision=pair["aktenzeichen"] if supported else None,
+                    confidence="high" if supported else "low"
+                ))
+
+                if not supported:
+                    issue_msg = f"{pair['section_id']}: Citation {pair['aktenzeichen']} does not support claim — {reason}"
+                    if correction:
+                        issue_msg += f" (Correction: {correction})"
+                    issues_list.append(issue_msg)
+                    logger.warning(f"    ✗ {issue_msg}")
+                else:
+                    logger.info(f"    ✓ {pair['section_id']}: {pair['aktenzeichen']} supports claim — {reason}")
+
+    except Exception as e:
+        logger.error(f"Thematic proposition verification failed: {e}")
+        # On failure, mark all as unverified rather than silently passing
+        for pair in pairs:
+            claims.append(LegalClaim(
+                claim_text=pair["proposition"][:200],
+                field=pair["content_field"],
+                cited_source=pair["aktenzeichen"],
+                supported=False,
+                confidence="low"
+            ))
+            issues_list.append(f"{pair['section_id']}: Verification failed for {pair['aktenzeichen']}: {e}")
+
+    return claims, issues_list, ai_calls
+
+
 def _extract_article_content(article: Dict[str, Any]) -> str:
     """
     Extract all text content from article for verification.
@@ -463,7 +710,7 @@ def _format_decisions_for_verification(court_decisions: List[Dict[str, Any]]) ->
 
         normen_str = ", ".join(normen) if normen else "keine Normen angegeben"
 
-        parts.append(
+        entry = (
             f"Entscheidung {i}:\n"
             f"  Gericht: {gericht}\n"
             f"  Aktenzeichen: {aktenzeichen}\n"
@@ -472,6 +719,18 @@ def _format_decisions_for_verification(court_decisions: List[Dict[str, Any]]) ->
             f"  Relevante Normen: {normen_str}\n"
             f"  Rechtsgebiet: {rechtsgebiet}"
         )
+
+        # Include richer decision context when available
+        orientierung = decision.get("orientierungssatz", "")
+        if orientierung:
+            entry += f"\n  Orientierungssatz: {orientierung}"
+
+        volltext = decision.get("volltext_auszug", "")
+        if volltext:
+            truncated = " ".join(volltext.split()[:300])
+            entry += f"\n  Entscheidungsgründe (Auszug): {truncated}"
+
+        parts.append(entry)
 
     return "\n\n".join(parts)
 

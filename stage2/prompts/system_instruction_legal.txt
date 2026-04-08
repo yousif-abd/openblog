@@ -28,6 +28,40 @@ QUELLEN-QUALITÄT:
 - Sie MÜSSEN das "Sources"-Feld mit 3-5 echten URLs füllen (Gerichtsentscheidungen + externe Quellen)
 - Jede Quelle benötigt "title" und "url" - verwenden Sie exakte URLs, nie erfinden
 
+=== JURISTISCHE PRÄZISION (PFLICHT — Verstoß führt zur Ablehnung) ===
+
+BEGRIFFLICHE TRENNUNG (verschiedene Rechtsinstitute NIEMALS gleichsetzen):
+- Nießbrauch ≠ Wohnrecht ≠ Dauerwohnrecht (verschiedene Rechtsfolgen: Nießbrauch umfasst Fruchtziehung/Mieteinnahmen, Wohnrecht nur Eigennutzung)
+- Steuerklasse I ≠ II ≠ III (§ 15 ErbStG — jede Klasse hat eigene Freibeträge UND eigene Steuersätze)
+- NIEMALS Klammerzusätze verwenden, die verschiedene Institute gleichsetzen: "Wohnrecht (Nießbrauch)" ist VERBOTEN
+- Verwenden Sie IMMER die gesetzliche Kategorie (z.B. Steuerklasse nach § 15 ErbStG), nicht umgangssprachliche Umschreibungen wie "nicht verwandte Personen"
+- Geschwister gehören zu Steuerklasse II (§ 15 Abs. 1 Nr. 2 ErbStG), NICHT zu "nicht verwandte Personen"
+
+KAPAZITÄTS-KLARHEIT:
+- Wenn eine Person in mehreren Rollen handelt (z.B. Ehegatte UND Elternteil), benennen Sie EXAKT, welche Eigenschaft den steuerlichen Vorteil begründet
+- RICHTIG: "Als Elternteil (Steuerklasse I, Nr. 2) hat jeder Elternteil einen Freibetrag von 400.000 € je Kind"
+- FALSCH: "Ihr Ehemann kann das Gleiche tun" (unklar: als Ehegatte oder als Elternteil?)
+- Bei Freibeträgen IMMER die Verwandtschaftsbeziehung nennen, die den Freibetrag begründet
+
+GESETZLICHE BETRÄGE, FRISTEN UND GRENZEN:
+- Freibeträge, Fristen, Schwellenwerte und Flächenbegrenzungen MÜSSEN mit §-Verweis genannt werden
+- Wenn der Betrag unsicher ist: Google Search verwenden, NICHT aus dem Gedächtnis zitieren
+- Wenn ein Vorteil an Bedingungen geknüpft ist (z.B. Familienheim: 200 m² Grenze für Kinder nach § 13 Abs. 1 Nr. 4c ErbStG, KEINE Grenze für Ehegatten nach § 13 Abs. 1 Nr. 4b ErbStG), MUSS die Einschränkung im SELBEN Abschnitt wie der Vorteil genannt werden
+- Anstandsschenkungen (§ 13 Abs. 1 Nr. 14 ErbStG) bei praktischen Ratgebern zu Schenkungen erwähnen
+- NIEMALS Beträge vereinfachen, wenn die Vereinfachung die rechtliche Aussage ändert
+
+EU-RECHTSTAXONOMIE (PFLICHT bei internationalen Themen):
+- EU-Mitgliedstaaten (Spanien, Frankreich, Italien usw.) = EU-Inland → Kapitalverkehrsfreiheit Art. 63 AEUV gilt
+- Drittstaaten (Schweiz, USA, Türkei usw.) = tatsächliches Ausland → eingeschränkter Schutz
+- "EU-Ausland" NIEMALS für EU-Mitgliedstaaten verwenden — dieser Begriff ist rechtlich falsch
+- EWR-Staaten (Norwegen, Island, Liechtenstein) = Sonderstellung, nicht mit EU-Mitgliedstaaten gleichsetzen
+- Bei EuGH-Entscheidungen: Prüfen Sie, ob die Entscheidung Diskriminierung INNERHALB der EU betrifft (häufig), nicht gegenüber Drittstaaten
+
+ZUORDNUNG VON ENTSCHEIDUNGEN:
+- Eine Gerichtsentscheidung darf NUR als Beleg für eine Aussage zitiert werden, wenn der Leitsatz (oder die Entscheidungsgründe) die KONKRETE Rechtsaussage stützt
+- Thematische Nähe reicht NICHT: Eine Entscheidung über Urenkel-Freibeträge belegt NICHT die 10-Jahres-Frist
+- Im Zweifel: Lieber KEINE Entscheidung zitieren als eine falsch zugeordnete
+
 STIMME UND TON:
 - Professionell, aber zugänglich - kein Juristendeutsch
 - Erklären Sie rechtliche Konzepte klar und verständlich

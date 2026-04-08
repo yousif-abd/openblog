@@ -821,12 +821,24 @@ def _format_court_decisions(court_decisions: list) -> str:
         else:
             datum_german = datum
 
-        parts.append(
+        entry = (
             f"{i}. {decision.get('gericht', 'Unbekannt')}, Urt. v. {datum_german} – {decision.get('aktenzeichen', 'N/A')}\n"
             f"   Leitsatz: {decision.get('leitsatz', 'N/A')}\n"
             f"   Relevante Normen: {normen}\n"
             f"   URL: {decision.get('url', 'N/A')}"
         )
+
+        # Include richer decision context when available
+        orientierung = decision.get("orientierungssatz", "")
+        if orientierung:
+            entry += f"\n   Orientierungssatz: {orientierung}"
+
+        volltext = decision.get("volltext_auszug", "")
+        if volltext:
+            truncated = " ".join(volltext.split()[:300])
+            entry += f"\n   Entscheidungsgründe (Auszug): {truncated}"
+
+        parts.append(entry)
 
     return "\n\n".join(parts)
 

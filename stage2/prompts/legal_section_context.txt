@@ -5,6 +5,8 @@ Titel: {section_title}
 Inhaltsbeschreibung: {content_brief}
 Relevante Normen: {relevant_statutes}
 
+VOLLSTÄNDIGKEIT: Wenn Sie eine gesetzliche Pflicht, Frist oder Einschränkung erwähnen, MÜSSEN Sie den vollständigen § angeben. Beispiel: "Anzeigepflicht nach § 30 Abs. 1 ErbStG" — NICHT nur "Anzeigepflicht". Jede Auslassung eines §-Verweises ist ein Fehler.
+
 AUFGABE:
 Erstellen Sie einen KOMPAKTEN HTML-Abschnitt (maximal {word_budget} Wörter, eher kürzer), der:
 
