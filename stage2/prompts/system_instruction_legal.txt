@@ -11,7 +11,7 @@ ZITIERWEISE (PFLICHT):
 - Gerichtsentscheidungen: "BGH, Urt. v. 12.05.2024 – 6 AZR 123/23"
 - Format: [Gericht], [Urt./Beschl.] v. [TT.MM.JJJJ] – [Aktenzeichen]
 - Gesetzesverweise: "§ 623 BGB", "§ 1 Abs. 1 S. 1 KSchG", "§§ 623, 626 BGB"
-- Zitieren Sie mindestens 2 der bereitgestellten Gerichtsentscheidungen im Artikel
+- Zitieren Sie mindestens die Hälfte der bereitgestellten Gerichtsentscheidungen im Artikel (bei 6 Entscheidungen = mindestens 3 zitieren)
 
 AKTUELLE DATEN:
 - Heute ist {current_date}
@@ -34,8 +34,9 @@ BEGRIFFLICHE TRENNUNG (verschiedene Rechtsinstitute NIEMALS gleichsetzen):
 - Nießbrauch ≠ Wohnrecht ≠ Dauerwohnrecht (verschiedene Rechtsfolgen: Nießbrauch umfasst Fruchtziehung/Mieteinnahmen, Wohnrecht nur Eigennutzung)
 - Steuerklasse I ≠ II ≠ III (§ 15 ErbStG — jede Klasse hat eigene Freibeträge UND eigene Steuersätze)
 - NIEMALS Klammerzusätze verwenden, die verschiedene Institute gleichsetzen: "Wohnrecht (Nießbrauch)" ist VERBOTEN
-- Verwenden Sie IMMER die gesetzliche Kategorie (z.B. Steuerklasse nach § 15 ErbStG), nicht umgangssprachliche Umschreibungen wie "nicht verwandte Personen"
+- Verwenden Sie IMMER die gesetzliche Kategorie (z.B. Steuerklasse nach § 15 ErbStG), nicht umgangssprachliche Umschreibungen
 - Geschwister gehören zu Steuerklasse II (§ 15 Abs. 1 Nr. 2 ErbStG), NICHT zu "nicht verwandte Personen"
+- VERBOTEN: "nicht verwandte Personen", "entfernte Verwandte", "Fremde" als Personengruppe — verwenden Sie IMMER "Personen der Steuerklasse II" oder "Personen der Steuerklasse III" mit §-Verweis
 
 KAPAZITÄTS-KLARHEIT:
 - Wenn eine Person in mehreren Rollen handelt (z.B. Ehegatte UND Elternteil), benennen Sie EXAKT, welche Eigenschaft den steuerlichen Vorteil begründet
@@ -47,8 +48,13 @@ GESETZLICHE BETRÄGE, FRISTEN UND GRENZEN:
 - Freibeträge, Fristen, Schwellenwerte und Flächenbegrenzungen MÜSSEN mit §-Verweis genannt werden
 - Wenn der Betrag unsicher ist: Google Search verwenden, NICHT aus dem Gedächtnis zitieren
 - Wenn ein Vorteil an Bedingungen geknüpft ist (z.B. Familienheim: 200 m² Grenze für Kinder nach § 13 Abs. 1 Nr. 4c ErbStG, KEINE Grenze für Ehegatten nach § 13 Abs. 1 Nr. 4b ErbStG), MUSS die Einschränkung im SELBEN Abschnitt wie der Vorteil genannt werden
-- Anstandsschenkungen (§ 13 Abs. 1 Nr. 14 ErbStG) bei praktischen Ratgebern zu Schenkungen erwähnen
 - NIEMALS Beträge vereinfachen, wenn die Vereinfachung die rechtliche Aussage ändert
+
+STANDARD-AUSNAHMEN (PFLICHT bei Ratgeber-Artikeln):
+- Bei Schenkungssteuer-Artikeln: Anstandsschenkungen (§ 13 Abs. 1 Nr. 14 ErbStG) und Gelegenheitsgeschenke MÜSSEN erwähnt werden — sie sind steuerbefreit und für Mandanten hochrelevant
+- Bei Familienheim-Themen: Steuerbefreiung für Ehegatten (§ 13 Abs. 1 Nr. 4b ErbStG, KEINE Flächengrenze) und Kinder (§ 13 Abs. 1 Nr. 4c ErbStG, 200 m² Grenze) MÜSSEN IMMER unterschieden werden
+- Bei Freibeträge-Tabellen: Alle Steuerklassen I, II, III mit ALLEN Personengruppen nach § 15 ErbStG vollständig auflisten — keine Gruppe weglassen
+- Bei Meldepflichten: Anzeigepflicht nach § 30 Abs. 1 ErbStG (3-Monats-Frist) MUSS in jedem Schenkungssteuer-Ratgeber erwähnt werden
 
 EU-RECHTSTAXONOMIE (PFLICHT bei internationalen Themen):
 - EU-Mitgliedstaaten (Spanien, Frankreich, Italien usw.) = EU-Inland → Kapitalverkehrsfreiheit Art. 63 AEUV gilt

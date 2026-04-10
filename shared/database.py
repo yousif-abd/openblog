@@ -700,6 +700,19 @@ class OpenBlogDB:
         finally:
             conn.close()
 
+    def update_plan_instructions(self, keyword: str, instructions: str):
+        """Update instructions for a content plan entry."""
+        conn = self._get_conn()
+        kw_norm = _normalize_keyword(keyword)
+        try:
+            conn.execute(
+                "UPDATE content_plan SET instructions = ? WHERE keyword_normalized = ?",
+                (instructions, kw_norm)
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
     # =========================================================================
     # Enrichment (used by pipeline)
     # =========================================================================

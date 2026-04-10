@@ -243,6 +243,111 @@ logger = logging.getLogger(__name__)
 
 
 # =============================================================================
+# Auto-generation helpers
+# =============================================================================
+
+MIN_BECK_RESOURCES = 10
+
+
+async def _auto_generate_keyword_instructions(
+    keyword: str,
+    rechtsgebiet: str,
+    court_decisions: list,
+    fact_sheet_dir: Optional[Path] = None,
+) -> Optional[str]:
+    """
+    Auto-generate keyword_instructions via Gemini Flash.
+
+    Analyzes the keyword, available court decisions, and legal fact sheet
+    to produce structured article generation instructions.
+
+    Returns instruction text, or None on failure.
+    """
+    import json as _json
+    from shared.gemini_client import GeminiClient
+
+    # Build decisions summary (truncated Leitsätze)
+    decisions_lines = []
+    for d in court_decisions[:12]:
+        leitsatz = (d.get("leitsatz") or "")[:200]
+        if leitsatz:
+            decisions_lines.append(
+                f"- {d.get('gericht', '?')} {d.get('aktenzeichen', '?')} "
+                f"({d.get('datum', '?')}): {leitsatz}"
+            )
+    decisions_summary = "\n".join(decisions_lines) if decisions_lines else "(keine Entscheidungen verfügbar)"
+
+    # Load fact sheet excerpt if available
+    fact_sheet_excerpt = ""
+    if fact_sheet_dir:
+        mapping = {"Erbrecht": "erbrecht.json", "Steuerrecht": "erbrecht.json"}
+        filename = mapping.get(rechtsgebiet)
+        if filename:
+            facts_path = fact_sheet_dir / filename
+            if facts_path.exists():
+                try:
+                    with open(facts_path, "r", encoding="utf-8") as f:
+                        facts = _json.load(f)
+                    # Extract key sections for the prompt
+                    excerpt_parts = []
+                    for section_key, section_data in facts.items():
+                        if isinstance(section_data, list):
+                            for item in section_data[:5]:
+                                if isinstance(item, dict) and "paragraph" in item:
+                                    excerpt_parts.append(
+                                        f"  {item['paragraph']}: {item.get('regelung', item.get('person', ''))}"
+                                    )
+                        elif isinstance(section_data, dict):
+                            for k, v in list(section_data.items())[:5]:
+                                excerpt_parts.append(f"  {k}: {v}")
+                    fact_sheet_excerpt = "\n".join(excerpt_parts[:30])
+                except Exception:
+                    pass
+
+    if not fact_sheet_excerpt:
+        fact_sheet_excerpt = "(keine Gesetzesreferenz verfügbar)"
+
+    # Load prompt template
+    prompt_path = Path(__file__).parent / "shared" / "prompts" / "auto_instructions.txt"
+    if not prompt_path.exists():
+        logger.warning("[Auto-Instructions] Prompt template not found")
+        return None
+
+    with open(prompt_path, "r", encoding="utf-8") as f:
+        prompt_template = f.read()
+
+    prompt = prompt_template.format(
+        keyword=keyword,
+        rechtsgebiet=rechtsgebiet,
+        decisions_summary=decisions_summary,
+        fact_sheet_excerpt=fact_sheet_excerpt,
+    )
+
+    try:
+        client = GeminiClient(model_override="gemini-2.5-flash")
+        result = await client.generate(
+            prompt=prompt,
+            use_url_context=False,
+            use_google_search=False,
+            json_output=False,
+            temperature=0.3,
+            max_tokens=2000,
+            timeout=30,
+        )
+
+        if isinstance(result, dict):
+            text = result.get("text") or result.get("response") or ""
+        else:
+            text = str(result) if result else ""
+
+        text = text.strip()
+        return text if len(text) > 100 else None
+    except Exception as e:
+        logger.warning(f"[Auto-Instructions] Gemini call failed: {e}")
+        return None
+
+
+# =============================================================================
 # Pipeline Orchestration
 # =============================================================================
 
@@ -351,12 +456,74 @@ async def process_single_article(
             except Exception as e:
                 logger.debug(f"    [Enrichment] DB lookup failed (non-fatal): {e}")
 
+        # --- Auto-supplement Beck resources if below threshold ---
+        if legal_context and rechtsgebiet and DB_AVAILABLE:
+            current_decisions = legal_context.get("court_decisions", [])
+            if len(current_decisions) < MIN_BECK_RESOURCES:
+                try:
+                    existing_az = {d.get("aktenzeichen") for d in current_decisions}
+                    all_rechtsgebiet = db.get_beck_resources_by_rechtsgebiet(rechtsgebiet)
+                    supplemental = [
+                        r for r in all_rechtsgebiet
+                        if r.get("aktenzeichen") not in existing_az
+                        and len(r.get("leitsatz", "")) > 50
+                        and not r.get("leitsatz", "").startswith("Entscheidung des")
+                    ]
+                    supplemental.sort(key=lambda r: len(r.get("leitsatz", "")), reverse=True)
+                    needed = min(MIN_BECK_RESOURCES - len(current_decisions), 15 - len(current_decisions))
+                    if needed > 0 and supplemental:
+                        added = supplemental[:needed]
+                        current_decisions.extend(added)
+                        legal_context["court_decisions"] = current_decisions
+                        logger.info(
+                            f"    [Enrichment] Supplemented with {len(added)} cross-keyword "
+                            f"{rechtsgebiet} resources (total: {len(current_decisions)})"
+                        )
+                except Exception as e:
+                    logger.debug(f"    [Enrichment] Supplementation failed (non-fatal): {e}")
+
+        # Load keyword_instructions from content plan if not already set
+        if DB_AVAILABLE and not getattr(article, "keyword_instructions", None):
+            try:
+                plan_entry = db.get_plan_entry(article.keyword)
+                if plan_entry and plan_entry.get("instructions"):
+                    article.keyword_instructions = plan_entry["instructions"]
+                    logger.info(f"    [Enrichment] Loaded keyword_instructions from content plan")
+            except Exception as e:
+                logger.debug(f"    [Enrichment] Plan instructions lookup failed (non-fatal): {e}")
+
+        # --- Auto-generate keyword_instructions if still not set ---
+        if not getattr(article, "keyword_instructions", None) and rechtsgebiet:
+            try:
+                auto_instructions = await _auto_generate_keyword_instructions(
+                    keyword=article.keyword,
+                    rechtsgebiet=rechtsgebiet,
+                    court_decisions=(
+                        legal_context.get("court_decisions", []) if legal_context else []
+                    ),
+                    fact_sheet_dir=Path(__file__).parent / "stage2" / "legal_facts",
+                )
+                if auto_instructions:
+                    article.keyword_instructions = auto_instructions
+                    if DB_AVAILABLE:
+                        try:
+                            db.update_plan_instructions(article.keyword, auto_instructions)
+                        except Exception:
+                            pass
+                    logger.info(
+                        f"    [Auto-Instructions] Generated keyword_instructions "
+                        f"({len(auto_instructions)} chars)"
+                    )
+            except Exception as e:
+                logger.warning(f"    [Auto-Instructions] Failed (non-fatal): {e}")
+
         stage2_input = Stage2Input(
             keyword=article.keyword,
             company_context=CompanyContext(**company_ctx),
             visual_identity=VisualIdentity(**visual_identity_data) if visual_identity_data else None,
             language=context.language,
             word_count=max(article.word_count or 2000, 4500) if rechtsgebiet else (article.word_count or 2000),
+            keyword_instructions=getattr(article, "keyword_instructions", None) or None,
             job_id=context.job_id,
             skip_images=skip_images,
             legal_context=legal_context,
